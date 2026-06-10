@@ -13,6 +13,11 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const getNcbaAccountNo = () => {
+  const accountNo = (process.env.NCBA_ACCOUNT_NO || '').replace(/\s+/g, '').trim();
+  return /^\d+$/.test(accountNo) ? accountNo : '';
+};
+
 const app = express();
 
   const PORT = 3000;
@@ -916,7 +921,7 @@ const app = express();
       }
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = (process.env.NCBA_ACCOUNT_NO || publicConfig.accountNo || '').trim();
+      const accountNo = getNcbaAccountNo();
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
       }
@@ -1090,7 +1095,7 @@ const app = express();
       }
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = (process.env.NCBA_ACCOUNT_NO || publicConfig.accountNo || '').trim();
+      const accountNo = getNcbaAccountNo();
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
       }

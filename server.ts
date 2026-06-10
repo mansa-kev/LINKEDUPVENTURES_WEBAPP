@@ -31,10 +31,14 @@ const supabase: any = new Proxy({}, {
   get: (_t, prop) => getSupabase()[prop],
 });
 
+const getNcbaAccountNo = () => {
+  const accountNo = (process.env.NCBA_ACCOUNT_NO || '').replace(/\s+/g, '').trim();
+  return /^\d+$/.test(accountNo) ? accountNo : '';
+};
+
 if (!supabaseUrl || !supabaseKey) {
   console.warn('[server] ⚠️ Supabase env vars missing — API routes that need Supabase will return errors until VITE_SUPABASE_URL and a key are set in .env.local');
 }
-const ncbaAccountNo = process.env.NCBA_ACCOUNT_NO?.trim() || '';
 
 async function startServer() {
   const app = express();
@@ -1027,7 +1031,7 @@ async function startServer() {
       const pushAmount = Number(booking.total_amount);
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = ncbaAccountNo;
+      const accountNo = getNcbaAccountNo();
 
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
@@ -1289,7 +1293,7 @@ async function startServer() {
       const amount = Number(reservation.reservation_fee);
       
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = ncbaAccountNo;
+      const accountNo = getNcbaAccountNo();
 
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
