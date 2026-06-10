@@ -540,6 +540,83 @@ export function AdminBookingCommandCenter() {
         </div>
       </div>
 
+      {/* === Lifecycle Stepper — Sequential Command Control === */}
+      {(() => {
+        const stages = [
+          { key: 'submitted',   label: 'Submitted',    icon: FileText,       done: true },
+          { key: 'payment',     label: 'Payment',      icon: CreditCard,     done: isPaid },
+          { key: 'docs',        label: 'Documents',    icon: ShieldCheck,    done: docsOk },
+          { key: 'confirmed',   label: 'Confirmed',    icon: CheckCircle2,   done: booking.status !== 'pending' && booking.status !== 'pending_payment_verification' && booking.status !== 'cancelled' },
+          { key: 'pickup',      label: 'Pickup',       icon: MapPin,         done: !!booking.pickup_confirmed_at || ['on_trip','returned','completed'].includes(booking.status) },
+          { key: 'transit',     label: 'In Transit',   icon: Car,            done: ['on_trip','returned','completed'].includes(booking.status) },
+          { key: 'returned',    label: 'Returned',     icon: RotateCcw,      done: !!booking.return_confirmed_at || ['returned','completed'].includes(booking.status) },
+          { key: 'completed',   label: 'Completed',    icon: Sparkles,       done: booking.status === 'completed' },
+        ];
+        const isCancelled = booking.status === 'cancelled';
+        const currentIdx = stages.findIndex(s => !s.done);
+        const activeIdx = currentIdx === -1 ? stages.length - 1 : currentIdx;
+        return (
+          <div className="relative bg-gradient-to-br from-card via-card to-muted/30 border border-border rounded-3xl p-5 md:p-6 shadow-sm overflow-hidden">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.08),transparent_50%)] pointer-events-none" />
+            <div className="relative flex items-center justify-between mb-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-muted-foreground">Lifecycle</p>
+                <p className="text-sm font-black text-foreground mt-0.5">
+                  {isCancelled ? 'Booking Cancelled' : `Stage ${activeIdx + 1} of ${stages.length} · ${stages[activeIdx].label}`}
+                </p>
+              </div>
+              {!isCancelled && (
+                <div className="hidden md:block text-right">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Progress</p>
+                  <p className="text-2xl font-black text-primary tabular-nums">
+                    {Math.round(((stages.filter(s => s.done).length) / stages.length) * 100)}%
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="relative flex items-start justify-between gap-1 overflow-x-auto scrollbar-none">
+              {stages.map((s, i) => {
+                const isActive = i === activeIdx && !isCancelled;
+                const isDone = s.done && !isCancelled;
+                const Icon = s.icon;
+                return (
+                  <React.Fragment key={s.key}>
+                    <div className="flex flex-col items-center gap-2 min-w-[60px] flex-1">
+                      <div className={`relative w-10 h-10 md:w-11 md:h-11 rounded-2xl flex items-center justify-center transition-all duration-300 ${
+                        isCancelled ? 'bg-muted text-muted-foreground/40' :
+                        isDone ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/30 scale-100' :
+                        isActive ? 'bg-primary/15 text-primary ring-2 ring-primary/40 ring-offset-2 ring-offset-card scale-110 animate-pulse' :
+                        'bg-muted/50 text-muted-foreground/50'
+                      }`}>
+                        <Icon size={16} />
+                        {isDone && <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center text-[10px] text-white font-black border-2 border-card">✓</div>}
+                      </div>
+                      <p className={`text-[9px] md:text-[10px] font-black uppercase tracking-wider text-center leading-tight ${
+                        isCancelled ? 'text-muted-foreground/50' :
+                        isActive ? 'text-primary' :
+                        isDone ? 'text-foreground' : 'text-muted-foreground'
+                      }`}>{s.label}</p>
+                    </div>
+                    {i < stages.length - 1 && (
+                      <div className={`h-0.5 flex-1 mt-5 md:mt-5 rounded-full transition-all duration-500 ${
+                        isCancelled ? 'bg-muted' :
+                        stages[i + 1].done || s.done ? 'bg-primary/60' : 'bg-muted'
+                      }`} />
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+            {isCancelled && (
+              <div className="relative mt-4 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-bold text-red-500 flex items-center gap-2">
+                <Ban size={14} /> This booking has been cancelled and is no longer active.
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+
       {/* Banner */}
       <div className={`rounded-3xl p-6 md:p-8 border shadow-xl ${bannerColor} ${bannerText} relative overflow-hidden flex flex-col md:flex-row md:items-end justify-between gap-6`}>
         <div className="absolute right-0 top-0 w-64 h-64 bg-white/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
