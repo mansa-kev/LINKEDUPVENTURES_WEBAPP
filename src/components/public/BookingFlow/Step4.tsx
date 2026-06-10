@@ -164,7 +164,7 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
       setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
       toast.success('STK Push sent. Check your phone.');
 
-      const pollResult = await paymentService.pollUntilPaid(result.paymentRequestId, id);
+      const pollResult = await paymentService.pollUntilPaid(result.paymentRequestId, id, statusToken || undefined);
 
       if (pollResult === 'paid') {
         handlePaid(id);
