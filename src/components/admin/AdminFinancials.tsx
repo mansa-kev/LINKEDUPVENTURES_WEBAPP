@@ -53,7 +53,7 @@ const TransactionStatus = ({ status }: { status: Transaction['status'] }) => {
 };
 
 export function AdminFinancials() {
-  const [data, setData] = useState<{ transactions: any[], expenses: any[], totalRevenue: number, totalPayouts: number, totalExpenses: number, chartData: any[] }>({ transactions: [], expenses: [], totalRevenue: 0, totalPayouts: 0, totalExpenses: 0, chartData: [] });
+  const [data, setData] = useState<{ transactions: any[], expenses: any[], settlements: any[], totalRevenue: number, totalPayouts: number, totalExpenses: number, netRevenue: number, pendingSettlementAmount: number, chartData: any[] }>({ transactions: [], expenses: [], settlements: [], totalRevenue: 0, totalPayouts: 0, totalExpenses: 0, netRevenue: 0, pendingSettlementAmount: 0, chartData: [] });
   const [reservationStats, setReservationStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'payouts'>('overview');
