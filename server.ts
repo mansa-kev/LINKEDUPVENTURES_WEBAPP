@@ -27,9 +27,9 @@ const getSupabase = () => {
   }
   return _supabase;
 };
-const supabase = new Proxy({} as ReturnType<typeof createClient>, {
+const supabase = new Proxy({}, {
   get: (_t, prop) => (getSupabase() as any)[prop],
-});
+}) as ReturnType<typeof createClient>;
 
 if (!supabaseUrl || !supabaseKey) {
   console.warn('[server] ⚠️ Supabase env vars missing — API routes that need Supabase will return errors until VITE_SUPABASE_URL and a key are set in .env.local');
