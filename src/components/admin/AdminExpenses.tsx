@@ -48,7 +48,7 @@ interface CarAsset {
   year: number;
   license_plate: string;
   status: string;
-  image_url?: string;
+  primary_image_url?: string;
   insurance_expiry?: string;
   gps_tracker_expiry?: string;
   insurance_policy_number?: string;
