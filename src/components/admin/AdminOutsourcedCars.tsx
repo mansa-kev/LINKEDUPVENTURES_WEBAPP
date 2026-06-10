@@ -278,6 +278,27 @@ export function AdminOutsourcedCars() {
         .eq('id', showSettleModal.id);
 
       if (error) throw error;
+
+      // Fix #5: Auto-create WHT tax ledger entry (5% withholding on supplier service fees in KE)
+      try {
+        const amount = Number(showSettleModal.amount) || 0;
+        const whtRate = 0.05;
+        const whtAmount = Math.round(amount * whtRate * 100) / 100;
+        await supabase.from('tax_ledger').insert({
+          booking_id: showSettleModal.booking_id,
+          settlement_id: showSettleModal.id,
+          tax_type: 'WHT',
+          rate: whtRate,
+          taxable_amount: amount,
+          tax_amount: whtAmount,
+          status: 'recorded',
+          reference: paymentRef,
+          notes: `Withholding tax on ${showSettleModal.type} payout — ${paymentRef}`,
+        }).then(null, (e: any) => logger.warn('Tax ledger insert skipped (table may not exist or RLS):', e?.message));
+      } catch (e: any) {
+        logger.warn('WHT entry skipped:', e?.message);
+      }
+
       toast.success('Payout marked as settled');
       setPaymentRef('');
       setShowSettleModal(null);

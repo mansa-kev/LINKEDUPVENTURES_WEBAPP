@@ -146,6 +146,76 @@ async function startServer() {
         });
       }
 
+      // ── Fix #2: Auto-create payout_settlements for outsourced cars & brokers ──
+      try {
+        const { data: bookingFull } = await supabase
+          .from('bookings')
+          .select('id, car_id, total_amount, metadata, fleet_owner_id')
+          .eq('id', paymentRequest.booking_id)
+          .maybeSingle();
+
+        if (bookingFull) {
+          const meta = bookingFull.metadata || {};
+          const ownerPayout = Number(meta.owner_payout_amount) || 0;
+          const outsource = meta.outsource_info || null;
+          const broker = meta.broker_info || null;
+
+          // Supplier settlement (covers outsourced AND registered fleet owners)
+          if (ownerPayout > 0 && bookingFull.car_id) {
+            const { data: existingSupplierSettle } = await supabase
+              .from('payout_settlements')
+              .select('id')
+              .eq('booking_id', bookingFull.id)
+              .eq('type', 'supplier')
+              .maybeSingle();
+            if (!existingSupplierSettle) {
+              await supabase.from('payout_settlements').insert({
+                booking_id: bookingFull.id,
+                type: 'supplier',
+                target_id: bookingFull.car_id, // Fix #6: normalized to cars.id
+                amount: ownerPayout,
+                status: 'pending',
+              }).then(null, (err: any) => console.error('[NCBA] Supplier settlement insert error:', err));
+            }
+          }
+
+          // Broker settlement
+          if (broker?.broker_id && Number(broker.broker_commission_amount) > 0) {
+            const { data: existingBrokerSettle } = await supabase
+              .from('payout_settlements')
+              .select('id')
+              .eq('booking_id', bookingFull.id)
+              .eq('type', 'broker')
+              .maybeSingle();
+            if (!existingBrokerSettle) {
+              await supabase.from('payout_settlements').insert({
+                booking_id: bookingFull.id,
+                type: 'broker',
+                target_id: broker.broker_id,
+                amount: Number(broker.broker_commission_amount),
+                status: 'pending',
+              }).then(null, (err: any) => console.error('[NCBA] Broker settlement insert error:', err));
+            }
+          }
+
+          // Fix #4: Email outsourced owner that a booking happened on their car
+          if (outsource?.is_outsourced && outsource?.owner_email) {
+            const subject = `New Booking Confirmed — Your Vehicle`;
+            const text = `Hello ${outsource.owner_name || 'Partner'},\n\nA new booking on your vehicle has just been paid.\n\nBooking: #${bookingFull.id.slice(0,8).toUpperCase()}\nGross: KES ${Number(bookingFull.total_amount).toLocaleString()}\nCommission (${Math.round((meta.commission_rate_applied || 0) * 100)}%): KES ${(Number(bookingFull.total_amount) - ownerPayout).toLocaleString()}\nYour Payout: KES ${ownerPayout.toLocaleString()} (pending settlement)\n\n— LinkedUp Cars`;
+            await supabase.functions.invoke('send-email', {
+              body: {
+                to: outsource.owner_email,
+                subject,
+                text,
+                html: `<div style="font-family:sans-serif;line-height:1.6;white-space:pre-wrap">${text}</div>`,
+              },
+            }).then(null, (err: any) => console.error('[NCBA] Owner email error:', err));
+          }
+        }
+      } catch (err) {
+        console.error('[NCBA] Payout settlement processing error:', err);
+      }
+
       if (paymentRequest.client_id) {
         await supabase.from('notifications').insert({
           user_id: paymentRequest.client_id,
@@ -716,7 +786,7 @@ async function startServer() {
       // Always fetch the car for daily_rate (server-side amount validation)
       const { data: carRow, error: carRowError } = await supabase
         .from('cars')
-        .select('fleet_owner_id, daily_rate')
+        .select('id, fleet_owner_id, daily_rate, is_outsourced, outsource_commission_rate, outsource_owner_name, outsource_owner_email, outsource_owner_phone')
         .eq('id', carId)
         .single();
 
@@ -760,18 +830,29 @@ async function startServer() {
         });
       }
 
-      // ── Per-fleet commission rate ──
+      // ── Per-fleet commission rate (outsourced cars override fleet default) ──
       let commissionRate = 0.15;
-      const { data: fleetSettings } = await supabase
-        .from('fleet_owner_settings')
-        .select('commission_rate')
-        .eq('id', fleetOwnerId)
-        .maybeSingle();
-      if (fleetSettings && Number.isFinite(Number(fleetSettings.commission_rate))) {
-        commissionRate = Number(fleetSettings.commission_rate);
-        if (commissionRate > 1) commissionRate = commissionRate / 100; // tolerate percent vs ratio
+      let commissionSource: 'outsource' | 'fleet_owner' | 'default' = 'default';
+
+      if (carRow.is_outsourced && Number.isFinite(Number(carRow.outsource_commission_rate))) {
+        // Outsourced cars use their own negotiated rate (Fix #1)
+        commissionRate = Number(carRow.outsource_commission_rate);
+        if (commissionRate > 1) commissionRate = commissionRate / 100;
+        commissionSource = 'outsource';
+      } else {
+        const { data: fleetSettings } = await supabase
+          .from('fleet_owner_settings')
+          .select('commission_rate')
+          .eq('id', fleetOwnerId)
+          .maybeSingle();
+        if (fleetSettings && Number.isFinite(Number(fleetSettings.commission_rate))) {
+          commissionRate = Number(fleetSettings.commission_rate);
+          if (commissionRate > 1) commissionRate = commissionRate / 100;
+          commissionSource = 'fleet_owner';
+        }
       }
       const platformCommission = Math.round(total * commissionRate * 100) / 100;
+      const ownerPayoutAmount = Math.round((total - platformCommission) * 100) / 100;
 
       // ── Per-booking status token (replaces world-readable status endpoint) ──
       const statusToken = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
@@ -818,6 +899,14 @@ async function startServer() {
           },
           client_status_token: statusToken,
           commission_rate_applied: commissionRate,
+          commission_source: commissionSource,
+          owner_payout_amount: ownerPayoutAmount,
+          outsource_info: carRow.is_outsourced ? {
+            is_outsourced: true,
+            owner_name: carRow.outsource_owner_name || null,
+            owner_email: carRow.outsource_owner_email || null,
+            owner_phone: carRow.outsource_owner_phone || null,
+          } : null,
         },
       };
 
