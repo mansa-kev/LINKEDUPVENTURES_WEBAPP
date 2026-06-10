@@ -33,6 +33,17 @@ interface StkQueryResult {
   error?: string;
 }
 
+async function authHeaders(): Promise<Record<string, string>> {
+  try {
+    const { supabase } = await import('../lib/supabase');
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export const paymentService = {
   async initiateSTKPush(params: StkPushParams): Promise<StkPushResult> {
     try {
@@ -64,9 +75,13 @@ export const paymentService = {
     }
   },
 
-  async getPaymentStatus(bookingId: string): Promise<PaymentStatusResult> {
+  async getPaymentStatus(bookingId: string, statusToken?: string): Promise<PaymentStatusResult> {
     try {
-      const response = await fetch(`/api/ncba/payment-status/${bookingId}`);
+      const url = statusToken
+        ? `/api/ncba/payment-status/${bookingId}?token=${encodeURIComponent(statusToken)}`
+        : `/api/ncba/payment-status/${bookingId}`;
+      const headers = await authHeaders();
+      const response = await fetch(url, { headers });
       const data = await response.json();
       return data;
     } catch (error: any) {
@@ -75,7 +90,13 @@ export const paymentService = {
     }
   },
 
-  async pollUntilPaid(paymentRequestId: string, bookingId: string, intervalMs = 5000, timeoutMs = 120000): Promise<'paid' | 'failed' | 'timeout'> {
+  async pollUntilPaid(
+    paymentRequestId: string,
+    bookingId: string,
+    statusToken?: string,
+    intervalMs = 5000,
+    timeoutMs = 120000,
+  ): Promise<'paid' | 'failed' | 'timeout'> {
     const start = Date.now();
     return new Promise((resolve) => {
       const check = async () => {
@@ -92,8 +113,9 @@ export const paymentService = {
           resolve('failed');
           return;
         }
-        const status = await this.getPaymentStatus(bookingId);
-        if (status.paid && status.confirmed) {
+        // Trigger on payment_status='paid' alone; don't require status='confirmed'
+        const status = await this.getPaymentStatus(bookingId, statusToken);
+        if (status.paid) {
           resolve('paid');
           return;
         }

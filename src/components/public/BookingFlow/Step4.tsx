@@ -28,6 +28,7 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
   const [altPaymentNotes, setAltPaymentNotes] = useState('');
   const [phone, setPhone] = useState(bookingData.phone || '');
   const [bookingId, setBookingId] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_${car.id}`));
+  const [statusToken, setStatusToken] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_token_${car.id}`));
   const [paymentRequestId, setPaymentRequestId] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState('');
   const [editableAmount, setEditableAmount] = useState<number>(bookingData.totalAmount || 0);
@@ -45,7 +46,8 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
         filter: `id=eq.${bookingId}`,
       }, (payload: any) => {
         const updated = payload.new;
-        if (updated.payment_status === 'paid' && updated.status === 'confirmed') {
+        // Trigger on payment_status='paid' alone — don't require status='confirmed'
+        if (updated.payment_status === 'paid') {
           setPhase('paid');
           toast.success('Payment confirmed! Booking confirmed.');
           onComplete?.();
@@ -56,8 +58,8 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
 
     // Check status immediately in case it was paid while offline/refreshing
     (async () => {
-      const status = await paymentService.getPaymentStatus(bookingId);
-      if (status.paid && status.confirmed) {
+      const status = await paymentService.getPaymentStatus(bookingId, statusToken || undefined);
+      if (status.paid) {
         setPhase('paid');
         toast.success('Payment confirmed! Booking confirmed.');
         onComplete?.();
@@ -66,7 +68,7 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
     })();
 
     return () => { supabase.removeChannel(channel); };
-  }, [bookingId, navigate, onComplete]);
+  }, [bookingId, statusToken, navigate, onComplete]);
 
   const getOrCreateBooking = async () => {
     if (bookingId) return bookingId;
@@ -84,6 +86,10 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
 
     setBookingId(booking.id);
     sessionStorage.setItem(`pending_booking_${car.id}`, booking.id);
+    if (booking.statusToken) {
+      setStatusToken(booking.statusToken);
+      sessionStorage.setItem(`pending_booking_token_${car.id}`, booking.statusToken);
+    }
 
     if (bookingData.contractId) {
       await enhancedContractService.releasePaymentHold(bookingData.contractId).catch(() => {});
@@ -158,7 +164,7 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
       setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
       toast.success('STK Push sent. Check your phone.');
 
-      const pollResult = await paymentService.pollUntilPaid(result.paymentRequestId, id);
+      const pollResult = await paymentService.pollUntilPaid(result.paymentRequestId, id, statusToken || undefined);
 
       if (pollResult === 'paid') {
         handlePaid(id);

@@ -713,20 +713,18 @@ async function startServer() {
         return res.status(409).json({ success: false, error: 'Selected dates are not available. The car is either booked or reserved for these dates.' });
       }
 
-      let fleetOwnerId = sourceReservation?.fleet_owner_id || null;
-      if (!fleetOwnerId) {
-        const { data: car, error: carError } = await supabase
-          .from('cars')
-          .select('fleet_owner_id')
-          .eq('id', carId)
-          .single();
+      // Always fetch the car for daily_rate (server-side amount validation)
+      const { data: carRow, error: carRowError } = await supabase
+        .from('cars')
+        .select('fleet_owner_id, daily_rate')
+        .eq('id', carId)
+        .single();
 
-        if (carError || !car) {
-          return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
-        }
-
-        fleetOwnerId = car.fleet_owner_id;
+      if (carRowError || !carRow) {
+        return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
       }
+
+      let fleetOwnerId = sourceReservation?.fleet_owner_id || carRow.fleet_owner_id || null;
 
       if (!fleetOwnerId) {
         const { data: adminUser } = await supabase
@@ -742,8 +740,42 @@ async function startServer() {
         }
       }
 
+      // ── Server-side amount validation ──
+      const dailyRate = Number(carRow.daily_rate || 0);
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / msPerDay));
+      const expected = dailyRate * days;
       const total = Number(totalAmount);
-      const platformCommission = Math.round(total * 0.15 * 100) / 100;
+
+      if (!Number.isFinite(total) || total <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid total amount.' });
+      }
+      // Allow promo discounts down to 50% of expected, and no more than 20% above (taxes/fees).
+      const minAllowed = Math.floor(expected * 0.5);
+      const maxAllowed = Math.ceil(expected * 1.2);
+      if (expected > 0 && (total < minAllowed || total > maxAllowed)) {
+        return res.status(400).json({
+          success: false,
+          error: `Total amount KES ${total} does not match expected range (KES ${minAllowed}–${maxAllowed}) for ${days} day(s) @ KES ${dailyRate}/day.`,
+        });
+      }
+
+      // ── Per-fleet commission rate ──
+      let commissionRate = 0.15;
+      const { data: fleetSettings } = await supabase
+        .from('fleet_owner_settings')
+        .select('commission_rate')
+        .eq('id', fleetOwnerId)
+        .maybeSingle();
+      if (fleetSettings && Number.isFinite(Number(fleetSettings.commission_rate))) {
+        commissionRate = Number(fleetSettings.commission_rate);
+        if (commissionRate > 1) commissionRate = commissionRate / 100; // tolerate percent vs ratio
+      }
+      const platformCommission = Math.round(total * commissionRate * 100) / 100;
+
+      // ── Per-booking status token (replaces world-readable status endpoint) ──
+      const statusToken = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
+
       const payload = {
         car_id: carId,
         client_id: clientId || sourceReservation?.client_id || null,
@@ -784,7 +816,15 @@ async function startServer() {
             idFrontUrl: bookingData.idFrontUrl || null,
             idBackUrl: bookingData.idBackUrl || null,
           },
+          client_status_token: statusToken,
+          commission_rate_applied: commissionRate,
         },
+      };
+
+      const withStatusToken = (b: any) => {
+        if (!b) return b;
+        const token = b?.metadata?.client_status_token || statusToken;
+        return { ...b, statusToken: token };
       };
 
       if (sourceReservation?.linked_booking_id) {
@@ -795,13 +835,20 @@ async function startServer() {
           .maybeSingle();
 
         if (!existingBookingError && existingBooking) {
+          // SECURITY: do not return another user's already-paid booking from a token-known reservation id.
           if (existingBooking.payment_status === 'paid') {
-            return res.json({ success: true, booking: existingBooking });
+            return res.status(409).json({ success: false, error: 'This reservation has already been completed.' });
           }
+
+          // Preserve any existing client_status_token rather than overwriting it.
+          const existingToken = existingBooking?.metadata?.client_status_token;
+          const mergedPayload = existingToken
+            ? { ...payload, metadata: { ...payload.metadata, client_status_token: existingToken } }
+            : payload;
 
           const { data: updatedBooking, error: updateBookingError } = await supabase
             .from('bookings')
-            .update(payload)
+            .update(mergedPayload)
             .eq('id', existingBooking.id)
             .select()
             .single();
@@ -810,7 +857,7 @@ async function startServer() {
             return res.status(500).json({ success: false, error: updateBookingError?.message || 'Failed to update booking.' });
           }
 
-          return res.json({ success: true, booking: updatedBooking });
+          return res.json({ success: true, booking: withStatusToken(updatedBooking) });
         }
       }
 
@@ -825,12 +872,14 @@ async function startServer() {
       }
 
       if (sourceReservationId) {
+        // Single-use continuation token: null it out after the booking is linked.
         const { error: reservationUpdateError } = await supabase
           .from('car_reservations')
           .update({
             linked_booking_id: booking.id,
             booking_flow_started_at: new Date().toISOString(),
             booking_flow_initiated_by: bookingFlowInitiatedBy || 'client',
+            booking_completion_token: null,
           })
           .eq('id', sourceReservationId);
 
@@ -839,7 +888,7 @@ async function startServer() {
         }
       }
 
-      return res.status(201).json({ success: true, booking });
+      return res.status(201).json({ success: true, booking: withStatusToken(booking) });
     } catch (error: any) {
       console.error('[API] Booking create error:', error);
       return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
@@ -848,7 +897,7 @@ async function startServer() {
 
   app.post('/api/ncba/stk-push', async (req, res) => {
     try {
-      const { phone, bookingId, amount: requestedAmount } = req.body;
+      const { phone, bookingId } = req.body;
 
       if (!phone || !bookingId) {
         return res.status(400).json({ success: false, error: 'Phone and booking ID are required' });
@@ -868,7 +917,7 @@ async function startServer() {
         return res.status(409).json({ success: false, error: 'This booking is already paid' });
       }
 
-      const pushAmount = requestedAmount ? Number(requestedAmount) : Number(booking.total_amount);
+      const pushAmount = Number(booking.total_amount);
 
       const publicConfig = ncbaService.getPublicConfig();
       const accountNo = ncbaAccountNo;
@@ -987,15 +1036,35 @@ async function startServer() {
   app.get('/api/ncba/payment-status/:bookingId', async (req, res) => {
     try {
       const { bookingId } = req.params;
+      const queryToken = (req.query.token as string) || '';
+      const authorizationHeader = req.headers.authorization;
+      const accessToken = authorizationHeader?.startsWith('Bearer ')
+        ? authorizationHeader.slice(7)
+        : null;
 
       const { data: booking, error } = await supabase
         .from('bookings')
-        .select('id, status, payment_status, payment_method, payment_provider, payment_reference, transaction_code')
+        .select('id, client_id, status, payment_status, payment_method, payment_provider, payment_reference, transaction_code, metadata')
         .eq('id', bookingId)
         .single();
 
       if (error || !booking) {
         return res.status(404).json({ success: false, error: 'Booking not found' });
+      }
+
+      // ── Access control: owner (bearer) OR matching status token ──
+      let authorized = false;
+      const expectedToken = booking?.metadata?.client_status_token || null;
+      if (queryToken && expectedToken && queryToken === expectedToken) {
+        authorized = true;
+      } else if (accessToken) {
+        const { data: authData } = await supabase.auth.getUser(accessToken);
+        if (authData?.user?.id && booking.client_id && authData.user.id === booking.client_id) {
+          authorized = true;
+        }
+      }
+      if (!authorized) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
       }
 
       const { data: paymentRequest } = await supabase
@@ -1019,6 +1088,70 @@ async function startServer() {
       return res.status(500).json({ success: false, error: error.message });
     }
   });
+
+  // ─── Claim a guest booking after sign-up ────────────────────────────
+  app.post('/api/bookings/:bookingId/claim', async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+      const { statusToken } = req.body || {};
+      const authorizationHeader = req.headers.authorization;
+      const accessToken = authorizationHeader?.startsWith('Bearer ')
+        ? authorizationHeader.slice(7)
+        : null;
+
+      if (!accessToken) {
+        return res.status(401).json({ success: false, error: 'Sign-in required.' });
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+      if (authError || !authData?.user) {
+        return res.status(401).json({ success: false, error: 'Invalid session.' });
+      }
+
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select('id, client_id, metadata')
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingError || !booking) {
+        return res.status(404).json({ success: false, error: 'Booking not found.' });
+      }
+
+      if (booking.client_id) {
+        if (booking.client_id === authData.user.id) {
+          return res.json({ success: true, booking });
+        }
+        return res.status(409).json({ success: false, error: 'Booking already linked to another account.' });
+      }
+
+      const tokenOk = !!statusToken && booking?.metadata?.client_status_token === statusToken;
+      const emailOk = booking?.metadata?.guest_info?.email
+        && authData.user.email
+        && booking.metadata.guest_info.email.toLowerCase() === authData.user.email.toLowerCase();
+
+      if (!tokenOk && !emailOk) {
+        return res.status(403).json({ success: false, error: 'You are not authorised to claim this booking.' });
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from('bookings')
+        .update({ client_id: authData.user.id })
+        .eq('id', bookingId)
+        .select()
+        .single();
+
+      if (updateError) {
+        return res.status(500).json({ success: false, error: updateError.message });
+      }
+
+      return res.json({ success: true, booking: updated });
+    } catch (error: any) {
+      console.error('[API] Booking claim error:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+    }
+  });
+
 
   app.post('/api/ncba/reservations/stk-push', async (req, res) => {
     try {
