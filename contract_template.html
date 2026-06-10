@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Rental Agreement</title>
+    <style>
+        body { font-family: 'Times New Roman', serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 40px; }
+        .header { text-align: center; border-bottom: 2px solid #1a365d; padding-bottom: 20px; margin-bottom: 30px; }
+        .logo { max-height: 80px; margin-bottom: 10px; }
+        .company-name { font-size: 24px; font-weight: bold; color: #1a365d; margin: 0; }
+        .contact-info { font-size: 14px; color: #666; margin-top: 5px; }
+        h1 { text-align: center; font-size: 20px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 30px; }
+        h2 { font-size: 16px; text-transform: uppercase; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-top: 30px; }
+        .section { margin-bottom: 20px; }
+        .row { display: flex; justify-content: space-between; margin-bottom: 10px; }
+        .col { flex: 1; }
+        .signatures { display: flex; justify-content: space-between; margin-top: 50px; }
+        .signature-box { width: 45%; border-top: 1px solid #333; padding-top: 10px; text-align: center; min-height: 100px; }
+        .signature-img { max-height: 80px; display: block; margin: 0 auto 10px auto; }
+        p { text-align: justify; }
+        .highlight { font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <img src="{{logoUrl}}" alt="LinkedUp Cars Logo" class="logo">
+        <h2 class="company-name">LINKEDHUB VENTURES LIMITED</h2>
+        <div class="contact-info">
+            Convenience is always a Link Away.<br>
+            www.linkedupcarsrentals.com<br>
+            office@linkedupcarsrentals.com<br>
+            +254 714 764 162
+        </div>
+    </div>
+
+    <h1>Car Rental Agreement</h1>
+
+    <div class="section">
+        <p>
+            THIS AGREEMENT is made on <span class="highlight">{{startDate}}</span> BETWEEN <span class="highlight">LINKEDUP CAR HIRE SERVICES</span> of post office box number <span class="highlight">{{companyPoBox}}</span> Nairobi (hereinafter referred to as "the Owner") 
+            AND <span class="highlight">{{clientName}}</span> of Identification card number <span class="highlight">{{idNumber}}</span>, telephone number <span class="highlight">{{clientPhone}}</span> 
+            and of post office box number <span class="highlight">{{clientPoBox}}</span> (hereinafter referred to as "the Hirer").
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>WHEREAS</h2>
+        <p>
+            The Owner has agreed to rent to the Hirer Motor Vehicle <span class="highlight">{{carMake}} {{carModel}}</span> registration number 
+            <span class="highlight">{{licensePlate}}</span> colour <span class="highlight">{{color}}</span> and currently of mileage <u><strong>(as confirmed during pickup)</strong></u> (the "Motor Vehicle") SUBJECT to the following terms and conditions:
+        </p>
+    </div>
+
+    <div class="section">
+        <h2>IT IS AGREED as follows:</h2>
+        <ol>
+            <li>The Hirer possesses a valid driver's license to use the Motor Vehicle.</li>
+            <li>The Hirer will rent the Motor Vehicle from <span class="highlight">{{startDate}}</span> (the "Start Date") until <span class="highlight">{{endDate}}</span> (the "End Date").</li>
+            <li>The Hirer will pay a rental fee of Kenya Shillings <span class="highlight">{{dailyRate}}</span> per day. The total expected amount for this rental period is <span class="highlight">KES {{totalAmount}}</span>. Payment may be made by M-PESA or Bank.</li>
+            <li>Late return of the Motor Vehicle may attract additional charges of Kenya Shillings 500 per hour and in case of any extensions, the same should be paid within twelve (12) hours failure to which the Motor Vehicle will be repossessed.</li>
+            <li>The Motor Vehicle shall only be driven by the Hirer or the assigned Chauffeur.</li>
+            <li>The Hirer shall not use the Motor Vehicle for any illegal purposes or outside the agreed territorial limits without prior written consent.</li>
+        </ol>
+    </div>
+
+    <div class="signatures">
+        <div class="signature-box">
+            <p style="margin-bottom: 0;">For: <strong>LINKEDUP CAR HIRE SERVICES</strong></p>
+            {{companySignature}}
+        </div>
+        
+        <div class="signature-box">
+            <p style="margin-bottom: 0;"><strong>{{clientName}}</strong></p>
+            <div id="client-signature-placeholder">
+                {{clientSignature}}
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>
