@@ -115,90 +115,73 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   // Mark the client signature image so we can reposition it above the name
   const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block;" />`;
-  // Inject a style reset so uploaded A4/print-styled templates expand to the full container width
-  const widthResetStyle = `
+  // Build a full-document srcDoc for the iframe so the template's CSS is
+  // completely isolated from the app and cannot collapse the layout.
+  const clientNameForScript = JSON.stringify(getClientName() || '');
+  const overrideStyles = `
     <style>
-      #contract-html-container, #contract-html-container * { box-sizing: border-box; }
-      /* Force every descendant to respect the container width — uploaded A4/print templates
-         often pin .contract / .page / .a4 to ~800px which collapses the layout to a
-         "mobile squeezed" centered column inside our wide card. */
-      #contract-html-container * { max-width: 100% !important; }
-      #contract-html-container body,
-      #contract-html-container .container,
-      #contract-html-container .page,
-      #contract-html-container .a4,
-      #contract-html-container .sheet,
-      #contract-html-container .document,
-      #contract-html-container .agreement,
-      #contract-html-container .contract,
-      #contract-html-container .wrapper,
-      #contract-html-container .content,
-      #contract-html-container [class*="page"],
-      #contract-html-container [class*="container"],
-      #contract-html-container [class*="wrapper"],
-      #contract-html-container [class*="document"],
-      #contract-html-container [class*="contract"],
-      #contract-html-container [class*="content"],
-      #contract-html-container [class*="sheet"],
-      #contract-html-container [class*="a4"],
-      #contract-html-container > div,
-      #contract-html-container > section,
-      #contract-html-container > article,
-      #contract-html-container > main {
-        max-width: 100% !important;
-        width: 100% !important;
-        margin-left: 0 !important;
-        margin-right: 0 !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-        box-shadow: none !important;
-      }
-      #contract-html-container table { width: 100% !important; max-width: 100% !important; }
-      #contract-html-container img { max-width: 100% !important; height: auto !important; }
+      html, body { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 24px !important; box-sizing: border-box !important; background: #ffffff !important; }
+      * { box-sizing: border-box; }
+      img { max-width: 100% !important; height: auto !important; }
+      table { width: 100% !important; max-width: 100% !important; }
+      .container, .page, .a4, .sheet, .document, .agreement, .contract, .wrapper, .content { max-width: 100% !important; width: 100% !important; margin: 0 !important; box-shadow: none !important; }
     </style>
   `;
-  const renderedHtml = htmlTemplate
-    ? widthResetStyle + htmlTemplate
-        .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
-        .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg)
+  const repositionScript = `
+    <script>
+      (function(){
+        function reposition(){
+          var sig = document.querySelector('img[data-client-signature="1"]');
+          if (!sig) return;
+          var name = ${clientNameForScript};
+          var block = sig.parentElement;
+          while (block && block !== document.body) {
+            if (name && block.textContent && block.textContent.indexOf(name) !== -1) break;
+            block = block.parentElement;
+          }
+          if (block) { block.insertBefore(sig, block.firstChild); sig.style.marginBottom='4px'; sig.style.display='block'; }
+        }
+        function postHeight(){
+          try {
+            var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+            parent.postMessage({ __linkedupContractHeight: true, height: h }, '*');
+          } catch(e){}
+        }
+        function init(){ reposition(); postHeight(); }
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+          setTimeout(init, 0);
+        } else {
+          document.addEventListener('DOMContentLoaded', init);
+        }
+        window.addEventListener('load', function(){ reposition(); postHeight(); setTimeout(postHeight, 200); setTimeout(postHeight, 600); });
+        try { new ResizeObserver(postHeight).observe(document.documentElement); } catch(e){}
+      })();
+    </script>
+  `;
+  const srcDoc = htmlTemplate
+    ? (() => {
+        const replacedTemplate = htmlTemplate
+          .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
+          .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg);
+        // Inject overrides + script before </body> (or append if no </body>)
+        if (/<\/body>/i.test(replacedTemplate)) {
+          return replacedTemplate.replace(/<\/body>/i, `${overrideStyles}${repositionScript}</body>`);
+        }
+        return `${replacedTemplate}${overrideStyles}${repositionScript}`;
+      })()
     : '';
 
-  // After render: (1) force-expand contract container to full width so it doesn't look "mobile squeezed"
-  // (2) move client signature image above the client name block (the dashed line spot)
+  // Listen for height messages from the iframe so it grows to fit its content
   useEffect(() => {
-    const root = contractContainerRef.current;
-    if (!root) return;
-
-    // (1) Override any inline max-width / fixed pixel widths inside the uploaded template
-    root.querySelectorAll<HTMLElement>('*').forEach((el) => {
-      const cs = el.style;
-      if (!cs) return;
-      if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
-        el.style.maxWidth = '100%';
-      }
-      // Strip fixed pixel widths (e.g. width: 800px) but keep percentage/auto widths
-      if (cs.width && /px$/i.test(cs.width)) {
-        el.style.width = '100%';
-      }
-    });
-
-    // (2) Move the client signature image so it sits *above* the client name
-    const sigImg = root.querySelector('img[data-client-signature="1"]') as HTMLImageElement | null;
-    if (sigImg) {
-      // Find the closest signature block (a parent that also contains the client name text)
-      let block: HTMLElement | null = sigImg.parentElement;
-      const clientName = (getClientName() || '').trim();
-      while (block && block !== root) {
-        if (clientName && block.textContent && block.textContent.includes(clientName)) break;
-        block = block.parentElement;
-      }
-      if (block) {
-        // Insert signature as the first child of the block (above the name + dashed line)
-        block.insertBefore(sigImg, block.firstChild);
-        sigImg.style.marginBottom = '4px';
+    function onMessage(e: MessageEvent) {
+      const data: any = e.data;
+      if (data && data.__linkedupContractHeight && typeof data.height === 'number') {
+        setIframeHeight(Math.max(400, Math.ceil(data.height) + 24));
       }
     }
-  }, [renderedHtml]);
+    window.addEventListener('message', onMessage);
+    return () => window.removeEventListener('message', onMessage);
+  }, []);
 
 
 
