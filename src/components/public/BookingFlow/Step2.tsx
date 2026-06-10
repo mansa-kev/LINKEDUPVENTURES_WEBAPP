@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { Car } from '../../../types';
-import { Upload, ArrowRight, ArrowLeft, User, Mail, Phone, FileText, CheckCircle2, Loader2, Camera, Image, ShieldCheck } from 'lucide-react';
+import { Upload, ArrowRight, ArrowLeft, User, Mail, Phone, FileText, CheckCircle2, Loader2, Camera, Image, ShieldCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 // Removed react-dropzone for mobile stability
 import { bookingService } from '../../../services/bookingService';
