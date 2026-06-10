@@ -114,6 +114,32 @@ export function Settings() {
     }
   };
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleRequestDeleteAccount = async () => {
+    if (!currentUser) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from('contact_messages').insert([{
+        name: currentUser.user_metadata?.full_name || currentUser.email,
+        email: currentUser.email,
+        phone: currentUser.user_metadata?.phone || '',
+        subject: 'Account Deletion Request',
+        message: `User ${currentUser.email} (id: ${currentUser.id}) has requested permanent deletion of their account and all associated data. Please process within 30 days per data-protection policy.`,
+      }]);
+      if (error) throw error;
+      setConfirmDelete(false);
+      setMessage({ type: 'success', text: 'Deletion request submitted. Our team will contact you within 48 hours.' });
+    } catch (err) {
+      console.error('Delete request failed', err);
+      setMessage({ type: 'error', text: 'Failed to submit deletion request.' });
+    } finally {
+      setDeleting(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+    }
+  };
+
   if (loading) return <div className="p-8">Loading settings...</div>;
 
   if (!currentUser) {
