@@ -1036,15 +1036,35 @@ async function startServer() {
   app.get('/api/ncba/payment-status/:bookingId', async (req, res) => {
     try {
       const { bookingId } = req.params;
+      const queryToken = (req.query.token as string) || '';
+      const authorizationHeader = req.headers.authorization;
+      const accessToken = authorizationHeader?.startsWith('Bearer ')
+        ? authorizationHeader.slice(7)
+        : null;
 
       const { data: booking, error } = await supabase
         .from('bookings')
-        .select('id, status, payment_status, payment_method, payment_provider, payment_reference, transaction_code')
+        .select('id, client_id, status, payment_status, payment_method, payment_provider, payment_reference, transaction_code, metadata')
         .eq('id', bookingId)
         .single();
 
       if (error || !booking) {
         return res.status(404).json({ success: false, error: 'Booking not found' });
+      }
+
+      // ── Access control: owner (bearer) OR matching status token ──
+      let authorized = false;
+      const expectedToken = booking?.metadata?.client_status_token || null;
+      if (queryToken && expectedToken && queryToken === expectedToken) {
+        authorized = true;
+      } else if (accessToken) {
+        const { data: authData } = await supabase.auth.getUser(accessToken);
+        if (authData?.user?.id && booking.client_id && authData.user.id === booking.client_id) {
+          authorized = true;
+        }
+      }
+      if (!authorized) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
       }
 
       const { data: paymentRequest } = await supabase
@@ -1068,6 +1088,70 @@ async function startServer() {
       return res.status(500).json({ success: false, error: error.message });
     }
   });
+
+  // ─── Claim a guest booking after sign-up ────────────────────────────
+  app.post('/api/bookings/:bookingId/claim', async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+      const { statusToken } = req.body || {};
+      const authorizationHeader = req.headers.authorization;
+      const accessToken = authorizationHeader?.startsWith('Bearer ')
+        ? authorizationHeader.slice(7)
+        : null;
+
+      if (!accessToken) {
+        return res.status(401).json({ success: false, error: 'Sign-in required.' });
+      }
+
+      const { data: authData, error: authError } = await supabase.auth.getUser(accessToken);
+      if (authError || !authData?.user) {
+        return res.status(401).json({ success: false, error: 'Invalid session.' });
+      }
+
+      const { data: booking, error: bookingError } = await supabase
+        .from('bookings')
+        .select('id, client_id, metadata')
+        .eq('id', bookingId)
+        .single();
+
+      if (bookingError || !booking) {
+        return res.status(404).json({ success: false, error: 'Booking not found.' });
+      }
+
+      if (booking.client_id) {
+        if (booking.client_id === authData.user.id) {
+          return res.json({ success: true, booking });
+        }
+        return res.status(409).json({ success: false, error: 'Booking already linked to another account.' });
+      }
+
+      const tokenOk = !!statusToken && booking?.metadata?.client_status_token === statusToken;
+      const emailOk = booking?.metadata?.guest_info?.email
+        && authData.user.email
+        && booking.metadata.guest_info.email.toLowerCase() === authData.user.email.toLowerCase();
+
+      if (!tokenOk && !emailOk) {
+        return res.status(403).json({ success: false, error: 'You are not authorised to claim this booking.' });
+      }
+
+      const { data: updated, error: updateError } = await supabase
+        .from('bookings')
+        .update({ client_id: authData.user.id })
+        .eq('id', bookingId)
+        .select()
+        .single();
+
+      if (updateError) {
+        return res.status(500).json({ success: false, error: updateError.message });
+      }
+
+      return res.json({ success: true, booking: updated });
+    } catch (error: any) {
+      console.error('[API] Booking claim error:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
+    }
+  });
+
 
   app.post('/api/ncba/reservations/stk-push', async (req, res) => {
     try {
