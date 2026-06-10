@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { adminService } from '../../../services/adminService';
 
@@ -10,6 +10,7 @@ interface DirectContractDisplayProps {
 }
 
 export function DirectContractDisplay({ contract, bookingData, car, signatureData }: DirectContractDisplayProps) {
+  const contractContainerRef = useRef<HTMLDivElement | null>(null);
   if (!contract) {
     return (
       <div className="p-8 bg-yellow-100 border border-yellow-300 rounded-lg text-center">
@@ -93,8 +94,11 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         const contractLogo = settings['contract_logo'] || settings['site_logo'] || settings['logo_url'] || '';
         replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
         replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
-        replaced = replaced.replace(/\{\{companySignatureUrl\}\}/g, companySig);
-        replaced = replaced.replace(/\{\{companySignature\}\}/g, `<img src="${companySig}" alt="Company Signature" style="max-height: 80px;" />`);
+        const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block;" />`;
+        // Cover common placeholder name variations used in uploaded templates
+        replaced = replaced.replace(/\{\{\s*(companySignatureUrl|company_signature_url|ownerSignatureUrl|owner_signature_url)\s*\}\}/g, companySig);
+        replaced = replaced.replace(/\{\{\s*(companySignature|company_signature|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}/g, companySigImg);
+        
         
         // Fix wording for mileage if present
         replaced = replaced.replace(/\(as confirmed at the pickup\)/gi, '(as confirmed during pickup)');
@@ -108,11 +112,49 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
 
   const clientSignature = signatureData || bookingData?.signatureData || bookingData?.liveSignatureData || '';
   const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  // Mark the client signature image so we can reposition it above the name
+  const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block;" />`;
   const renderedHtml = htmlTemplate
     ? htmlTemplate
-        .replace(/\{\{clientSignatureUrl\}\}/g, clientSignature || blankSignature)
-        .replace(/\{\{clientSignature\}\}/g, `<img src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px;" />`)
+        .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
+        .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg)
     : '';
+
+  // After render: (1) force-expand contract container to full width so it doesn't look "mobile squeezed"
+  // (2) move client signature image above the client name block (the dashed line spot)
+  useEffect(() => {
+    const root = contractContainerRef.current;
+    if (!root) return;
+
+    // (1) Override any inline max-width / fixed widths inside the uploaded template
+    root.querySelectorAll<HTMLElement>('*').forEach((el) => {
+      const cs = el.style;
+      if (cs && (cs.maxWidth || cs.width)) {
+        if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
+          el.style.maxWidth = '100%';
+        }
+      }
+    });
+
+    // (2) Move the client signature image so it sits *above* the client name
+    const sigImg = root.querySelector('img[data-client-signature="1"]') as HTMLImageElement | null;
+    if (sigImg) {
+      // Find the closest signature block (a parent that also contains the client name text)
+      let block: HTMLElement | null = sigImg.parentElement;
+      const clientName = (getClientName() || '').trim();
+      while (block && block !== root) {
+        if (clientName && block.textContent && block.textContent.includes(clientName)) break;
+        block = block.parentElement;
+      }
+      if (block) {
+        // Insert signature as the first child of the block (above the name + dashed line)
+        block.insertBefore(sigImg, block.firstChild);
+        sigImg.style.marginBottom = '4px';
+      }
+    }
+  }, [renderedHtml]);
+
+
 
   return (
     <div className="bg-gradient-to-br from-card to-muted rounded-xl overflow-hidden shadow-xl border border-border">
@@ -154,10 +196,12 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
               </div>
             ) : (
               <div 
+                ref={contractContainerRef}
                 id="contract-html-container"
-                className="p-8 sm:p-12 prose prose-sm sm:prose-base max-w-none bg-white text-black min-h-[500px]"
+                className="p-6 sm:p-10 md:p-14 max-w-none w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
+
             )
           ) : (
             <div className="w-full h-96 flex items-center justify-center p-8 text-center">
