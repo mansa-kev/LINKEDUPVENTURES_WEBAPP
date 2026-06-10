@@ -2,8 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { clientService } from '../../services/clientService';
 import { supabase } from '../../lib/supabase';
 import { bookingService } from '../../services/bookingService';
-import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2, MapPin, DollarSign } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
@@ -17,10 +17,12 @@ const DOC_LABELS: Record<DocType, string> = {
 };
 
 export function MyBookings() {
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [detailsBooking, setDetailsBooking] = useState<any | null>(null);
 
   // Resubmission modal state
   const [resubmitBooking, setResubmitBooking] = useState<any | null>(null);
@@ -155,6 +157,51 @@ export function MyBookings() {
     }
   };
 
+  const openContract = async (booking: any) => {
+    // 1. metadata fallback (legacy)
+    const legacy = booking.metadata?.contract_url;
+    if (legacy) { window.open(legacy, '_blank'); return; }
+    // 2. signed_contracts table
+    try {
+      const { data, error } = await supabase
+        .from('signed_contracts')
+        .select('contract_url')
+        .eq('booking_id', booking.id)
+        .order('signed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.contract_url) { window.open(data.contract_url, '_blank'); return; }
+      toast.error('Contract not available yet. It will appear once signed.');
+    } catch {
+      toast.error('Unable to load contract.');
+    }
+  };
+
+  const openReceipt = async (booking: any) => {
+    const legacy = booking.metadata?.receipt_url;
+    if (legacy) { window.open(legacy, '_blank'); return; }
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('receipt_url, reference_number, amount, created_at, type, status')
+        .eq('booking_id', booking.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.receipt_url) { window.open(data.receipt_url, '_blank'); return; }
+      if (data) {
+        toast.success(`Receipt: ${data.reference_number || 'N/A'} • KES ${Number(data.amount).toLocaleString()} • ${new Date(data.created_at).toLocaleDateString()}`);
+        return;
+      }
+      toast.error('No receipt available yet — payment not yet completed.');
+    } catch {
+      toast.error('Unable to load receipt.');
+    }
+  };
+
   const filteredBookings = bookings.filter(b => {
     if (!b.cars) return false;
     const matchesFilter = filter === 'all' || b.status === filter;
@@ -275,7 +322,10 @@ export function MyBookings() {
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2">
-                    <button className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setDetailsBooking(booking)}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                    >
                       <FileText size={16} /> Details
                     </button>
                     
@@ -321,17 +371,26 @@ export function MyBookings() {
 
                     {booking.status === 'in_progress' && (
                       <>
-                        <button className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => navigate(`/client/inbox?action=extension&bookingId=${booking.id}`)}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                        >
                           <Clock size={16} /> Extend
                         </button>
-                        <button className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => navigate(`/client/inbox?action=support&bookingId=${booking.id}`)}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                        >
                           <Phone size={16} /> Support
                         </button>
                       </>
                     )}
 
                     {booking.status === 'completed' && (
-                      <button className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => navigate(`/cars/${booking.car_id}`)}
+                        className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                      >
                         <RefreshCw size={16} /> Re-book
                       </button>
                     )}
@@ -341,12 +400,12 @@ export function MyBookings() {
               
               {/* Footer Links */}
               <div className="px-6 py-3 bg-muted/30 border-t border-border flex flex-wrap gap-4 text-xs font-medium text-muted-foreground">
-                <Link to="/client/glovebox" className="hover:text-primary flex items-center gap-1">
+                <button onClick={() => openContract(booking)} className="hover:text-primary flex items-center gap-1">
                   <FileText size={14} /> View Contract
-                </Link>
-                <Link to="/client/glovebox" className="hover:text-primary flex items-center gap-1">
+                </button>
+                <button onClick={() => openReceipt(booking)} className="hover:text-primary flex items-center gap-1">
                   <CreditCard size={14} /> View Receipt
-                </Link>
+                </button>
               </div>
             </div>
           ))
@@ -354,7 +413,7 @@ export function MyBookings() {
           <div className="text-center py-12 bg-card rounded-2xl border border-dashed border-border">
             <Car className="mx-auto text-muted-foreground mb-4" size={48} />
             <p className="text-muted-foreground font-medium">No bookings found matching your criteria.</p>
-            <button className="mt-4 text-primary font-bold hover:underline">Browse Cars</button>
+            <button onClick={() => navigate('/cars')} className="mt-4 text-primary font-bold hover:underline">Browse Cars</button>
           </div>
         )}
       </div>
@@ -435,6 +494,88 @@ export function MyBookings() {
                 className="flex-1 px-4 py-2 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {submitting ? <><Loader2 size={14} className="animate-spin" /> Submitting...</> : 'Submit Documents'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Booking Details Modal */}
+      {detailsBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setDetailsBooking(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div>
+                <h3 className="font-bold text-lg">Booking Details</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">#{String(detailsBooking.id).slice(0, 8)}</p>
+              </div>
+              <button onClick={() => setDetailsBooking(null)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1 space-y-5">
+              <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
+                <div className="w-16 h-16 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                  {detailsBooking.cars?.primary_image_url
+                    ? <img src={detailsBooking.cars.primary_image_url} alt="" className="w-full h-full object-cover" />
+                    : <Car className="text-muted-foreground" size={24} />}
+                </div>
+                <div>
+                  <p className="font-bold">{detailsBooking.cars?.make} {detailsBooking.cars?.model}</p>
+                  <p className="text-xs text-muted-foreground">Plate: {detailsBooking.cars?.license_plate}</p>
+                  <div className="mt-1">{getStatusBadge(detailsBooking.status)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><Calendar size={10} /> Pickup</p>
+                  <p className="font-medium mt-1">{new Date(detailsBooking.start_date).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><Calendar size={10} /> Drop-off</p>
+                  <p className="font-medium mt-1">{new Date(detailsBooking.end_date).toLocaleString()}</p>
+                </div>
+                {detailsBooking.pickup_location && (
+                  <div className="p-3 bg-muted/30 rounded-xl col-span-2">
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><MapPin size={10} /> Pickup Location</p>
+                    <p className="font-medium mt-1">{detailsBooking.pickup_location}</p>
+                  </div>
+                )}
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><DollarSign size={10} /> Total</p>
+                  <p className="font-bold text-primary mt-1">KES {Number(detailsBooking.total_amount).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Payment</p>
+                  <p className="font-medium mt-1">{(detailsBooking.payment_status || 'pending').toUpperCase()}</p>
+                </div>
+              </div>
+
+              {detailsBooking.admin_notes && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                  <p className="text-xs font-bold text-amber-500">Admin note</p>
+                  <p className="text-xs text-amber-400/80 mt-1">{detailsBooking.admin_notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-border flex flex-wrap gap-2">
+              <button onClick={() => openContract(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                <FileText size={14} /> Contract
+              </button>
+              <button onClick={() => openReceipt(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                <CreditCard size={14} /> Receipt
+              </button>
+              {detailsBooking.status === 'in_progress' && (
+                <button
+                  onClick={() => { navigate(`/client/inbox?action=extension&bookingId=${detailsBooking.id}`); setDetailsBooking(null); }}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Clock size={14} /> Extend
+                </button>
+              )}
+              <button onClick={() => setDetailsBooking(null)} className="ml-auto px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl">
+                Close
               </button>
             </div>
           </div>

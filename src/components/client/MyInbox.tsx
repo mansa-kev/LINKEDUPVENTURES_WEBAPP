@@ -1,11 +1,15 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { clientService } from '../../services/clientService';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Inbox, Send, Plus, Clock, MessageSquare, User, Shield, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function MyInbox() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<any[]>([]);
   const [conversations, setConversations] = useState<any[][]>([]);
   const [extensionRequests, setExtensionRequests] = useState<any[]>([]);
@@ -25,9 +29,34 @@ export function MyInbox() {
   const [newEndDate, setNewEndDate] = useState('');
   const [extensionReason, setExtensionReason] = useState('');
 
+  // Honor deep-link query params from Dashboard / MyBookings
+  useEffect(() => {
+    const action = searchParams.get('action');
+    const bookingId = searchParams.get('bookingId');
+    if (action === 'extension') {
+      setActiveTab('extensions');
+      if (bookingId) setSelectedBookingId(bookingId);
+    } else if (action === 'support') {
+      setActiveTab('support');
+      if (bookingId) setSupportSubject(`Booking #${String(bookingId).slice(0, 8)} — `);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  // Realtime: refresh when new messages or extension requests touch this client
+  useEffect(() => {
+    if (!user?.id) return;
+    const ch = supabase
+      .channel(`client-inbox-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `sender_id=eq.${user.id}` }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'extension_requests', filter: `client_id=eq.${user.id}` }, () => fetchData())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user?.id]);
 
   const fetchData = async () => {
     try {
@@ -113,15 +142,21 @@ export function MyInbox() {
       setSupportSubject('');
       setSupportMessage('');
       setActiveTab('messages');
+      setSearchParams({}, { replace: true });
+      toast.success('Support request sent. We will reply shortly.');
       fetchData();
     } catch (err) {
+      toast.error('Failed to submit support request.');
       console.error("Error submitting support request:", err);
     }
   };
 
   const handleExtensionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBookingId || !newEndDate) return;
+    if (!selectedBookingId || !newEndDate) {
+      toast.error('Please select a booking and a new drop-off date.');
+      return;
+    }
 
     const req = {
       booking_id: selectedBookingId,
@@ -136,8 +171,11 @@ export function MyInbox() {
       setSelectedBookingId('');
       setNewEndDate('');
       setExtensionReason('');
+      setSearchParams({}, { replace: true });
+      toast.success('Extension request submitted. Awaiting admin approval.');
       fetchData();
     } catch (err) {
+      toast.error('Failed to submit extension request.');
       console.error("Error submitting extension request:", err);
     }
   };
