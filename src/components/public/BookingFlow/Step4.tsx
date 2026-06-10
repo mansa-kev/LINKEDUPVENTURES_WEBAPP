@@ -86,6 +86,10 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
 
     setBookingId(booking.id);
     sessionStorage.setItem(`pending_booking_${car.id}`, booking.id);
+    if (booking.statusToken) {
+      setStatusToken(booking.statusToken);
+      sessionStorage.setItem(`pending_booking_token_${car.id}`, booking.statusToken);
+    }
 
     if (bookingData.contractId) {
       await enhancedContractService.releasePaymentHold(bookingData.contractId).catch(() => {});
