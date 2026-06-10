@@ -32,6 +32,10 @@ export function BrowseAndBook() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [transmissionFilter, setTransmissionFilter] = useState('');
+  const [seatsFilter, setSeatsFilter] = useState<number | ''>('');
+  const [maxPrice, setMaxPrice] = useState<number | ''>('');
+  const [sortBy, setSortBy] = useState<'recommended' | 'price_asc' | 'price_desc'>('recommended');
 
   // Booking state
   const [selectedCar, setSelectedCar] = useState<Car | null>(null);
@@ -63,14 +67,28 @@ export function BrowseAndBook() {
     }
   };
 
-  const filteredCars = cars.filter(car => {
-    const q = searchQuery.toLowerCase();
-    const matchesSearch = !q || `${car.make} ${car.model}`.toLowerCase().includes(q);
-    const matchesCategory = !categoryFilter || car.category?.toLowerCase() === categoryFilter;
-    return matchesSearch && matchesCategory;
-  });
+  const filteredCars = cars
+    .filter(car => {
+      const q = searchQuery.toLowerCase();
+      const matchesSearch = !q || `${car.make} ${car.model}`.toLowerCase().includes(q);
+      const matchesCategory = !categoryFilter || car.category?.toLowerCase() === categoryFilter;
+      const matchesTrans = !transmissionFilter || car.transmission?.toLowerCase() === transmissionFilter;
+      const matchesSeats = !seatsFilter || (car.seats || 0) >= Number(seatsFilter);
+      const matchesPrice = !maxPrice || (car.daily_rate || 0) <= Number(maxPrice);
+      return matchesSearch && matchesCategory && matchesTrans && matchesSeats && matchesPrice;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'price_asc') return (a.daily_rate || 0) - (b.daily_rate || 0);
+      if (sortBy === 'price_desc') return (b.daily_rate || 0) - (a.daily_rate || 0);
+      return 0;
+    });
 
   const categories = [...new Set(cars.map(c => c.category).filter(Boolean))] as string[];
+  const transmissions = [...new Set(cars.map(c => c.transmission?.toLowerCase()).filter(Boolean))] as string[];
+  const activeFilterCount = [categoryFilter, transmissionFilter, seatsFilter, maxPrice].filter(v => v !== '' && v !== 0).length;
+  const resetFilters = () => {
+    setCategoryFilter(''); setTransmissionFilter(''); setSeatsFilter(''); setMaxPrice('');
+  };
 
   const totalDays = (() => {
     if (!pickupDate || !returnDate) return 0;
