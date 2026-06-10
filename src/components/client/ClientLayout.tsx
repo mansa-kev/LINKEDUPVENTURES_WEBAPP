@@ -20,6 +20,8 @@ import {
 import { Logo } from '../shared/Logo';
 import { LogoLoader } from '../shared/LogoLoader';
 import { PortalHeader } from '../PortalHeader';
+import { supabase } from '../../lib/supabase';
+import { clientService } from '../../services/clientService';
 
 const importDashboard = () => import('./Dashboard');
 const importDigitalGlovebox = () => import('./DigitalGlovebox');
@@ -100,6 +102,42 @@ export function ClientLayout() {
     return active?.category ?? 'Main';
   });
 
+  const [badges, setBadges] = useState<{ bookings: number; inbox: number }>({ bookings: 0, inbox: 0 });
+
+  // Live badge counts
+  useEffect(() => {
+    let cancelled = false;
+    let channel: any = null;
+    let userId: string | null = null;
+    const refresh = async () => {
+      if (!userId) return;
+      try {
+        const c = await clientService.getSidebarCounts(userId);
+        if (!cancelled) {
+          setBadges({ bookings: c.bookingsActionRequired || 0, inbox: c.unreadInbox || 0 });
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      userId = user.id;
+      await refresh();
+      channel = supabase
+        .channel(`client-badges-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `client_id=eq.${user.id}` }, refresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, refresh)
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
+
   // Responsive detection
   useEffect(() => {
     const handleResize = () => {
@@ -167,6 +205,9 @@ export function ClientLayout() {
                   <div className="mt-1 space-y-1">
                     {group.items.map((item) => {
                       const isActive = location.pathname === item.path;
+                      const badgeCount =
+                        item.path === '/client/bookings' ? badges.bookings :
+                        item.path === '/client/inbox' ? badges.inbox : 0;
                       return (
                         <Link
                           key={item.name}
@@ -174,14 +215,23 @@ export function ClientLayout() {
                           onMouseEnter={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
                           onFocus={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
                           onTouchStart={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                          className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             isActive
                               ? 'bg-primary text-white shadow-lg shadow-primary/20'
                               : 'text-muted-foreground hover:bg-muted'
                           }`}
                         >
-                          <item.icon size={20} />
-                          <span>{item.name}</span>
+                          <span className="flex items-center gap-3 min-w-0">
+                            <item.icon size={20} />
+                            <span className="truncate">{item.name}</span>
+                          </span>
+                          {badgeCount > 0 && (
+                            <span className={`shrink-0 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full text-[10px] font-black ${
+                              isActive ? 'bg-white text-primary' : 'bg-error text-white'
+                            }`}>
+                              {badgeCount > 99 ? '99+' : badgeCount}
+                            </span>
+                          )}
                         </Link>
                       );
                     })}
