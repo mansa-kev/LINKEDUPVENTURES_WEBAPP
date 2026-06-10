@@ -28,6 +28,7 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
   const [altPaymentNotes, setAltPaymentNotes] = useState('');
   const [phone, setPhone] = useState(bookingData.phone || '');
   const [bookingId, setBookingId] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_${car.id}`));
+  const [statusToken, setStatusToken] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_token_${car.id}`));
   const [paymentRequestId, setPaymentRequestId] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState('');
   const [editableAmount, setEditableAmount] = useState<number>(bookingData.totalAmount || 0);
