@@ -47,28 +47,78 @@ interface DocumentSlotProps {
   disablePicker: boolean;
   onUploadFile: (file: File, type: DocType) => void;
   onOpenCamera: (type: DocType) => void;
+  onClear: (type: DocType) => void;
 }
 
-function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadFile, onOpenCamera }: DocumentSlotProps) {
+function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadFile, onOpenCamera, onClear }: DocumentSlotProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (disablePicker) return;
+    // Reset before opening so picking the same filename twice still fires onChange
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Clear immediately so the same file can be re-selected later
+    e.target.value = '';
+    if (file) onUploadFile(file, type);
+  };
+
+  const isPdf = uploadedUrl && /\.pdf(\?|$)/i.test(uploadedUrl);
+
   return (
     <div className="space-y-2">
       <p className="text-[9px] font-black uppercase tracking-widest text-white/50 text-center">{DOC_LABELS[type]}</p>
       <div
-        className={`relative p-4 border-2 border-dashed rounded-[16px] md:rounded-[20px] text-center transition-all ${
+        className={`relative p-3 border-2 border-dashed rounded-[16px] md:rounded-[20px] text-center transition-all overflow-hidden ${
           uploadedUrl ? 'border-green-500/50 bg-green-500/5'
           : 'border-white/10 hover:border-white/20'
         }`}
       >
+        {/* Hidden input — outside the label, triggered programmatically so it never submits the form */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,.pdf"
+          className="hidden"
+          disabled={disablePicker}
+          onChange={handleFileChange}
+        />
+
         <AnimatePresence mode="wait">
           {isUploading ? (
-            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1 py-2">
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1 py-3">
               <Loader2 className="animate-spin text-primary" size={20} />
               <p className="text-[9px] font-black uppercase tracking-widest text-primary">Uploading...</p>
             </motion.div>
           ) : uploadedUrl ? (
-            <motion.div key="success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1 py-2">
-              <CheckCircle2 className="text-green-500" size={20} />
-              <p className="text-[9px] font-black uppercase tracking-widest text-green-500">Done</p>
+            <motion.div key="success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="relative">
+              {isPdf ? (
+                <div className="flex flex-col items-center gap-1 py-3">
+                  <FileText className="text-green-500" size={24} />
+                  <p className="text-[9px] font-black uppercase tracking-widest text-green-500">PDF Uploaded</p>
+                </div>
+              ) : (
+                <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-black/30">
+                  <img src={uploadedUrl} alt={DOC_LABELS[type]} className="w-full h-full object-cover" loading="lazy" />
+                  <div className="absolute top-1 left-1 bg-green-500/90 rounded-full p-1">
+                    <CheckCircle2 className="text-black" size={12} />
+                  </div>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClear(type); }}
+                className="absolute -top-1 -right-1 z-10 bg-red-500 hover:bg-red-600 text-white rounded-full p-1.5 shadow-lg transition-colors"
+                aria-label={`Remove ${DOC_LABELS[type]}`}
+              >
+                <X size={12} strokeWidth={3} />
+              </button>
             </motion.div>
           ) : (
             <motion.div key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-2 py-1">
@@ -77,30 +127,26 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
                   type="button"
                   onClick={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     if (disablePicker) return;
                     onOpenCamera(type);
                   }}
                   disabled={disablePicker}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 rounded-xl text-primary hover:bg-primary/20 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-primary/10 rounded-xl text-primary hover:bg-primary/20 transition-colors active:scale-95"
                 >
                   <Camera size={14} />
                   <span className="text-[9px] font-bold uppercase tracking-wider">Camera</span>
                 </button>
-                <label className={`flex items-center gap-1.5 px-3 py-2 bg-white/5 rounded-xl text-white/50 hover:bg-white/10 transition-colors ${disablePicker ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
+                <button
+                  type="button"
+                  onPointerUp={openPicker}
+                  onClick={openPicker}
+                  disabled={disablePicker}
+                  className={`flex items-center gap-1.5 px-3 py-2 bg-white/5 rounded-xl text-white/70 hover:bg-white/10 transition-colors active:scale-95 ${disablePicker ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
                   <Image size={14} />
                   <span className="text-[9px] font-bold uppercase tracking-wider">File</span>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    className="hidden"
-                    disabled={disablePicker}
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) onUploadFile(file, type);
-                      e.target.value = '';
-                    }}
-                  />
-                </label>
+                </button>
               </div>
             </motion.div>
           )}
