@@ -1735,72 +1735,21 @@ export const adminService = {
   deleteBooking: async (bookingId: string) => {
     try {
       logger.log('Deleting booking:', bookingId);
-      
-      // Use service role client to bypass RLS
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const supabaseServiceKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-      
-      if (!supabaseUrl || !supabaseServiceKey) {
-        throw new Error('Supabase credentials not configured');
-      }
-      
-      const { createClient } = await import('@supabase/supabase-js');
-      const serviceClient = createClient(supabaseUrl, supabaseServiceKey, {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
+
+      const { data, error } = await supabase.functions.invoke('delete-booking', {
+        body: { bookingId },
       });
-      
-      // First delete related records
-      // 1. Delete booking inspections
-      const { error: inspError } = await serviceClient
-        .from('booking_inspections')
-        .delete()
-        .eq('booking_id', bookingId);
-      
-      if (inspError) {
-        logger.warn('Error deleting booking inspections (may not exist):', inspError);
-      } else {
-        logger.log('Booking inspections deleted');
+
+      if (error) {
+        logger.error('Error invoking delete-booking function:', error);
+        throw error;
+      }
+      if (data?.error) {
+        logger.error('delete-booking function returned error:', data.error);
+        throw new Error(data.error);
       }
 
-      // 2. Delete booking extensions
-      const { error: extError } = await serviceClient
-        .from('booking_extensions')
-        .delete()
-        .eq('booking_id', bookingId);
-      
-      if (extError) {
-        logger.warn('Error deleting booking extensions (may not exist):', extError);
-      } else {
-        logger.log('Booking extensions deleted');
-      }
-
-      // 3. Delete transactions
-      const { error: txError } = await serviceClient
-        .from('transactions')
-        .delete()
-        .eq('booking_id', bookingId);
-      
-      if (txError) {
-        logger.warn('Error deleting transactions (may not exist):', txError);
-      } else {
-        logger.log('Transactions deleted');
-      }
-
-      // 3. Delete the booking
-      const { error: bookingError } = await serviceClient
-        .from('bookings')
-        .delete()
-        .eq('id', bookingId);
-
-      if (bookingError) {
-        logger.error('Error deleting booking:', bookingError);
-        throw bookingError;
-      }
       logger.log('Booking deleted');
-
       return { success: true };
     } catch (error) {
       logger.error('Delete booking failed:', error);
