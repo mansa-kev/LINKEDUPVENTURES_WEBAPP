@@ -104,14 +104,10 @@ export const paymentService = {
           resolve('timeout');
           return;
         }
-        const query = await this.querySTKStatus(paymentRequestId);
-        if (query.paid) {
-          resolve('paid');
-          return;
-        }
-        if (query.failed) {
-          resolve('failed');
-          return;
+        if (paymentRequestId) {
+          const query = await this.querySTKStatus(paymentRequestId);
+          if (query.paid) { resolve('paid'); return; }
+          if (query.failed) { resolve('failed'); return; }
         }
         // Trigger on payment_status='paid' alone; don't require status='confirmed'
         const status = await this.getPaymentStatus(bookingId, statusToken);
