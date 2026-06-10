@@ -20,6 +20,8 @@ import {
 import { Logo } from '../shared/Logo';
 import { LogoLoader } from '../shared/LogoLoader';
 import { PortalHeader } from '../PortalHeader';
+import { supabase } from '../../lib/supabase';
+import { clientService } from '../../services/clientService';
 
 const importDashboard = () => import('./Dashboard');
 const importDigitalGlovebox = () => import('./DigitalGlovebox');
