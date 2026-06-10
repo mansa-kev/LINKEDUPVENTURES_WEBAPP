@@ -226,13 +226,31 @@ export function LoyaltyRewards() {
                 <p className="text-[10px] uppercase font-bold opacity-60 mb-1">Your Referral Code</p>
                 <div className="flex items-center justify-between">
                   <span className="font-black text-xl tracking-widest uppercase">DRIVE{status?.id?.slice(0, 4)}</span>
-                  <button className="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                    <Copy size={16} />
+                  <button
+                    onClick={() => handleCopyCode(`DRIVE${status?.id?.slice(0, 4)}`)}
+                    className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                    aria-label="Copy referral code"
+                  >
+                    {copiedCode === `DRIVE${status?.id?.slice(0, 4)}` ? <CheckCircle2 size={16} /> : <Copy size={16} />}
                   </button>
                 </div>
               </div>
-              <button className="w-full py-3 bg-white text-primary rounded-xl font-bold text-sm hover:bg-white/90 transition-colors">
-                Invite Friends
+              <button
+                onClick={async () => {
+                  const code = `DRIVE${status?.id?.slice(0, 4)}`;
+                  const url = `${window.location.origin}/signup?ref=${code}`;
+                  const text = `Use my code ${code} to get a discount on your first rental: ${url}`;
+                  if (navigator.share) {
+                    try { await navigator.share({ title: 'Join me on LinkedUp', text, url }); } catch {}
+                  } else {
+                    navigator.clipboard.writeText(text);
+                    setCopiedCode('invite');
+                    setTimeout(() => setCopiedCode(null), 2000);
+                  }
+                }}
+                className="w-full py-3 bg-white text-primary rounded-xl font-bold text-sm hover:bg-white/90 transition-colors"
+              >
+                {copiedCode === 'invite' ? 'Invite Link Copied!' : 'Invite Friends'}
               </button>
             </div>
             <TrendingUp className="absolute -right-4 -bottom-4 opacity-10" size={120} />
