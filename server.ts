@@ -829,6 +829,14 @@ async function startServer() {
           },
           client_status_token: statusToken,
           commission_rate_applied: commissionRate,
+          commission_source: commissionSource,
+          owner_payout_amount: ownerPayoutAmount,
+          outsource_info: carRow.is_outsourced ? {
+            is_outsourced: true,
+            owner_name: carRow.outsource_owner_name || null,
+            owner_email: carRow.outsource_owner_email || null,
+            owner_phone: carRow.outsource_owner_phone || null,
+          } : null,
         },
       };
 
