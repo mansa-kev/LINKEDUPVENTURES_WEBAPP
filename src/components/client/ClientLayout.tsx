@@ -205,6 +205,9 @@ export function ClientLayout() {
                   <div className="mt-1 space-y-1">
                     {group.items.map((item) => {
                       const isActive = location.pathname === item.path;
+                      const badgeCount =
+                        item.path === '/client/bookings' ? badges.bookings :
+                        item.path === '/client/inbox' ? badges.inbox : 0;
                       return (
                         <Link
                           key={item.name}
@@ -212,14 +215,23 @@ export function ClientLayout() {
                           onMouseEnter={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
                           onFocus={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
                           onTouchStart={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
-                          className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                          className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                             isActive
                               ? 'bg-primary text-white shadow-lg shadow-primary/20'
                               : 'text-muted-foreground hover:bg-muted'
                           }`}
                         >
-                          <item.icon size={20} />
-                          <span>{item.name}</span>
+                          <span className="flex items-center gap-3 min-w-0">
+                            <item.icon size={20} />
+                            <span className="truncate">{item.name}</span>
+                          </span>
+                          {badgeCount > 0 && (
+                            <span className={`shrink-0 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full text-[10px] font-black ${
+                              isActive ? 'bg-white text-primary' : 'bg-error text-white'
+                            }`}>
+                              {badgeCount > 99 ? '99+' : badgeCount}
+                            </span>
+                          )}
                         </Link>
                       );
                     })}
