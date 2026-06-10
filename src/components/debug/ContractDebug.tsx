@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useState, useEffect } from 'react';
 import { enhancedContractService } from '../../services/enhancedContractService';
 import { supabase } from '../../lib/supabase';

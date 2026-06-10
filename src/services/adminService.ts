@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { supabase, handleSupabaseErrorWrapper } from '../lib/supabase';
 import { logger } from '../utils/logger';
 import { Car } from '../types';

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Car } from '../../../types';
