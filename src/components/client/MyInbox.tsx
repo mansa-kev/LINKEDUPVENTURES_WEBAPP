@@ -8,6 +8,7 @@ import { Inbox, Send, Plus, Clock, MessageSquare, User, Shield, AlertCircle, Che
 
 export function MyInbox() {
   const { user } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [messages, setMessages] = useState<any[]>([]);
   const [conversations, setConversations] = useState<any[][]>([]);
   const [extensionRequests, setExtensionRequests] = useState<any[]>([]);
@@ -27,9 +28,34 @@ export function MyInbox() {
   const [newEndDate, setNewEndDate] = useState('');
   const [extensionReason, setExtensionReason] = useState('');
 
+  // Honor deep-link query params from Dashboard / MyBookings
+  useEffect(() => {
+    const action = searchParams.get('action');
+    const bookingId = searchParams.get('bookingId');
+    if (action === 'extension') {
+      setActiveTab('extensions');
+      if (bookingId) setSelectedBookingId(bookingId);
+    } else if (action === 'support') {
+      setActiveTab('support');
+      if (bookingId) setSupportSubject(`Booking #${String(bookingId).slice(0, 8)} — `);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     fetchData();
   }, [user]);
+
+  // Realtime: refresh when new messages or extension requests touch this client
+  useEffect(() => {
+    if (!user?.id) return;
+    const ch = supabase
+      .channel(`client-inbox-${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `sender_id=eq.${user.id}` }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'extension_requests', filter: `client_id=eq.${user.id}` }, () => fetchData())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [user?.id]);
 
   const fetchData = async () => {
     try {
