@@ -224,11 +224,13 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
                 <Loader2 className="animate-spin text-primary" size={32} />
               </div>
             ) : (
-              <div
-                ref={contractContainerRef}
-                id="contract-html-container"
-                className="p-3 sm:p-5 md:p-6 w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed overflow-x-auto"
-                dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              <iframe
+                ref={iframeRef}
+                title="Rental Contract"
+                srcDoc={srcDoc}
+                sandbox="allow-same-origin"
+                className="w-full bg-white block"
+                style={{ height: `${iframeHeight}px`, border: 'none', minHeight: 500 }}
               />
 
             )
