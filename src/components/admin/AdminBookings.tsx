@@ -103,7 +103,7 @@ const BookingCard: React.FC<{
   const clientName = booking.client?.full_name || booking.metadata?.guest_info?.full_name || 'Guest';
   const clientInitials = clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
   const carLine = `${booking.cars?.make || ''} ${booking.cars?.model || ''}`.trim() || 'N/A';
-  const carImage = booking.cars?.images?.[0] || booking.cars?.image_url;
+  const carImage = booking.cars?.photos?.[0] || booking.cars?.primary_image_url;
   const totalPaid = booking.payment_status === 'paid' ? booking.total_amount : 0;
   const balance = booking.total_amount - totalPaid;
   const today = new Date(); today.setHours(0, 0, 0, 0);
