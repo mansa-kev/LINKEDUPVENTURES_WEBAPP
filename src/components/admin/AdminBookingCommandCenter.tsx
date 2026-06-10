@@ -684,6 +684,16 @@ export function AdminBookingCommandCenter() {
         >
           <Flag size={18} /> {booking.is_flagged ? 'Unflag Booking' : 'Flag Booking'}
         </button>
+
+        {booking.status !== 'cancelled' && booking.status !== 'completed' && (
+          <button
+            onClick={handleCancelBooking}
+            disabled={isSubmitting}
+            className="py-4 rounded-2xl font-black text-sm flex items-center justify-center gap-2 bg-red-600/10 text-red-600 border border-red-600/30 hover:bg-red-600/20 transition-all disabled:opacity-50"
+          >
+            <Ban size={18} /> Cancel & Refund
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
