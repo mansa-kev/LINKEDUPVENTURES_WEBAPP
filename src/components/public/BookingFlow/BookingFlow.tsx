@@ -97,6 +97,8 @@ export function BookingFlow({ car, reservationToken }: BookingFlowProps) {
   };
 
   const completeBooking = () => {
+    sessionStorage.removeItem(`pending_booking_${car.id}`);
+    sessionStorage.removeItem(`pending_booking_token_${car.id}`);
     clearSession();
   };
 
