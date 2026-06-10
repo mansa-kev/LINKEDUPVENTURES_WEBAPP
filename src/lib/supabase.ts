@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { handleSupabaseError } from '../utils/errorHandling';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://edroffvtzrowpsooszqh.supabase.co';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_kHHCZxwXi3vC9WAtSdmnCQ_j1rLgKRS';
 
 const missingCredentialsError = new Error('Missing Supabase credentials. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
 

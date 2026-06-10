@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 
 // Server-side Supabase client (uses service role or anon key) — lazy so missing
 // env vars don't crash the dev server at module load.
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://edroffvtzrowpsooszqh.supabase.co';
 const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 

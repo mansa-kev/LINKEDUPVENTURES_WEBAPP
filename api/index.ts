@@ -8,7 +8,7 @@ import { ncbaService } from "../src/services/ncbaService.js";
 dotenv.config({ path: '.env.local' });
 
 // Server-side Supabase client (uses service role or anon key)
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://edroffvtzrowpsooszqh.supabase.co';
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
