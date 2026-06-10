@@ -17,10 +17,12 @@ const DOC_LABELS: Record<DocType, string> = {
 };
 
 export function MyBookings() {
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [detailsBooking, setDetailsBooking] = useState<any | null>(null);
 
   // Resubmission modal state
   const [resubmitBooking, setResubmitBooking] = useState<any | null>(null);
