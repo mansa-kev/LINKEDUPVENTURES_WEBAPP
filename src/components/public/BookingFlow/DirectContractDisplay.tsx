@@ -118,13 +118,28 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const widthResetStyle = `
     <style>
       #contract-html-container, #contract-html-container * { box-sizing: border-box; }
+      /* Force every descendant to respect the container width — uploaded A4/print templates
+         often pin .contract / .page / .a4 to ~800px which collapses the layout to a
+         "mobile squeezed" centered column inside our wide card. */
+      #contract-html-container * { max-width: 100% !important; }
       #contract-html-container body,
       #contract-html-container .container,
       #contract-html-container .page,
       #contract-html-container .a4,
       #contract-html-container .sheet,
+      #contract-html-container .document,
+      #contract-html-container .agreement,
+      #contract-html-container .contract,
+      #contract-html-container .wrapper,
+      #contract-html-container .content,
       #contract-html-container [class*="page"],
       #contract-html-container [class*="container"],
+      #contract-html-container [class*="wrapper"],
+      #contract-html-container [class*="document"],
+      #contract-html-container [class*="contract"],
+      #contract-html-container [class*="content"],
+      #contract-html-container [class*="sheet"],
+      #contract-html-container [class*="a4"],
       #contract-html-container > div,
       #contract-html-container > section,
       #contract-html-container > article,
@@ -135,10 +150,10 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         margin-right: 0 !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
+        box-shadow: none !important;
       }
       #contract-html-container table { width: 100% !important; max-width: 100% !important; }
       #contract-html-container img { max-width: 100% !important; height: auto !important; }
-      #contract-html-container p, #contract-html-container li, #contract-html-container div { max-width: 100% !important; }
     </style>
   `;
   const renderedHtml = htmlTemplate
