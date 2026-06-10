@@ -97,7 +97,7 @@ export function BookingConfirmation() {
           const updated = payload.new;
           setBooking((prev: any) => ({ ...prev, ...updated }));
           
-          if (updated.payment_status === 'paid' && updated.status === 'confirmed') {
+          if (updated.payment_status === 'paid') {
             toast.success('Payment confirmed! Your booking is all set.');
           } else if (updated.payment_status === 'failed') {
             toast.error('Payment verification failed. Please contact support.');
