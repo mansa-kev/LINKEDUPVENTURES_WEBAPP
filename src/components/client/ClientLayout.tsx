@@ -102,6 +102,42 @@ export function ClientLayout() {
     return active?.category ?? 'Main';
   });
 
+  const [badges, setBadges] = useState<{ bookings: number; inbox: number }>({ bookings: 0, inbox: 0 });
+
+  // Live badge counts
+  useEffect(() => {
+    let cancelled = false;
+    let channel: any = null;
+    let userId: string | null = null;
+    const refresh = async () => {
+      if (!userId) return;
+      try {
+        const c = await clientService.getSidebarCounts(userId);
+        if (!cancelled) {
+          setBadges({ bookings: c.bookingsActionRequired || 0, inbox: c.unreadInbox || 0 });
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || cancelled) return;
+      userId = user.id;
+      await refresh();
+      channel = supabase
+        .channel(`client-badges-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings', filter: `client_id=eq.${user.id}` }, refresh)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, refresh)
+        .subscribe();
+    })();
+    return () => {
+      cancelled = true;
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, []);
+
+
   // Responsive detection
   useEffect(() => {
     const handleResize = () => {
