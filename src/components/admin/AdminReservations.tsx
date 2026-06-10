@@ -76,7 +76,7 @@ const ReservationCard: React.FC<{
   const clientName = reservation.contact_name || reservation.client?.full_name || 'Unknown';
   const clientInitials = clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
   const carLine = `${reservation.cars?.make || ''} ${reservation.cars?.model || ''}`.trim() || 'N/A';
-  const carImage = reservation.cars?.images?.[0] || reservation.cars?.image_url;
+  const carImage = reservation.cars?.photos?.[0] || reservation.cars?.primary_image_url;
 
   const isConverted = !!reservation.linked_booking_id;
   const isPaid = reservation.payment_status === 'paid';

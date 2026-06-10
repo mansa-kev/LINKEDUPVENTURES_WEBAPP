@@ -403,8 +403,8 @@ export function AdminConciergeBooking() {
                 <div className="h-64 overflow-y-auto border border-border rounded-xl divide-y divide-border scrollbar-thin">
                   {cars.filter(c => `${c.make} ${c.model}`.toLowerCase().includes(searchCar.toLowerCase())).map(car => (
                     <button key={car.id} onClick={() => updateData({ carId: car.id })} className={`w-full text-left p-3 flex items-center gap-3 transition-colors ${bookingData.carId === car.id ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-muted/50 border-l-2 border-transparent'}`}>
-                      {car.image_url ? (
-                        <img src={car.image_url} alt={car.make} className="w-12 h-10 rounded-lg object-cover" />
+                      {car.primary_image_url ? (
+                        <img src={car.primary_image_url} alt={car.make} className="w-12 h-10 rounded-lg object-cover" />
                       ) : (
                         <div className="w-12 h-10 rounded-lg bg-muted flex items-center justify-center"><Car size={16} className="text-muted-foreground"/></div>
                       )}

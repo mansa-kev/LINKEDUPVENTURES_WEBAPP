@@ -153,7 +153,6 @@ export function CarDetails() {
 
   const rawImages: string[] = [
     ...(Array.isArray(car.photos) ? car.photos : []),
-    ...(Array.isArray(car.images) ? car.images : []),
     ...(car.primary_image_url ? [car.primary_image_url] : []),
   ].filter(isValidUrl);
 
