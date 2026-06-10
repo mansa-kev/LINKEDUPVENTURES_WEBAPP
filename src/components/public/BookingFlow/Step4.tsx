@@ -46,7 +46,8 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
         filter: `id=eq.${bookingId}`,
       }, (payload: any) => {
         const updated = payload.new;
-        if (updated.payment_status === 'paid' && updated.status === 'confirmed') {
+        // Trigger on payment_status='paid' alone — don't require status='confirmed'
+        if (updated.payment_status === 'paid') {
           setPhase('paid');
           toast.success('Payment confirmed! Booking confirmed.');
           onComplete?.();
@@ -57,8 +58,8 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
 
     // Check status immediately in case it was paid while offline/refreshing
     (async () => {
-      const status = await paymentService.getPaymentStatus(bookingId);
-      if (status.paid && status.confirmed) {
+      const status = await paymentService.getPaymentStatus(bookingId, statusToken || undefined);
+      if (status.paid) {
         setPhase('paid');
         toast.success('Payment confirmed! Booking confirmed.');
         onComplete?.();
@@ -67,7 +68,7 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
     })();
 
     return () => { supabase.removeChannel(channel); };
-  }, [bookingId, navigate, onComplete]);
+  }, [bookingId, statusToken, navigate, onComplete]);
 
   const getOrCreateBooking = async () => {
     if (bookingId) return bookingId;
