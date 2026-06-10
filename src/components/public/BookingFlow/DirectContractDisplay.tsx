@@ -196,10 +196,12 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
               </div>
             ) : (
               <div 
+                ref={contractContainerRef}
                 id="contract-html-container"
-                className="p-8 sm:p-12 prose prose-sm sm:prose-base max-w-none bg-white text-black min-h-[500px]"
+                className="p-6 sm:p-10 md:p-14 max-w-none w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
+
             )
           ) : (
             <div className="w-full h-96 flex items-center justify-center p-8 text-center">
