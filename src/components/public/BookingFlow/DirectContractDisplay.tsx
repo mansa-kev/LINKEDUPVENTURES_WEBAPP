@@ -70,8 +70,9 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
       .then(([text, settingsData]) => {
         const settings: Record<string, any> = {};
         if (settingsData) {
-          settingsData.forEach(item => {
-            settings[item.key] = item.value ?? item.logo_url ?? '';
+          settingsData.forEach((item: any) => {
+            // Prefer logo_url for image settings (uploaded files) and fall back to value
+            settings[item.key] = item.logo_url || item.value || '';
           });
         }
         
