@@ -402,29 +402,8 @@ export const clientService = {
     return url;
   },
 
-    const ext = file.name.split('.').pop() || 'jpg';
-    const path = `glovebox/${clientId}/${docKey}_${Date.now()}.${ext}`;
-    const { error: upErr } = await supabase.storage
-      .from('public_assets')
-      .upload(path, file, { upsert: true, cacheControl: '3600' });
-    if (upErr) throw upErr;
-
-    const { data: pub } = supabase.storage.from('public_assets').getPublicUrl(path);
-    const url = pub.publicUrl;
-
-    const { error } = await supabase
-      .from('user_profiles')
-      .update({ [column]: url })
-      .eq('id', clientId);
-    if (error) throw error;
-
-    invalidateCachePrefix(`client:glovebox:${clientId}`);
-    invalidateCachePrefix(`client:dashboard:${clientId}`);
-    return url;
-  },
-
   removeGloveboxDocument: async (clientId: string, docKey: string) => {
-    const column = clientService._gloveboxColumn(docKey);
+    const column = GLOVEBOX_COLUMN_MAP[docKey];
     if (!column) throw new Error(`Unknown document slot: ${docKey}`);
     const { error } = await supabase
       .from('user_profiles')
