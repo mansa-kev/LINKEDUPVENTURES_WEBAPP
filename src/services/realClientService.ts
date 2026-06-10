@@ -3,6 +3,15 @@ import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
 
 const CLIENT_CACHE_TTL_MS = 60_000;
 
+const GLOVEBOX_COLUMN_MAP: Record<string, string> = {
+  facePhotoUrl: 'face_photo_url',
+  licenseFrontUrl: 'license_front_url',
+  licenseBackUrl: 'license_back_url',
+  idFrontUrl: 'id_front_url',
+  idBackUrl: 'id_back_url',
+};
+
+
 export const clientService = {
   getDashboardData: async (clientId: string) => {
     return getOrSetCache(`client:dashboard:${clientId}`, CLIENT_CACHE_TTL_MS, async () => {
