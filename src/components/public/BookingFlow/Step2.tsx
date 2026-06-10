@@ -380,7 +380,7 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">Face Photo / Passport Photo</label>
             <div className="max-w-xs mx-auto">
-              <DocumentSlot type="facePhoto" uploadedUrl={formData.facePhotoUrl} isUploading={uploading === 'facePhoto'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} />
+              <DocumentSlot type="facePhoto" uploadedUrl={formData.facePhotoUrl} isUploading={uploading === 'facePhoto'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
 
@@ -388,8 +388,8 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">Driver's License</label>
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <DocumentSlot type="licenseFront" uploadedUrl={formData.licenseFrontUrl} isUploading={uploading === 'licenseFront'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} />
-              <DocumentSlot type="licenseBack" uploadedUrl={formData.licenseBackUrl} isUploading={uploading === 'licenseBack'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} />
+              <DocumentSlot type="licenseFront" uploadedUrl={formData.licenseFrontUrl} isUploading={uploading === 'licenseFront'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="licenseBack" uploadedUrl={formData.licenseBackUrl} isUploading={uploading === 'licenseBack'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
 
@@ -397,8 +397,8 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">National ID / Passport</label>
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <DocumentSlot type="idFront" uploadedUrl={formData.idFrontUrl} isUploading={uploading === 'idFront'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} />
-              <DocumentSlot type="idBack" uploadedUrl={formData.idBackUrl} isUploading={uploading === 'idBack'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} />
+              <DocumentSlot type="idFront" uploadedUrl={formData.idFrontUrl} isUploading={uploading === 'idFront'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="idBack" uploadedUrl={formData.idBackUrl} isUploading={uploading === 'idBack'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
         </div>
