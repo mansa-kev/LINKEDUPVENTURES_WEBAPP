@@ -17,8 +17,8 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
 const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 
-let _supabase: ReturnType<typeof createClient> | null = null;
-const getSupabase = () => {
+let _supabase: any = null;
+const getSupabase = (): any => {
   if (!_supabase) {
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Supabase env vars missing: set VITE_SUPABASE_URL and a key (SUPABASE_SERVICE_ROLE_KEY or VITE_SUPABASE_ANON_KEY) in .env.local');
@@ -27,9 +27,9 @@ const getSupabase = () => {
   }
   return _supabase;
 };
-const supabase = new Proxy({}, {
-  get: (_t, prop) => (getSupabase() as any)[prop],
-}) as ReturnType<typeof createClient>;
+const supabase: any = new Proxy({}, {
+  get: (_t, prop) => getSupabase()[prop],
+});
 
 if (!supabaseUrl || !supabaseKey) {
   console.warn('[server] ⚠️ Supabase env vars missing — API routes that need Supabase will return errors until VITE_SUPABASE_URL and a key are set in .env.local');
