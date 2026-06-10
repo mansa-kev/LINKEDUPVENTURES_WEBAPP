@@ -1,15 +1,11 @@
 import express from "express";
-import path from "path";
-import { createServer as createViteServer } from "vite";
-import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { ncbaService } from "../src/services/ncbaService.js";
 
+// In local dev we read .env.local; on Vercel env vars are injected directly
+// and this call is a no-op (the file won't exist), which is fine.
 dotenv.config({ path: '.env.local' });
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 // Server-side Supabase client (uses service role or anon key)
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
