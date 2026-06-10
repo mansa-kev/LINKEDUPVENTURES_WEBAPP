@@ -85,9 +85,9 @@ export function AdminFinancials() {
     fetchFinancials();
   }, []);
 
-  const { totalRevenue, totalPayouts, totalExpenses, chartData } = data;
+  const { totalRevenue, totalPayouts, totalExpenses, netRevenue, pendingSettlementAmount, chartData, settlements } = data;
 
-  const pendingPayouts = data.transactions
+  const pendingPayouts = pendingSettlementAmount || data.transactions
     .filter(t => t.type === 'payout_out' && t.status === 'pending')
     .reduce((sum, t) => sum + Math.abs(Number(t.amount)), 0);
 
