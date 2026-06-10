@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 
 // Server-side Supabase client (uses service role or anon key)
 const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 const ncbaAccountNo = process.env.NCBA_ACCOUNT_NO?.trim() || '';
