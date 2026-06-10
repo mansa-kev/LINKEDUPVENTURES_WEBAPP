@@ -887,44 +887,55 @@ export const adminService = {
         .order('date', { ascending: false });
       if (eError) throw eError;
 
+      // Fix #3: Fetch payout_settlements (outsourced + broker)
+      const { data: settlements } = await supabase
+        .from('payout_settlements')
+        .select('id, booking_id, type, target_id, amount, status, settled_at, created_at')
+        .order('created_at', { ascending: false });
+
       // Calculate revenue from confirmed bookings only
       const totalRevenue = confirmedBookings?.reduce((sum, booking) => sum + Number(booking.total_amount), 0) || 0;
 
-      // Calculate payouts from completed bookings with paid status
-      const completedPaidBookings = confirmedBookings?.filter(b => b.status === 'completed') || [];
-      const totalPayouts = completedPaidBookings.reduce((sum, booking) => {
-        // Assuming 15% commission goes to fleet owner (85% to platform)
-        const commissionRate = 0.15;
-        return sum + (Number(booking.total_amount) * commissionRate);
-      }, 0);
+      // Total payouts: sum settled supplier+broker payouts (Fix #3 — replaces flat 15% guess)
+      const settledPayouts = (settlements || []).filter((s: any) => s.status === 'paid');
+      const totalPayouts = settledPayouts.reduce((sum: number, s: any) => sum + Number(s.amount || 0), 0);
+
+      const pendingSettlementAmount = (settlements || [])
+        .filter((s: any) => s.status === 'pending')
+        .reduce((sum: number, s: any) => sum + Number(s.amount || 0), 0);
 
       const totalExpenses = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
 
-      // Group by month for chart - only include confirmed paid bookings
+      // Net platform revenue = gross - settled supplier/broker payouts - expenses
+      const netRevenue = totalRevenue - totalPayouts - totalExpenses;
+
+      // Group by month for chart — pull actual payouts from settled settlements per booking date
       const monthlyData: Record<string, { revenue: number, payouts: number }> = {};
       confirmedBookings?.forEach(booking => {
         const month = new Date(booking.created_at).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
         if (!monthlyData[month]) monthlyData[month] = { revenue: 0, payouts: 0 };
-        
         monthlyData[month].revenue += Number(booking.total_amount);
-        
-        // Add payout if booking is completed
-        if (booking.status === 'completed') {
-          const commissionRate = 0.15;
-          monthlyData[month].payouts += Number(booking.total_amount) * commissionRate;
-        }
+      });
+      settledPayouts.forEach((s: any) => {
+        const dt = s.settled_at || s.created_at;
+        const month = new Date(dt).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        if (!monthlyData[month]) monthlyData[month] = { revenue: 0, payouts: 0 };
+        monthlyData[month].payouts += Number(s.amount || 0);
       });
 
       const chartData = Object.entries(monthlyData).map(([name, data]) => ({ name, ...data })).reverse();
 
-      logger.log('Financials calculated:', { totalRevenue, totalPayouts, totalExpenses });
+      logger.log('Financials calculated:', { totalRevenue, totalPayouts, totalExpenses, netRevenue, pendingSettlementAmount });
 
-      return { 
-        transactions: transactions || [], 
+      return {
+        transactions: transactions || [],
         expenses: expenses || [],
+        settlements: settlements || [],
         totalRevenue,
         totalPayouts,
         totalExpenses,
+        netRevenue,
+        pendingSettlementAmount,
         chartData
       };
     } catch (error) {
