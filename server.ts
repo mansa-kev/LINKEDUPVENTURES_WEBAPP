@@ -716,7 +716,7 @@ async function startServer() {
       // Always fetch the car for daily_rate (server-side amount validation)
       const { data: carRow, error: carRowError } = await supabase
         .from('cars')
-        .select('fleet_owner_id, daily_rate')
+        .select('id, fleet_owner_id, daily_rate, is_outsourced, outsource_commission_rate, outsource_owner_name, outsource_owner_email, outsource_owner_phone')
         .eq('id', carId)
         .single();
 
