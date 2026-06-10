@@ -364,5 +364,82 @@ export const clientService = {
       .eq('status', 'active');
     if (error) return handleSupabaseError(error, 'getExclusiveOffers');
     return data;
-  }
+  },
+
+  // -------- Glovebox document upload / removal --------
+  // Maps the client-side slot key to the user_profiles column it lives on.
+  _gloveboxColumn(docKey: string): string | null {
+    const map: Record<string, string> = {
+      facePhotoUrl: 'face_photo_url',
+      licenseFrontUrl: 'license_front_url',
+      licenseBackUrl: 'license_back_url',
+      idFrontUrl: 'id_front_url',
+      idBackUrl: 'id_back_url',
+    };
+    return map[docKey] || null;
+  },
+
+  uploadGloveboxDocument: async (clientId: string, docKey: string, file: File): Promise<string> => {
+    const column = clientService._gloveboxColumn(docKey);
+    if (!column) throw new Error(`Unknown document slot: ${docKey}`);
+
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `glovebox/${clientId}/${docKey}_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('public_assets')
+      .upload(path, file, { upsert: true, cacheControl: '3600' });
+    if (upErr) throw upErr;
+
+    const { data: pub } = supabase.storage.from('public_assets').getPublicUrl(path);
+    const url = pub.publicUrl;
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ [column]: url })
+      .eq('id', clientId);
+    if (error) throw error;
+
+    invalidateCachePrefix(`client:glovebox:${clientId}`);
+    invalidateCachePrefix(`client:dashboard:${clientId}`);
+    return url;
+  },
+
+  removeGloveboxDocument: async (clientId: string, docKey: string) => {
+    const column = clientService._gloveboxColumn(docKey);
+    if (!column) throw new Error(`Unknown document slot: ${docKey}`);
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ [column]: null })
+      .eq('id', clientId);
+    if (error) throw error;
+    invalidateCachePrefix(`client:glovebox:${clientId}`);
+    invalidateCachePrefix(`client:dashboard:${clientId}`);
+  },
+
+  // -------- Sidebar badge counts --------
+  getSidebarCounts: async (clientId: string) => {
+    const [bookingsRes, msgsRes] = await Promise.all([
+      supabase
+        .from('bookings')
+        .select('id, status, document_status, payment_status', { count: 'exact', head: false })
+        .eq('client_id', clientId)
+        .in('status', ['pending', 'confirmed', 'in_progress']),
+      supabase
+        .from('notifications')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', clientId)
+        .eq('read', false),
+    ]);
+    const bookings = bookingsRes.data || [];
+    const actionRequired = bookings.filter((b: any) =>
+      b.document_status === 'resubmission_required' ||
+      b.payment_status === 'pending' ||
+      b.payment_status === 'failed'
+    ).length;
+    return {
+      bookingsCount: bookings.length,
+      bookingsActionRequired: actionRequired,
+      unreadInbox: msgsRes.count || 0,
+    };
+  },
 };
