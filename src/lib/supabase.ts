@@ -47,7 +47,7 @@ const createDisabledSupabaseClient = () => ({
 
 export const supabase = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey)
-  : (createDisabledSupabaseClient() as ReturnType<typeof createClient>);
+  : (createDisabledSupabaseClient() as unknown as ReturnType<typeof createClient>);
 
 export const handleSupabaseErrorWrapper = (error: any, operation: string) => {
   throw new Error(handleSupabaseError(error, operation));

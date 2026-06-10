@@ -55,9 +55,9 @@ export function AdminContractManager() {
       if (data) {
         const settings: any = {};
         data.forEach(item => {
-          settings[item.key] = item.value ?? item.logo_url ?? '';
+          settings[item.key] = item.logo_url || item.value || '';
           if (item.key === 'contract_logo') {
-            settings.contract_logo_url = item.logo_url ?? item.value ?? '';
+            settings.contract_logo_url = item.logo_url || item.value || '';
           }
         });
         setCompanySettings(prev => ({ ...prev, ...settings }));
@@ -173,6 +173,7 @@ export function AdminContractManager() {
     const promise = (async () => {
       await adminService.updateAppSetting('company_po_box', companySettings.company_po_box, 'Company P.O. Box for contracts');
       await adminService.updateAppSetting('company_signature_url', companySettings.company_signature_url, 'Company Signature Image URL');
+      await adminService.updateAppSetting('contract_logo', companySettings.contract_logo_url, 'Contract logo image URL');
     })();
 
     toast.promise(promise, {
