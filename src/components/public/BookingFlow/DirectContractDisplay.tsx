@@ -228,7 +228,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
                 ref={iframeRef}
                 title="Rental Contract"
                 srcDoc={srcDoc}
-                sandbox="allow-same-origin"
+                sandbox="allow-scripts"
                 className="w-full bg-white block"
                 style={{ height: `${iframeHeight}px`, border: 'none', minHeight: 500 }}
               />
