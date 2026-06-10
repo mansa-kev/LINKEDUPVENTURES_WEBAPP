@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { adminService } from '../../../services/adminService';
 
@@ -10,6 +10,7 @@ interface DirectContractDisplayProps {
 }
 
 export function DirectContractDisplay({ contract, bookingData, car, signatureData }: DirectContractDisplayProps) {
+  const contractContainerRef = useRef<HTMLDivElement | null>(null);
   if (!contract) {
     return (
       <div className="p-8 bg-yellow-100 border border-yellow-300 rounded-lg text-center">
