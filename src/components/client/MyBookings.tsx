@@ -2,8 +2,8 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { clientService } from '../../services/clientService';
 import { supabase } from '../../lib/supabase';
 import { bookingService } from '../../services/bookingService';
-import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2, MapPin, DollarSign } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
