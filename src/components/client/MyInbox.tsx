@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { clientService } from '../../services/clientService';
+import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Inbox, Send, Plus, Clock, MessageSquare, User, Shield, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 
