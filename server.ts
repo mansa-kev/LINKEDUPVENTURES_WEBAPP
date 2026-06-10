@@ -821,6 +821,12 @@ async function startServer() {
         },
       };
 
+      const withStatusToken = (b: any) => {
+        if (!b) return b;
+        const token = b?.metadata?.client_status_token || statusToken;
+        return { ...b, statusToken: token };
+      };
+
       if (sourceReservation?.linked_booking_id) {
         const { data: existingBooking, error: existingBookingError } = await supabase
           .from('bookings')
@@ -829,13 +835,20 @@ async function startServer() {
           .maybeSingle();
 
         if (!existingBookingError && existingBooking) {
+          // SECURITY: do not return another user's already-paid booking from a token-known reservation id.
           if (existingBooking.payment_status === 'paid') {
-            return res.json({ success: true, booking: existingBooking });
+            return res.status(409).json({ success: false, error: 'This reservation has already been completed.' });
           }
+
+          // Preserve any existing client_status_token rather than overwriting it.
+          const existingToken = existingBooking?.metadata?.client_status_token;
+          const mergedPayload = existingToken
+            ? { ...payload, metadata: { ...payload.metadata, client_status_token: existingToken } }
+            : payload;
 
           const { data: updatedBooking, error: updateBookingError } = await supabase
             .from('bookings')
-            .update(payload)
+            .update(mergedPayload)
             .eq('id', existingBooking.id)
             .select()
             .single();
@@ -844,7 +857,7 @@ async function startServer() {
             return res.status(500).json({ success: false, error: updateBookingError?.message || 'Failed to update booking.' });
           }
 
-          return res.json({ success: true, booking: updatedBooking });
+          return res.json({ success: true, booking: withStatusToken(updatedBooking) });
         }
       }
 
@@ -859,12 +872,14 @@ async function startServer() {
       }
 
       if (sourceReservationId) {
+        // Single-use continuation token: null it out after the booking is linked.
         const { error: reservationUpdateError } = await supabase
           .from('car_reservations')
           .update({
             linked_booking_id: booking.id,
             booking_flow_started_at: new Date().toISOString(),
             booking_flow_initiated_by: bookingFlowInitiatedBy || 'client',
+            booking_completion_token: null,
           })
           .eq('id', sourceReservationId);
 
@@ -873,7 +888,7 @@ async function startServer() {
         }
       }
 
-      return res.status(201).json({ success: true, booking });
+      return res.status(201).json({ success: true, booking: withStatusToken(booking) });
     } catch (error: any) {
       console.error('[API] Booking create error:', error);
       return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
