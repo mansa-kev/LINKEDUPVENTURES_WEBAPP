@@ -97,8 +97,11 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
         replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
         const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block;" />`;
-        // Cover common placeholder name variations used in uploaded templates
+        // If a placeholder appears inside an attribute like src="{{companySignature}}", replace with the URL.
+        replaced = replaced.replace(/(src|href)\s*=\s*"\s*\{\{\s*(companySignatureUrl|company_signature_url|companySignature|company_signature|ownerSignatureUrl|owner_signature_url|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}\s*"/gi, `$1="${companySig}"`);
+        // URL-style placeholders → URL string
         replaced = replaced.replace(/\{\{\s*(companySignatureUrl|company_signature_url|ownerSignatureUrl|owner_signature_url)\s*\}\}/g, companySig);
+        // Bare placeholders in text content → full <img> tag
         replaced = replaced.replace(/\{\{\s*(companySignature|company_signature|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}/g, companySigImg);
         
         
@@ -162,6 +165,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const srcDoc = htmlTemplate
     ? (() => {
         const replacedTemplate = htmlTemplate
+          .replace(/(src|href)\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"/gi, `$1="${clientSignature || blankSignature}"`)
           .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
           .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg);
         // Inject overrides + script before </body> (or append if no </body>)
