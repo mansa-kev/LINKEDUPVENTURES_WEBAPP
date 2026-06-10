@@ -322,7 +322,10 @@ export function MyBookings() {
 
                   {/* Actions */}
                   <div className="flex flex-wrap gap-2">
-                    <button className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                    <button
+                      onClick={() => setDetailsBooking(booking)}
+                      className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                    >
                       <FileText size={16} /> Details
                     </button>
                     
@@ -368,17 +371,26 @@ export function MyBookings() {
 
                     {booking.status === 'in_progress' && (
                       <>
-                        <button className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => navigate(`/client/inbox?action=extension&bookingId=${booking.id}`)}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                        >
                           <Clock size={16} /> Extend
                         </button>
-                        <button className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => navigate(`/client/inbox?action=support&bookingId=${booking.id}`)}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                        >
                           <Phone size={16} /> Support
                         </button>
                       </>
                     )}
 
                     {booking.status === 'completed' && (
-                      <button className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2">
+                      <button
+                        onClick={() => navigate(`/cars/${booking.car_id}`)}
+                        className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                      >
                         <RefreshCw size={16} /> Re-book
                       </button>
                     )}
@@ -388,12 +400,12 @@ export function MyBookings() {
               
               {/* Footer Links */}
               <div className="px-6 py-3 bg-muted/30 border-t border-border flex flex-wrap gap-4 text-xs font-medium text-muted-foreground">
-                <Link to="/client/glovebox" className="hover:text-primary flex items-center gap-1">
+                <button onClick={() => openContract(booking)} className="hover:text-primary flex items-center gap-1">
                   <FileText size={14} /> View Contract
-                </Link>
-                <Link to="/client/glovebox" className="hover:text-primary flex items-center gap-1">
+                </button>
+                <button onClick={() => openReceipt(booking)} className="hover:text-primary flex items-center gap-1">
                   <CreditCard size={14} /> View Receipt
-                </Link>
+                </button>
               </div>
             </div>
           ))
