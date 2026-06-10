@@ -134,45 +134,38 @@ export function AdminFinancials() {
       ) : (
         <>
           {/* Financial Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-primary/10 text-primary rounded-xl">
-                  <DollarSign size={24} />
-                </div>
-              </div>
-              <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Total Platform Revenue</h3>
-              <p className="text-2xl font-bold text-foreground">KSh {totalRevenue.toLocaleString()}</p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            <div className="bg-card p-5 rounded-2xl border border-border shadow-sm">
+              <div className="p-2.5 bg-primary/10 text-primary rounded-xl w-fit mb-3"><DollarSign size={20} /></div>
+              <h3 className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Gross Revenue</h3>
+              <p className="text-xl font-black text-foreground">KSh {totalRevenue.toLocaleString()}</p>
             </div>
 
-            <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-blue-500/10 text-blue-500 rounded-xl">
-                  <TrendingUp size={24} />
-                </div>
-              </div>
-              <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Total Payouts</h3>
-              <p className="text-2xl font-bold text-foreground">KSh {totalPayouts.toLocaleString()}</p>
+            <div className="bg-card p-5 rounded-2xl border border-border shadow-sm">
+              <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl w-fit mb-3"><TrendingUp size={20} /></div>
+              <h3 className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Payouts Settled</h3>
+              <p className="text-xl font-black text-foreground">KSh {totalPayouts.toLocaleString()}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">{settlements?.filter(s => s.status === 'paid').length || 0} settlements</p>
             </div>
 
-            <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-error/10 text-error rounded-xl">
-                  <CreditCard size={24} />
-                </div>
-              </div>
-              <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Total Expenses</h3>
-              <p className="text-2xl font-bold text-foreground">KSh {totalExpenses.toLocaleString()}</p>
+            <div className="bg-card p-5 rounded-2xl border border-border shadow-sm">
+              <div className="p-2.5 bg-warning/10 text-warning rounded-xl w-fit mb-3"><Clock size={20} /></div>
+              <h3 className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Pending Payouts</h3>
+              <p className="text-xl font-black text-foreground">KSh {pendingPayouts.toLocaleString()}</p>
+              <p className="text-[10px] text-amber-500 mt-1">{settlements?.filter(s => s.status === 'pending').length || 0} awaiting</p>
             </div>
 
-            <div className="bg-card p-6 rounded-2xl border border-border shadow-sm">
-              <div className="flex justify-between items-start mb-4">
-                <div className="p-3 bg-warning/10 text-warning rounded-xl">
-                  <Clock size={24} />
-                </div>
-              </div>
-              <h3 className="text-muted-foreground text-xs font-bold uppercase tracking-wider mb-1">Pending Payouts</h3>
-              <p className="text-2xl font-bold text-foreground">KSh {pendingPayouts.toLocaleString()}</p>
+            <div className="bg-card p-5 rounded-2xl border border-border shadow-sm">
+              <div className="p-2.5 bg-error/10 text-error rounded-xl w-fit mb-3"><CreditCard size={20} /></div>
+              <h3 className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Expenses</h3>
+              <p className="text-xl font-black text-foreground">KSh {totalExpenses.toLocaleString()}</p>
+            </div>
+
+            <div className="col-span-2 md:col-span-1 bg-gradient-to-br from-primary/10 via-primary/5 to-transparent p-5 rounded-2xl border border-primary/30 shadow-sm">
+              <div className="p-2.5 bg-primary/15 text-primary rounded-xl w-fit mb-3"><Wallet size={20} /></div>
+              <h3 className="text-primary text-[10px] font-black uppercase tracking-wider mb-1">Net Platform Revenue</h3>
+              <p className="text-2xl font-black text-foreground">KSh {(netRevenue || 0).toLocaleString()}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">After payouts & expenses</p>
             </div>
           </div>
 
