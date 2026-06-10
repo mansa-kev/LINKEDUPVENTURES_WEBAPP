@@ -142,29 +142,48 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
       return;
     }
 
+    let id: string | null = null;
     try {
       setLastMessage('');
-      const id = await getOrCreateBooking();
+      id = await getOrCreateBooking();
 
       setPhase('sending_stk');
-      const result = await paymentService.initiateSTKPush({ phone: cleanPhone, bookingId: id, amount: editableAmount });
+      // Fire STK push with a hard client timeout so we don't get stuck on "Sending"
+      const stkPromise = paymentService.initiateSTKPush({ phone: cleanPhone, bookingId: id, amount: editableAmount });
+      const timeoutPromise = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ __timedOut: true }), 25000)
+      );
+      const result: any = await Promise.race([stkPromise, timeoutPromise]);
 
-      if (result.paymentRequestId) {
+      if (result?.paymentRequestId) {
         setPaymentRequestId(result.paymentRequestId);
       }
 
-      if (!result.success || !result.paymentRequestId) {
+      // Whether or not the initiation response came back cleanly, the STK may already
+      // have reached the user's phone. Move into "waiting" and keep polling — the
+      // realtime subscription + status poll will confirm once the webhook lands.
+      setPhase('waiting');
+      if (result?.__timedOut) {
+        setLastMessage('STK Push is taking longer than usual. If you received the prompt on your phone, enter your PIN — we are still listening for confirmation.');
+        toast.message('Still sending STK… check your phone.');
+      } else if (!result?.success && !result?.paymentRequestId) {
+        // Hard failure from the server
         setPhase('failed');
-        setLastMessage(result.error || result.statusDescription || 'STK Push could not be sent. Please try again.');
-        toast.error(result.error || 'STK Push failed. Please try again.');
+        setLastMessage(result?.error || result?.statusDescription || 'STK Push could not be sent. Please try again.');
+        toast.error(result?.error || 'STK Push failed. Please try again.');
         return;
+      } else {
+        setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
+        toast.success('STK Push sent. Check your phone.');
       }
 
-      setPhase('waiting');
-      setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
-      toast.success('STK Push sent. Check your phone.');
-
-      const pollResult = await paymentService.pollUntilPaid(result.paymentRequestId, id, statusToken || undefined);
+      const pollResult = await paymentService.pollUntilPaid(
+        result?.paymentRequestId || '',
+        id,
+        statusToken || undefined,
+        3000,
+        180000,
+      );
 
       if (pollResult === 'paid') {
         handlePaid(id);
@@ -177,9 +196,15 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
       }
     } catch (error: any) {
       console.error('Payment error:', error);
-      setPhase('failed');
-      setLastMessage(error.message || 'Payment could not be started. Please try again.');
-      toast.error(error.message || 'Payment could not be started. Please try again.');
+      // If the booking was already created, don't drop into "failed" — keep listening
+      if (id) {
+        setPhase('waiting');
+        setLastMessage('Network hiccup while sending STK. If the prompt appeared on your phone, enter your PIN — we will confirm automatically.');
+      } else {
+        setPhase('failed');
+        setLastMessage(error.message || 'Payment could not be started. Please try again.');
+        toast.error(error.message || 'Payment could not be started. Please try again.');
+      }
     }
   };
 
