@@ -94,8 +94,11 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         const contractLogo = settings['contract_logo'] || settings['site_logo'] || settings['logo_url'] || '';
         replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
         replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
-        replaced = replaced.replace(/\{\{companySignatureUrl\}\}/g, companySig);
-        replaced = replaced.replace(/\{\{companySignature\}\}/g, `<img src="${companySig}" alt="Company Signature" style="max-height: 80px;" />`);
+        const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block;" />`;
+        // Cover common placeholder name variations used in uploaded templates
+        replaced = replaced.replace(/\{\{\s*(companySignatureUrl|company_signature_url|ownerSignatureUrl|owner_signature_url)\s*\}\}/g, companySig);
+        replaced = replaced.replace(/\{\{\s*(companySignature|company_signature|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}/g, companySigImg);
+        
         
         // Fix wording for mileage if present
         replaced = replaced.replace(/\(as confirmed at the pickup\)/gi, '(as confirmed during pickup)');
