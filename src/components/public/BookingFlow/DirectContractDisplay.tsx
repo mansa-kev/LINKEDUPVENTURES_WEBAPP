@@ -153,13 +153,16 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
     const root = contractContainerRef.current;
     if (!root) return;
 
-    // (1) Override any inline max-width / fixed widths inside the uploaded template
+    // (1) Override any inline max-width / fixed pixel widths inside the uploaded template
     root.querySelectorAll<HTMLElement>('*').forEach((el) => {
       const cs = el.style;
-      if (cs && (cs.maxWidth || cs.width)) {
-        if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
-          el.style.maxWidth = '100%';
-        }
+      if (!cs) return;
+      if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
+        el.style.maxWidth = '100%';
+      }
+      // Strip fixed pixel widths (e.g. width: 800px) but keep percentage/auto widths
+      if (cs.width && /px$/i.test(cs.width)) {
+        el.style.width = '100%';
       }
     });
 
