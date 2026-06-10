@@ -376,21 +376,31 @@ export const clientService = {
   },
 
   // -------- Glovebox document upload / removal --------
-  // Maps the client-side slot key to the user_profiles column it lives on.
-  _gloveboxColumn(docKey: string): string | null {
-    const map: Record<string, string> = {
-      facePhotoUrl: 'face_photo_url',
-      licenseFrontUrl: 'license_front_url',
-      licenseBackUrl: 'license_back_url',
-      idFrontUrl: 'id_front_url',
-      idBackUrl: 'id_back_url',
-    };
-    return map[docKey] || null;
-  },
-
+  // Document slot keys map to user_profiles columns via GLOVEBOX_COLUMN_MAP.
   uploadGloveboxDocument: async (clientId: string, docKey: string, file: File): Promise<string> => {
-    const column = clientService._gloveboxColumn(docKey);
+    const column = GLOVEBOX_COLUMN_MAP[docKey];
     if (!column) throw new Error(`Unknown document slot: ${docKey}`);
+
+    const ext = file.name.split('.').pop() || 'jpg';
+    const path = `glovebox/${clientId}/${docKey}_${Date.now()}.${ext}`;
+    const { error: upErr } = await supabase.storage
+      .from('public_assets')
+      .upload(path, file, { upsert: true, cacheControl: '3600' });
+    if (upErr) throw upErr;
+
+    const { data: pub } = supabase.storage.from('public_assets').getPublicUrl(path);
+    const url = pub.publicUrl;
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ [column]: url })
+      .eq('id', clientId);
+    if (error) throw error;
+
+    invalidateCachePrefix(`client:glovebox:${clientId}`);
+    invalidateCachePrefix(`client:dashboard:${clientId}`);
+    return url;
+  },
 
     const ext = file.name.split('.').pop() || 'jpg';
     const path = `glovebox/${clientId}/${docKey}_${Date.now()}.${ext}`;
