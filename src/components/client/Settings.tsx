@@ -114,6 +114,32 @@ export function Settings() {
     }
   };
 
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleRequestDeleteAccount = async () => {
+    if (!currentUser) return;
+    setDeleting(true);
+    try {
+      const { error } = await supabase.from('contact_messages').insert([{
+        name: currentUser.user_metadata?.full_name || currentUser.email,
+        email: currentUser.email,
+        phone: currentUser.user_metadata?.phone || '',
+        subject: 'Account Deletion Request',
+        message: `User ${currentUser.email} (id: ${currentUser.id}) has requested permanent deletion of their account and all associated data. Please process within 30 days per data-protection policy.`,
+      }]);
+      if (error) throw error;
+      setConfirmDelete(false);
+      setMessage({ type: 'success', text: 'Deletion request submitted. Our team will contact you within 48 hours.' });
+    } catch (err) {
+      console.error('Delete request failed', err);
+      setMessage({ type: 'error', text: 'Failed to submit deletion request.' });
+    } finally {
+      setDeleting(false);
+      setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+    }
+  };
+
   if (loading) return <div className="p-8">Loading settings...</div>;
 
   if (!currentUser) {
@@ -300,10 +326,44 @@ export function Settings() {
                 <p className="font-bold text-sm text-error">Delete Account</p>
                 <p className="text-xs text-muted-foreground">Permanently remove your account and all associated data.</p>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-error text-white rounded-xl text-xs font-bold hover:bg-error/90 transition-colors">
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-error text-white rounded-xl text-xs font-bold hover:bg-error/90 transition-colors"
+              >
                 <Trash2 size={16} /> Delete
               </button>
             </div>
+            {confirmDelete && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => !deleting && setConfirmDelete(false)}>
+                <div className="bg-card rounded-2xl border border-border shadow-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
+                      <AlertCircle className="text-error" size={20} />
+                    </div>
+                    <h3 className="text-lg font-bold">Delete your account?</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This will submit a permanent account-deletion request. Our team will process it within 30 days as required by data-protection policy. Active bookings must be completed or cancelled first.
+                  </p>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      disabled={deleting}
+                      className="flex-1 px-4 py-2 bg-muted rounded-xl text-sm font-bold hover:bg-muted/70 transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleRequestDeleteAccount}
+                      disabled={deleting}
+                      className="flex-1 px-4 py-2 bg-error text-white rounded-xl text-sm font-bold hover:bg-error/90 transition-colors disabled:opacity-50"
+                    >
+                      {deleting ? 'Submitting...' : 'Confirm Request'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>
