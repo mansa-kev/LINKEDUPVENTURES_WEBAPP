@@ -1461,7 +1461,7 @@ export const adminService = {
   updateAppSetting: async (key: string, value: string, description?: string) => {
     const { data, error } = await supabase
       .from('app_settings')
-      .upsert({ key, value, description }, { onConflict: 'key' })
+      .upsert({ key, value, logo_url: value, description }, { onConflict: 'key' })
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'updateAppSetting');
     return data;

@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 
 // Server-side Supabase client (uses service role or anon key) — lazy so missing
 // env vars don't crash the dev server at module load.
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://edroffvtzrowpsooszqh.supabase.co';
 const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 
@@ -31,10 +31,14 @@ const supabase: any = new Proxy({}, {
   get: (_t, prop) => getSupabase()[prop],
 });
 
+const getNcbaAccountNo = () => {
+  const accountNo = (process.env.NCBA_ACCOUNT_NO || '').replace(/\s+/g, '').trim();
+  return /^\d+$/.test(accountNo) ? accountNo : '';
+};
+
 if (!supabaseUrl || !supabaseKey) {
   console.warn('[server] ⚠️ Supabase env vars missing — API routes that need Supabase will return errors until VITE_SUPABASE_URL and a key are set in .env.local');
 }
-const ncbaAccountNo = process.env.NCBA_ACCOUNT_NO?.trim() || '';
 
 async function startServer() {
   const app = express();
@@ -79,6 +83,23 @@ async function startServer() {
 
   // Parse JSON bodies for API routes (must come before Vite middleware)
   app.use('/api', express.json());
+
+  app.get('/api/public-app-settings', async (req, res) => {
+    const allowedKeys = ['company_po_box', 'company_signature_url', 'contract_logo', 'site_logo', 'logo_url'];
+    const requestedKeys = String(req.query.keys || '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter((key) => allowedKeys.includes(key));
+
+    const keys = requestedKeys.length ? requestedKeys : allowedKeys;
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('key, value, logo_url')
+      .in('key', keys);
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    return res.json({ success: true, settings: data || [] });
+  });
 
   // ─── IMAGE PROXY ROUTE (Hides Supabase URL) ────────────────────────────────────────────
 
@@ -1027,7 +1048,7 @@ async function startServer() {
       const pushAmount = Number(booking.total_amount);
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = ncbaAccountNo;
+      const accountNo = getNcbaAccountNo();
 
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
@@ -1289,7 +1310,7 @@ async function startServer() {
       const amount = Number(reservation.reservation_fee);
       
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = ncbaAccountNo;
+      const accountNo = getNcbaAccountNo();
 
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });

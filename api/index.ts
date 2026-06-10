@@ -8,10 +8,15 @@ import { ncbaService } from "../src/services/ncbaService.js";
 dotenv.config({ path: '.env.local' });
 
 // Server-side Supabase client (uses service role or anon key)
-const supabaseUrl = process.env.VITE_SUPABASE_URL || '';
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://edroffvtzrowpsooszqh.supabase.co';
+const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+const getNcbaAccountNo = () => {
+  const accountNo = (process.env.NCBA_ACCOUNT_NO || '').replace(/\s+/g, '').trim();
+  return /^\d+$/.test(accountNo) ? accountNo : '';
+};
 
 const app = express();
 
@@ -56,6 +61,23 @@ const app = express();
 
   // Parse JSON bodies for API routes (must come before Vite middleware)
   app.use('/api', express.json());
+
+  app.get('/api/public-app-settings', async (req, res) => {
+    const allowedKeys = ['company_po_box', 'company_signature_url', 'contract_logo', 'site_logo', 'logo_url'];
+    const requestedKeys = String(req.query.keys || '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter((key) => allowedKeys.includes(key));
+
+    const keys = requestedKeys.length ? requestedKeys : allowedKeys;
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('key, value, logo_url')
+      .in('key', keys);
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    return res.json({ success: true, settings: data || [] });
+  });
 
   // ─── IMAGE PROXY ROUTE (Hides Supabase URL) ────────────────────────────────────────────
 
@@ -916,7 +938,7 @@ const app = express();
       }
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = (process.env.NCBA_ACCOUNT_NO || publicConfig.accountNo || '').trim();
+      const accountNo = getNcbaAccountNo();
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
       }
@@ -1090,7 +1112,7 @@ const app = express();
       }
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = (process.env.NCBA_ACCOUNT_NO || publicConfig.accountNo || '').trim();
+      const accountNo = getNcbaAccountNo();
       if (!accountNo) {
         return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
       }
