@@ -96,7 +96,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         const contractLogo = settings['contract_logo'] || settings['site_logo'] || settings['logo_url'] || '';
         replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
         replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
-        const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block;" />`;
+        const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
         // If a placeholder appears inside an attribute like src="{{companySignature}}", replace with the URL.
         replaced = replaced.replace(/(src|href)\s*=\s*"\s*\{\{\s*(companySignatureUrl|company_signature_url|companySignature|company_signature|ownerSignatureUrl|owner_signature_url|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}\s*"/gi, `$1="${companySig}"`);
         // URL-style placeholders → URL string
@@ -118,17 +118,20 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const clientSignature = signatureData || bookingData?.signatureData || bookingData?.liveSignatureData || '';
   const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   // Mark the client signature image so we can reposition it above the name
-  const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block;" />`;
+  const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
   // Build a full-document srcDoc for the iframe so the template's CSS is
   // completely isolated from the app and cannot collapse the layout.
   const clientNameForScript = JSON.stringify(getClientName() || '');
   const overrideStyles = `
     <style>
-      html, body { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 24px !important; box-sizing: border-box !important; background: #ffffff !important; }
-      * { box-sizing: border-box; }
+      html, body { max-width: none !important; width: 100% !important; min-width: 0 !important; margin: 0 !important; padding: 24px !important; box-sizing: border-box !important; background: #ffffff !important; }
+      body { display: block !important; }
+      * { box-sizing: border-box; max-width: 100% !important; }
       img { max-width: 100% !important; height: auto !important; }
       table { width: 100% !important; max-width: 100% !important; }
-      .container, .page, .a4, .sheet, .document, .agreement, .contract, .wrapper, .content { max-width: 100% !important; width: 100% !important; margin: 0 !important; box-shadow: none !important; }
+      .container, .page, .a4, .sheet, .document, .agreement, .contract, .wrapper, .content { max-width: none !important; width: 100% !important; min-width: 0 !important; margin-left: 0 !important; margin-right: 0 !important; box-shadow: none !important; }
+      .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: flex-start !important; gap: 24px !important; width: 100% !important; }
+      .signature-box { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; }
     </style>
   `;
   const repositionScript = `
@@ -165,6 +168,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const srcDoc = htmlTemplate
     ? (() => {
         const replacedTemplate = htmlTemplate
+          .replace(/<img([^>]*?)src\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"([^>]*?)>/gi, `<img$1data-client-signature="1" src="${clientSignature || blankSignature}"$3>`)
           .replace(/(src|href)\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"/gi, `$1="${clientSignature || blankSignature}"`)
           .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
           .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg);
