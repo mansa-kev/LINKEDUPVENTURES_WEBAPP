@@ -114,8 +114,35 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   // Mark the client signature image so we can reposition it above the name
   const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block;" />`;
+  // Inject a style reset so uploaded A4/print-styled templates expand to the full container width
+  const widthResetStyle = `
+    <style>
+      #contract-html-container, #contract-html-container * { box-sizing: border-box; }
+      #contract-html-container body,
+      #contract-html-container .container,
+      #contract-html-container .page,
+      #contract-html-container .a4,
+      #contract-html-container .sheet,
+      #contract-html-container [class*="page"],
+      #contract-html-container [class*="container"],
+      #contract-html-container > div,
+      #contract-html-container > section,
+      #contract-html-container > article,
+      #contract-html-container > main {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+      #contract-html-container table { width: 100% !important; max-width: 100% !important; }
+      #contract-html-container img { max-width: 100% !important; height: auto !important; }
+      #contract-html-container p, #contract-html-container li, #contract-html-container div { max-width: 100% !important; }
+    </style>
+  `;
   const renderedHtml = htmlTemplate
-    ? htmlTemplate
+    ? widthResetStyle + htmlTemplate
         .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
         .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg)
     : '';
