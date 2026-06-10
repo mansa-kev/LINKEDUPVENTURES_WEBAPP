@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
-import { adminService } from '../../../services/adminService';
 
 interface DirectContractDisplayProps {
   contract: any;
@@ -65,7 +64,9 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
       
       Promise.all([
         fetch(templateUrl).then(res => res.text()),
-        adminService.getAppSettings()
+        fetch('/api/public-app-settings?keys=company_po_box,company_signature_url,contract_logo,site_logo,logo_url')
+          .then(res => res.ok ? res.json() : { settings: [] })
+          .then(data => data.settings || [])
       ])
       .then(([text, settingsData]) => {
         const settings: Record<string, any> = {};
