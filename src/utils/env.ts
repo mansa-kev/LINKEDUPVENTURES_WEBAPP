@@ -30,10 +30,11 @@ export function validateEnv(): void {
   });
 
   if (missing.length > 0) {
-    throw new Error(
+    console.warn(
       `Missing required environment variables: ${missing.join(', ')}\n` +
       `Please set these in your .env file and restart the development server.`
     );
+    return;
   }
 
   // Log warnings for optional env vars
