@@ -6,7 +6,7 @@ import {
   ChevronLeft, Loader2, CreditCard, FileText, CheckCircle2, 
   XCircle, Car, MapPin, Flag, AlertTriangle, ShieldCheck, 
   Calendar, Clock, User, ArrowRight, Save, Image as ImageIcon, Send, X,
-  Trash2, Mail, Phone, ExternalLink, MessageSquare
+  Trash2, Mail, Phone, ExternalLink, MessageSquare, Ban, RotateCcw, Sparkles
 } from 'lucide-react';
 import { logger } from '../../utils/logger';
 import { adminService } from '../../services/adminService';
