@@ -5,6 +5,7 @@ import { clientService } from '../../services/clientService';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Inbox, Send, Plus, Clock, MessageSquare, User, Shield, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function MyInbox() {
   const { user } = useAuth();
