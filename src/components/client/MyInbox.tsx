@@ -142,15 +142,21 @@ export function MyInbox() {
       setSupportSubject('');
       setSupportMessage('');
       setActiveTab('messages');
+      setSearchParams({}, { replace: true });
+      toast.success('Support request sent. We will reply shortly.');
       fetchData();
     } catch (err) {
+      toast.error('Failed to submit support request.');
       console.error("Error submitting support request:", err);
     }
   };
 
   const handleExtensionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedBookingId || !newEndDate) return;
+    if (!selectedBookingId || !newEndDate) {
+      toast.error('Please select a booking and a new drop-off date.');
+      return;
+    }
 
     const req = {
       booking_id: selectedBookingId,
@@ -165,8 +171,11 @@ export function MyInbox() {
       setSelectedBookingId('');
       setNewEndDate('');
       setExtensionReason('');
+      setSearchParams({}, { replace: true });
+      toast.success('Extension request submitted. Awaiting admin approval.');
       fetchData();
     } catch (err) {
+      toast.error('Failed to submit extension request.');
       console.error("Error submitting extension request:", err);
     }
   };
