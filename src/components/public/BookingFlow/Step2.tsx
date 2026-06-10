@@ -275,6 +275,10 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
     }
   }, [uploading]);
 
+  const clearDocument = useCallback((type: DocType) => {
+    setFormData(prev => ({ ...prev, [`${type}Url`]: '' }));
+  }, []);
+
   const handleCameraCapture = (file: File) => {
     if (showCamera) {
       uploadFile(file, showCamera);
