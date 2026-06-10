@@ -916,7 +916,10 @@ const app = express();
       }
 
       const publicConfig = ncbaService.getPublicConfig();
-      const accountNo = 'LINKEDUP CARS BOOKING';
+      const accountNo = (process.env.NCBA_ACCOUNT_NO || publicConfig.accountNo || '').trim();
+      if (!accountNo) {
+        return res.status(500).json({ success: false, error: 'NCBA account number is not configured' });
+      }
       const result = await ncbaService.initiateSTKPush({
         phone,
         amount: Number(booking.total_amount),
