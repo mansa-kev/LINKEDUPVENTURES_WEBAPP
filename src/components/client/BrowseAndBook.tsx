@@ -172,28 +172,77 @@ export function BrowseAndBook() {
         </div>
       </div>
 
-      {/* Search + Filter */}
-      <div className="flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search by make or model..."
-            className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
-          />
+      {/* Search + Filters */}
+      <div className="space-y-3">
+        <div className="flex flex-col md:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search by make or model..."
+              className="w-full pl-10 pr-4 py-3 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="px-4 py-3 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 appearance-none min-w-[160px]"
+          >
+            <option value="recommended">Recommended</option>
+            <option value="price_asc">Price: Low to High</option>
+            <option value="price_desc">Price: High to Low</option>
+          </select>
         </div>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value)}
-          className="px-4 py-3 bg-card border border-border rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 appearance-none min-w-[140px]"
-        >
-          <option value="">All Categories</option>
-          {categories.map(c => (
-            <option key={c} value={c!.toLowerCase()}>{c}</option>
-          ))}
-        </select>
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="px-3 py-2 bg-card border border-border rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">All Categories</option>
+            {categories.map(c => (
+              <option key={c} value={c!.toLowerCase()}>{c}</option>
+            ))}
+          </select>
+          <select
+            value={transmissionFilter}
+            onChange={(e) => setTransmissionFilter(e.target.value)}
+            className="px-3 py-2 bg-card border border-border rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Any Transmission</option>
+            {transmissions.map(t => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <select
+            value={seatsFilter}
+            onChange={(e) => setSeatsFilter(e.target.value ? Number(e.target.value) : '')}
+            className="px-3 py-2 bg-card border border-border rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20"
+          >
+            <option value="">Any Seats</option>
+            <option value="2">2+ seats</option>
+            <option value="4">4+ seats</option>
+            <option value="5">5+ seats</option>
+            <option value="7">7+ seats</option>
+          </select>
+          <input
+            type="number"
+            value={maxPrice}
+            onChange={(e) => setMaxPrice(e.target.value ? Number(e.target.value) : '')}
+            placeholder="Max KES/day"
+            className="px-3 py-2 bg-card border border-border rounded-lg text-xs font-medium outline-none focus:ring-2 focus:ring-primary/20 w-32"
+          />
+          {activeFilterCount > 0 && (
+            <button
+              onClick={resetFilters}
+              className="flex items-center gap-1 px-3 py-2 text-xs font-bold text-muted-foreground hover:text-foreground"
+            >
+              <X size={12} /> Clear ({activeFilterCount})
+            </button>
+          )}
+        </div>
       </div>
 
       {loading ? (
@@ -202,7 +251,7 @@ export function BrowseAndBook() {
         </div>
       ) : filteredCars.length === 0 ? (
         <div className="text-center py-20">
-          <p className="text-lg font-bold text-muted-foreground mb-2">No vehicles available</p>
+          <p className="text-lg font-bold text-muted-foreground mb-2">No vehicles match your filters</p>
           <p className="text-sm text-muted-foreground">Try adjusting your search or check back later</p>
         </div>
       ) : (
