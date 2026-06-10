@@ -713,20 +713,18 @@ async function startServer() {
         return res.status(409).json({ success: false, error: 'Selected dates are not available. The car is either booked or reserved for these dates.' });
       }
 
-      let fleetOwnerId = sourceReservation?.fleet_owner_id || null;
-      if (!fleetOwnerId) {
-        const { data: car, error: carError } = await supabase
-          .from('cars')
-          .select('fleet_owner_id')
-          .eq('id', carId)
-          .single();
+      // Always fetch the car for daily_rate (server-side amount validation)
+      const { data: carRow, error: carRowError } = await supabase
+        .from('cars')
+        .select('fleet_owner_id, daily_rate')
+        .eq('id', carId)
+        .single();
 
-        if (carError || !car) {
-          return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
-        }
-
-        fleetOwnerId = car.fleet_owner_id;
+      if (carRowError || !carRow) {
+        return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
       }
+
+      let fleetOwnerId = sourceReservation?.fleet_owner_id || carRow.fleet_owner_id || null;
 
       if (!fleetOwnerId) {
         const { data: adminUser } = await supabase
@@ -742,8 +740,42 @@ async function startServer() {
         }
       }
 
+      // ── Server-side amount validation ──
+      const dailyRate = Number(carRow.daily_rate || 0);
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / msPerDay));
+      const expected = dailyRate * days;
       const total = Number(totalAmount);
-      const platformCommission = Math.round(total * 0.15 * 100) / 100;
+
+      if (!Number.isFinite(total) || total <= 0) {
+        return res.status(400).json({ success: false, error: 'Invalid total amount.' });
+      }
+      // Allow promo discounts down to 50% of expected, and no more than 20% above (taxes/fees).
+      const minAllowed = Math.floor(expected * 0.5);
+      const maxAllowed = Math.ceil(expected * 1.2);
+      if (expected > 0 && (total < minAllowed || total > maxAllowed)) {
+        return res.status(400).json({
+          success: false,
+          error: `Total amount KES ${total} does not match expected range (KES ${minAllowed}–${maxAllowed}) for ${days} day(s) @ KES ${dailyRate}/day.`,
+        });
+      }
+
+      // ── Per-fleet commission rate ──
+      let commissionRate = 0.15;
+      const { data: fleetSettings } = await supabase
+        .from('fleet_owner_settings')
+        .select('commission_rate')
+        .eq('id', fleetOwnerId)
+        .maybeSingle();
+      if (fleetSettings && Number.isFinite(Number(fleetSettings.commission_rate))) {
+        commissionRate = Number(fleetSettings.commission_rate);
+        if (commissionRate > 1) commissionRate = commissionRate / 100; // tolerate percent vs ratio
+      }
+      const platformCommission = Math.round(total * commissionRate * 100) / 100;
+
+      // ── Per-booking status token (replaces world-readable status endpoint) ──
+      const statusToken = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
+
       const payload = {
         car_id: carId,
         client_id: clientId || sourceReservation?.client_id || null,
@@ -784,6 +816,8 @@ async function startServer() {
             idFrontUrl: bookingData.idFrontUrl || null,
             idBackUrl: bookingData.idBackUrl || null,
           },
+          client_status_token: statusToken,
+          commission_rate_applied: commissionRate,
         },
       };
 
