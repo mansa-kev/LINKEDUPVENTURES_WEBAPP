@@ -499,6 +499,88 @@ export function MyBookings() {
           </div>
         </div>
       )}
+
+      {/* Booking Details Modal */}
+      {detailsBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" onClick={() => setDetailsBooking(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div>
+                <h3 className="font-bold text-lg">Booking Details</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">#{String(detailsBooking.id).slice(0, 8)}</p>
+              </div>
+              <button onClick={() => setDetailsBooking(null)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1 space-y-5">
+              <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
+                <div className="w-16 h-16 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
+                  {detailsBooking.cars?.primary_image_url
+                    ? <img src={detailsBooking.cars.primary_image_url} alt="" className="w-full h-full object-cover" />
+                    : <Car className="text-muted-foreground" size={24} />}
+                </div>
+                <div>
+                  <p className="font-bold">{detailsBooking.cars?.make} {detailsBooking.cars?.model}</p>
+                  <p className="text-xs text-muted-foreground">Plate: {detailsBooking.cars?.license_plate}</p>
+                  <div className="mt-1">{getStatusBadge(detailsBooking.status)}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><Calendar size={10} /> Pickup</p>
+                  <p className="font-medium mt-1">{new Date(detailsBooking.start_date).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><Calendar size={10} /> Drop-off</p>
+                  <p className="font-medium mt-1">{new Date(detailsBooking.end_date).toLocaleString()}</p>
+                </div>
+                {detailsBooking.pickup_location && (
+                  <div className="p-3 bg-muted/30 rounded-xl col-span-2">
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><MapPin size={10} /> Pickup Location</p>
+                    <p className="font-medium mt-1">{detailsBooking.pickup_location}</p>
+                  </div>
+                )}
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1"><DollarSign size={10} /> Total</p>
+                  <p className="font-bold text-primary mt-1">KES {Number(detailsBooking.total_amount).toLocaleString()}</p>
+                </div>
+                <div className="p-3 bg-muted/30 rounded-xl">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Payment</p>
+                  <p className="font-medium mt-1">{(detailsBooking.payment_status || 'pending').toUpperCase()}</p>
+                </div>
+              </div>
+
+              {detailsBooking.admin_notes && (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+                  <p className="text-xs font-bold text-amber-500">Admin note</p>
+                  <p className="text-xs text-amber-400/80 mt-1">{detailsBooking.admin_notes}</p>
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-border flex flex-wrap gap-2">
+              <button onClick={() => openContract(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                <FileText size={14} /> Contract
+              </button>
+              <button onClick={() => openReceipt(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
+                <CreditCard size={14} /> Receipt
+              </button>
+              {detailsBooking.status === 'in_progress' && (
+                <button
+                  onClick={() => { navigate(`/client/inbox?action=extension&bookingId=${detailsBooking.id}`); setDetailsBooking(null); }}
+                  className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold flex items-center gap-1.5"
+                >
+                  <Clock size={14} /> Extend
+                </button>
+              )}
+              <button onClick={() => setDetailsBooking(null)} className="ml-auto px-4 py-2 text-xs font-bold text-muted-foreground hover:bg-muted rounded-xl">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
