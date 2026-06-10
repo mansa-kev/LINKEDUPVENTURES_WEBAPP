@@ -9,7 +9,6 @@ export interface Car {
   description: string;
   primary_image_url: string;
   photos: string[];
-  images?: string[];
   video_url: string;
   transmission: string;
   fuel_type: string;
