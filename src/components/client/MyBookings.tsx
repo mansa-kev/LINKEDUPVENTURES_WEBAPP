@@ -157,6 +157,51 @@ export function MyBookings() {
     }
   };
 
+  const openContract = async (booking: any) => {
+    // 1. metadata fallback (legacy)
+    const legacy = booking.metadata?.contract_url;
+    if (legacy) { window.open(legacy, '_blank'); return; }
+    // 2. signed_contracts table
+    try {
+      const { data, error } = await supabase
+        .from('signed_contracts')
+        .select('contract_url')
+        .eq('booking_id', booking.id)
+        .order('signed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.contract_url) { window.open(data.contract_url, '_blank'); return; }
+      toast.error('Contract not available yet. It will appear once signed.');
+    } catch {
+      toast.error('Unable to load contract.');
+    }
+  };
+
+  const openReceipt = async (booking: any) => {
+    const legacy = booking.metadata?.receipt_url;
+    if (legacy) { window.open(legacy, '_blank'); return; }
+    try {
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('receipt_url, reference_number, amount, created_at, type, status')
+        .eq('booking_id', booking.id)
+        .eq('status', 'completed')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      if (data?.receipt_url) { window.open(data.receipt_url, '_blank'); return; }
+      if (data) {
+        toast.success(`Receipt: ${data.reference_number || 'N/A'} • KES ${Number(data.amount).toLocaleString()} • ${new Date(data.created_at).toLocaleDateString()}`);
+        return;
+      }
+      toast.error('No receipt available yet — payment not yet completed.');
+    } catch {
+      toast.error('Unable to load receipt.');
+    }
+  };
+
   const filteredBookings = bookings.filter(b => {
     if (!b.cars) return false;
     const matchesFilter = filter === 'all' || b.status === filter;
