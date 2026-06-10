@@ -897,7 +897,7 @@ async function startServer() {
 
   app.post('/api/ncba/stk-push', async (req, res) => {
     try {
-      const { phone, bookingId, amount: requestedAmount } = req.body;
+      const { phone, bookingId } = req.body;
 
       if (!phone || !bookingId) {
         return res.status(400).json({ success: false, error: 'Phone and booking ID are required' });
