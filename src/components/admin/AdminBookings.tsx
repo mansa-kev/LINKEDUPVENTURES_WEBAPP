@@ -258,9 +258,9 @@ export function AdminBookings() {
         setBookings(result.data || []);
         setTotalCount(result.count || 0);
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Failed to fetch bookings:', error);
-      toast.error('Failed to fetch bookings');
+      toast.error(`Failed to fetch bookings: ${error?.message || error?.code || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
