@@ -10,7 +10,8 @@ interface DirectContractDisplayProps {
 }
 
 export function DirectContractDisplay({ contract, bookingData, car, signatureData }: DirectContractDisplayProps) {
-  const contractContainerRef = useRef<HTMLDivElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [iframeHeight, setIframeHeight] = useState<number>(800);
   if (!contract) {
     return (
       <div className="p-8 bg-yellow-100 border border-yellow-300 rounded-lg text-center">
