@@ -206,6 +206,54 @@ export function AdminBookingCommandCenter() {
     }
   };
 
+  const handleCancelBooking = async () => {
+    const reason = window.prompt('Enter cancellation reason (client will be notified):');
+    if (!reason || !reason.trim()) return;
+    const refund = window.confirm('Issue full refund for any paid amount? OK = Yes, Cancel = No');
+    setIsSubmitting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const updates: any = {
+        status: 'cancelled',
+        sub_status: refund ? 'refund_pending' : 'cancelled',
+        admin_notes: `[CANCELLED by admin] ${reason}`,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = await supabase.from('bookings').update(updates).eq('id', booking.id);
+      if (error) throw error;
+
+      if (refund && booking.payment_status === 'paid' && booking.client_id) {
+        await supabase.from('transactions').insert({
+          booking_id: booking.id,
+          user_id: booking.client_id,
+          amount: -Math.abs(Number(booking.total_amount) || 0),
+          type: 'refund',
+          status: 'pending',
+          transaction_code: `REFUND-${booking.id.slice(0,8).toUpperCase()}`,
+        }).then(null, (e: any) => logger.warn('Refund tx error:', e));
+      }
+
+      if (booking.client_id) {
+        await supabase.from('notifications').insert({
+          user_id: booking.client_id,
+          type: 'booking_cancelled',
+          title: 'Booking Cancelled',
+          content: `Your booking #${booking.id.slice(0,8).toUpperCase()} was cancelled. Reason: ${reason}${refund ? ' A refund has been initiated.' : ''}`,
+          is_read: false,
+          link: `/booking-confirmation/${booking.id}`,
+        }).then(null, (e:any) => logger.warn('Notif error:', e));
+      }
+
+      toast.success(refund ? 'Booking cancelled — refund queued' : 'Booking cancelled');
+      fetchBooking(true);
+    } catch (e: any) {
+      toast.error('Cancellation failed: ' + (e.message || ''));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center p-20">
