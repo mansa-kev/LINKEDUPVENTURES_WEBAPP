@@ -84,6 +84,23 @@ async function startServer() {
   // Parse JSON bodies for API routes (must come before Vite middleware)
   app.use('/api', express.json());
 
+  app.get('/api/public-app-settings', async (req, res) => {
+    const allowedKeys = ['company_po_box', 'company_signature_url', 'contract_logo', 'site_logo', 'logo_url'];
+    const requestedKeys = String(req.query.keys || '')
+      .split(',')
+      .map((key) => key.trim())
+      .filter((key) => allowedKeys.includes(key));
+
+    const keys = requestedKeys.length ? requestedKeys : allowedKeys;
+    const { data, error } = await supabase
+      .from('app_settings')
+      .select('key, value, logo_url')
+      .in('key', keys);
+
+    if (error) return res.status(500).json({ success: false, error: error.message });
+    return res.json({ success: true, settings: data || [] });
+  });
+
   // ─── IMAGE PROXY ROUTE (Hides Supabase URL) ────────────────────────────────────────────
 
   /**

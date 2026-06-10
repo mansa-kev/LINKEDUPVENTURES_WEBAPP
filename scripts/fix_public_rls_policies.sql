@@ -17,6 +17,9 @@ USING (
     'about_hero_image',
     'about_team_image',
     'about_mission_image',
+    'company_po_box',
+    'company_signature_url',
+    'contract_logo',
     'logo_url'
   )
 );
