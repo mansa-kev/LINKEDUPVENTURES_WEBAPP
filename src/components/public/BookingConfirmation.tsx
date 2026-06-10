@@ -162,6 +162,26 @@ export function BookingConfirmation() {
 
       if (authError) throw authError;
 
+      // Try to claim the guest booking on the spot using session token if signup
+      // returned an immediately usable session (e.g. email confirmation disabled).
+      if (authData.session?.access_token && bookingId) {
+        try {
+          const cachedToken = sessionStorage.getItem(`pending_booking_token_${booking?.car_id || ''}`)
+            || booking?.metadata?.client_status_token
+            || null;
+          await fetch(`/api/bookings/${bookingId}/claim`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${authData.session.access_token}`,
+            },
+            body: JSON.stringify({ statusToken: cachedToken }),
+          });
+        } catch (claimErr) {
+          console.error('Booking claim failed:', claimErr);
+        }
+      }
+
       if (authData.user) {
         toast.success('Account created! Check your email to confirm, then log in to manage your booking.');
       }
