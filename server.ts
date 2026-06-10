@@ -917,7 +917,7 @@ async function startServer() {
         return res.status(409).json({ success: false, error: 'This booking is already paid' });
       }
 
-      const pushAmount = requestedAmount ? Number(requestedAmount) : Number(booking.total_amount);
+      const pushAmount = Number(booking.total_amount);
 
       const publicConfig = ncbaService.getPublicConfig();
       const accountNo = ncbaAccountNo;
