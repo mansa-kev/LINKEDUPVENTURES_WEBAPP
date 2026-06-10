@@ -18,10 +18,15 @@ export function SubdomainSwitcher() {
   const location = useLocation();
 
   // Always show in development/preview environments
-  const isDev = 
-    window.location.hostname.includes('run.app') || 
-    window.location.hostname === 'localhost' ||
-    window.location.hostname.includes('google.com'); // AI Studio context
+  const host = window.location.hostname;
+  const isDev =
+    host.includes('run.app') ||
+    host === 'localhost' ||
+    host.includes('127.0.0.1') ||
+    host.includes('lovable.app') ||
+    host.includes('lovable.dev') ||
+    host.includes('lovableproject.com') ||
+    host.includes('google.com');
 
   if (!isDev) return null;
 
