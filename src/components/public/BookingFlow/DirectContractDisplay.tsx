@@ -112,11 +112,49 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
 
   const clientSignature = signatureData || bookingData?.signatureData || bookingData?.liveSignatureData || '';
   const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+  // Mark the client signature image so we can reposition it above the name
+  const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block;" />`;
   const renderedHtml = htmlTemplate
     ? htmlTemplate
-        .replace(/\{\{clientSignatureUrl\}\}/g, clientSignature || blankSignature)
-        .replace(/\{\{clientSignature\}\}/g, `<img src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px;" />`)
+        .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
+        .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg)
     : '';
+
+  // After render: (1) force-expand contract container to full width so it doesn't look "mobile squeezed"
+  // (2) move client signature image above the client name block (the dashed line spot)
+  useEffect(() => {
+    const root = contractContainerRef.current;
+    if (!root) return;
+
+    // (1) Override any inline max-width / fixed widths inside the uploaded template
+    root.querySelectorAll<HTMLElement>('*').forEach((el) => {
+      const cs = el.style;
+      if (cs && (cs.maxWidth || cs.width)) {
+        if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
+          el.style.maxWidth = '100%';
+        }
+      }
+    });
+
+    // (2) Move the client signature image so it sits *above* the client name
+    const sigImg = root.querySelector('img[data-client-signature="1"]') as HTMLImageElement | null;
+    if (sigImg) {
+      // Find the closest signature block (a parent that also contains the client name text)
+      let block: HTMLElement | null = sigImg.parentElement;
+      const clientName = (getClientName() || '').trim();
+      while (block && block !== root) {
+        if (clientName && block.textContent && block.textContent.includes(clientName)) break;
+        block = block.parentElement;
+      }
+      if (block) {
+        // Insert signature as the first child of the block (above the name + dashed line)
+        block.insertBefore(sigImg, block.firstChild);
+        sigImg.style.marginBottom = '4px';
+      }
+    }
+  }, [renderedHtml]);
+
+
 
   return (
     <div className="bg-gradient-to-br from-card to-muted rounded-xl overflow-hidden shadow-xl border border-border">
