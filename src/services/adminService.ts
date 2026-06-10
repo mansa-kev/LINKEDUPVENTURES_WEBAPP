@@ -265,6 +265,7 @@ export const adminService = {
             id,
             make,
             model,
+            images,
             image_url
           ),
           client:user_profiles!bookings_client_id_fkey (
