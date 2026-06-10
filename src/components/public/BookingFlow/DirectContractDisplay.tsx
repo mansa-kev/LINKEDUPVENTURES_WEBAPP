@@ -114,8 +114,35 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
   // Mark the client signature image so we can reposition it above the name
   const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block;" />`;
+  // Inject a style reset so uploaded A4/print-styled templates expand to the full container width
+  const widthResetStyle = `
+    <style>
+      #contract-html-container, #contract-html-container * { box-sizing: border-box; }
+      #contract-html-container body,
+      #contract-html-container .container,
+      #contract-html-container .page,
+      #contract-html-container .a4,
+      #contract-html-container .sheet,
+      #contract-html-container [class*="page"],
+      #contract-html-container [class*="container"],
+      #contract-html-container > div,
+      #contract-html-container > section,
+      #contract-html-container > article,
+      #contract-html-container > main {
+        max-width: 100% !important;
+        width: 100% !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
+      #contract-html-container table { width: 100% !important; max-width: 100% !important; }
+      #contract-html-container img { max-width: 100% !important; height: auto !important; }
+      #contract-html-container p, #contract-html-container li, #contract-html-container div { max-width: 100% !important; }
+    </style>
+  `;
   const renderedHtml = htmlTemplate
-    ? htmlTemplate
+    ? widthResetStyle + htmlTemplate
         .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
         .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg)
     : '';
@@ -126,13 +153,16 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
     const root = contractContainerRef.current;
     if (!root) return;
 
-    // (1) Override any inline max-width / fixed widths inside the uploaded template
+    // (1) Override any inline max-width / fixed pixel widths inside the uploaded template
     root.querySelectorAll<HTMLElement>('*').forEach((el) => {
       const cs = el.style;
-      if (cs && (cs.maxWidth || cs.width)) {
-        if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
-          el.style.maxWidth = '100%';
-        }
+      if (!cs) return;
+      if (cs.maxWidth && cs.maxWidth !== 'none' && cs.maxWidth !== '100%') {
+        el.style.maxWidth = '100%';
+      }
+      // Strip fixed pixel widths (e.g. width: 800px) but keep percentage/auto widths
+      if (cs.width && /px$/i.test(cs.width)) {
+        el.style.width = '100%';
       }
     });
 
@@ -186,8 +216,8 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         </div>
       </div>
 
-      {/* Optimized Contract Display - Mobile Full Screen */}
-      <div className="p-2 sm:p-6 bg-card">
+      {/* Optimized Contract Display - Full width spread */}
+      <div className="p-2 sm:p-4 bg-card">
         <div className="bg-background rounded-lg shadow-lg overflow-hidden border border-border">
           {isHtmlTemplate ? (
             loadingHtml ? (
@@ -195,10 +225,10 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
                 <Loader2 className="animate-spin text-primary" size={32} />
               </div>
             ) : (
-              <div 
+              <div
                 ref={contractContainerRef}
                 id="contract-html-container"
-                className="p-6 sm:p-10 md:p-14 max-w-none w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed"
+                className="p-3 sm:p-5 md:p-6 w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed overflow-x-auto"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
 
