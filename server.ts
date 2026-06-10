@@ -760,18 +760,29 @@ async function startServer() {
         });
       }
 
-      // ── Per-fleet commission rate ──
+      // ── Per-fleet commission rate (outsourced cars override fleet default) ──
       let commissionRate = 0.15;
-      const { data: fleetSettings } = await supabase
-        .from('fleet_owner_settings')
-        .select('commission_rate')
-        .eq('id', fleetOwnerId)
-        .maybeSingle();
-      if (fleetSettings && Number.isFinite(Number(fleetSettings.commission_rate))) {
-        commissionRate = Number(fleetSettings.commission_rate);
-        if (commissionRate > 1) commissionRate = commissionRate / 100; // tolerate percent vs ratio
+      let commissionSource: 'outsource' | 'fleet_owner' | 'default' = 'default';
+
+      if (carRow.is_outsourced && Number.isFinite(Number(carRow.outsource_commission_rate))) {
+        // Outsourced cars use their own negotiated rate (Fix #1)
+        commissionRate = Number(carRow.outsource_commission_rate);
+        if (commissionRate > 1) commissionRate = commissionRate / 100;
+        commissionSource = 'outsource';
+      } else {
+        const { data: fleetSettings } = await supabase
+          .from('fleet_owner_settings')
+          .select('commission_rate')
+          .eq('id', fleetOwnerId)
+          .maybeSingle();
+        if (fleetSettings && Number.isFinite(Number(fleetSettings.commission_rate))) {
+          commissionRate = Number(fleetSettings.commission_rate);
+          if (commissionRate > 1) commissionRate = commissionRate / 100;
+          commissionSource = 'fleet_owner';
+        }
       }
       const platformCommission = Math.round(total * commissionRate * 100) / 100;
+      const ownerPayoutAmount = Math.round((total - platformCommission) * 100) / 100;
 
       // ── Per-booking status token (replaces world-readable status endpoint) ──
       const statusToken = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
