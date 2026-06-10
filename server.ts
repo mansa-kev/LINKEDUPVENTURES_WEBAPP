@@ -20,7 +20,8 @@ const ncbaAccountNo = process.env.NCBA_ACCOUNT_NO?.trim() || '';
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const portArgIdx = process.argv.indexOf('--port');
+  const PORT = portArgIdx !== -1 ? Number(process.argv[portArgIdx + 1]) : Number(process.env.PORT) || 8080;
 
   // Simple in-memory rate limiter
   const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
