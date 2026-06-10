@@ -213,8 +213,8 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         </div>
       </div>
 
-      {/* Optimized Contract Display - Mobile Full Screen */}
-      <div className="p-2 sm:p-6 bg-card">
+      {/* Optimized Contract Display - Full width spread */}
+      <div className="p-2 sm:p-4 bg-card">
         <div className="bg-background rounded-lg shadow-lg overflow-hidden border border-border">
           {isHtmlTemplate ? (
             loadingHtml ? (
@@ -222,10 +222,10 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
                 <Loader2 className="animate-spin text-primary" size={32} />
               </div>
             ) : (
-              <div 
+              <div
                 ref={contractContainerRef}
                 id="contract-html-container"
-                className="p-6 sm:p-10 md:p-14 max-w-none w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed"
+                className="p-3 sm:p-5 md:p-6 w-full bg-white text-black min-h-[500px] text-[13px] sm:text-sm md:text-base leading-relaxed overflow-x-auto"
                 dangerouslySetInnerHTML={{ __html: renderedHtml }}
               />
 
