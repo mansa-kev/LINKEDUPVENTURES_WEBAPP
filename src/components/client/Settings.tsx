@@ -326,10 +326,44 @@ export function Settings() {
                 <p className="font-bold text-sm text-error">Delete Account</p>
                 <p className="text-xs text-muted-foreground">Permanently remove your account and all associated data.</p>
               </div>
-              <button className="flex items-center gap-2 px-4 py-2 bg-error text-white rounded-xl text-xs font-bold hover:bg-error/90 transition-colors">
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-error text-white rounded-xl text-xs font-bold hover:bg-error/90 transition-colors"
+              >
                 <Trash2 size={16} /> Delete
               </button>
             </div>
+            {confirmDelete && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4" onClick={() => !deleting && setConfirmDelete(false)}>
+                <div className="bg-card rounded-2xl border border-border shadow-xl max-w-md w-full p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-error/10 flex items-center justify-center">
+                      <AlertCircle className="text-error" size={20} />
+                    </div>
+                    <h3 className="text-lg font-bold">Delete your account?</h3>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    This will submit a permanent account-deletion request. Our team will process it within 30 days as required by data-protection policy. Active bookings must be completed or cancelled first.
+                  </p>
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      onClick={() => setConfirmDelete(false)}
+                      disabled={deleting}
+                      className="flex-1 px-4 py-2 bg-muted rounded-xl text-sm font-bold hover:bg-muted/70 transition-colors disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleRequestDeleteAccount}
+                      disabled={deleting}
+                      className="flex-1 px-4 py-2 bg-error text-white rounded-xl text-sm font-bold hover:bg-error/90 transition-colors disabled:opacity-50"
+                    >
+                      {deleting ? 'Submitting...' : 'Confirm Request'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       </div>
