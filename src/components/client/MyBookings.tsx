@@ -413,7 +413,7 @@ export function MyBookings() {
           <div className="text-center py-12 bg-card rounded-2xl border border-dashed border-border">
             <Car className="mx-auto text-muted-foreground mb-4" size={48} />
             <p className="text-muted-foreground font-medium">No bookings found matching your criteria.</p>
-            <button className="mt-4 text-primary font-bold hover:underline">Browse Cars</button>
+            <button onClick={() => navigate('/cars')} className="mt-4 text-primary font-bold hover:underline">Browse Cars</button>
           </div>
         )}
       </div>
