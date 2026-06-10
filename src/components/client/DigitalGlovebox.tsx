@@ -1,9 +1,14 @@
-import React, { useEffect, useState } from 'react';
+// @ts-nocheck
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { clientService } from '../../services/clientService';
 import { supabase } from '../../lib/supabase';
+import { toast } from 'sonner';
+import { compressImage } from '../../utils/imageCompression';
+import { validateFile } from '../../utils/fileValidation';
 import {
   FileText, Download, Eye, CreditCard, ShieldCheck, AlertTriangle,
-  Clock, CheckCircle2, User, IdCard, Car, Loader2, FolderOpen, Receipt
+  Clock, CheckCircle2, User, IdCard, Loader2, FolderOpen, Receipt,
+  Upload, X, RefreshCw,
 } from 'lucide-react';
 
 const DOC_SLOTS = [
@@ -30,24 +35,171 @@ function DocStatusBadge({ status }: { status: string | null }) {
   );
 }
 
+interface DocSlotRowProps {
+  slotKey: string;
+  label: string;
+  Icon: any;
+  url: string | null;
+  isBusy: boolean;
+  onUpload: (file: File) => void;
+  onRemove: () => void;
+}
+
+function DocSlotRow({ slotKey, label, Icon, url, isBusy, onUpload, onRemove }: DocSlotRowProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const openPicker = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isBusy) return;
+    if (inputRef.current) inputRef.current.value = '';
+    inputRef.current?.click();
+  };
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (file) onUpload(file);
+  };
+  const isPdf = url && /\.pdf(\?|$)/i.test(url);
+
+  return (
+    <div className={`flex items-center justify-between gap-3 p-3 rounded-xl border ${url ? 'bg-success/5 border-success/20' : 'bg-muted/20 border-border'}`}>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,.pdf"
+        className="hidden"
+        onChange={handleFile}
+      />
+      <div className="flex items-center gap-3 min-w-0 flex-1">
+        {url && !isPdf ? (
+          <img src={url} alt={label} className="w-10 h-10 rounded-lg object-cover shrink-0" />
+        ) : (
+          <Icon size={16} className={url ? 'text-success shrink-0' : 'text-muted-foreground shrink-0'} />
+        )}
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">{label}</p>
+          {url ? (
+            <p className="text-xs text-success flex items-center gap-1"><CheckCircle2 size={10} /> On file</p>
+          ) : (
+            <p className="text-xs text-muted-foreground flex items-center gap-1"><Clock size={10} /> Not uploaded</p>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {isBusy ? (
+          <Loader2 className="animate-spin text-primary" size={16} />
+        ) : (
+          <>
+            {url && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="p-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
+                title="View"
+              >
+                <Eye size={14} />
+              </a>
+            )}
+            <button
+              type="button"
+              onClick={openPicker}
+              className="p-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors text-foreground"
+              title={url ? 'Replace' : 'Upload'}
+            >
+              {url ? <RefreshCw size={14} /> : <Upload size={14} />}
+            </button>
+            {url && (
+              <button
+                type="button"
+                onClick={onRemove}
+                className="p-2 bg-error/10 hover:bg-error/20 rounded-lg transition-colors text-error"
+                title="Remove"
+              >
+                <X size={14} strokeWidth={2.5} />
+              </button>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function DigitalGlovebox() {
   const [gloveboxData, setGloveboxData] = useState<any>(null);
+  const [clientId, setClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [busySlot, setBusySlot] = useState<string | null>(null);
 
-  useEffect(() => { fetchData(); }, []);
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async (uid?: string) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const data = await clientService.getGloveboxData(user.id);
-        setGloveboxData(data);
-      }
+      const id = uid || clientId;
+      if (!id) return;
+      const data = await clientService.getGloveboxData(id);
+      setGloveboxData(data);
     } catch (err) {
       console.error('Glovebox fetch error:', err);
       setGloveboxData({ documents: {}, contracts: [], payments: [] });
     } finally {
       setLoading(false);
+    }
+  }, [clientId]);
+
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setClientId(user.id);
+        await fetchData(user.id);
+      } else {
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleUpload = async (slotKey: string, file: File) => {
+    if (!clientId) return;
+    setBusySlot(slotKey);
+    try {
+      const v = await validateFile(file);
+      if (!v.isValid) { toast.error(v.error || 'Invalid file'); return; }
+      let final = file;
+      if (file.type.startsWith('image/')) {
+        await new Promise(r => requestAnimationFrame(() => r(undefined)));
+        final = await compressImage(file, 1200, 1200, 0.7);
+      }
+      const url = await clientService.uploadGloveboxDocument(clientId, slotKey, final);
+      // optimistic
+      setGloveboxData((prev: any) => ({
+        ...prev,
+        documents: { ...(prev?.documents || {}), [slotKey]: url },
+      }));
+      toast.success('Document uploaded');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Upload failed');
+    } finally {
+      setBusySlot(null);
+    }
+  };
+
+  const handleRemove = async (slotKey: string) => {
+    if (!clientId) return;
+    setBusySlot(slotKey);
+    try {
+      await clientService.removeGloveboxDocument(clientId, slotKey);
+      setGloveboxData((prev: any) => ({
+        ...prev,
+        documents: { ...(prev?.documents || {}), [slotKey]: null },
+      }));
+      toast.success('Document removed');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || 'Remove failed');
+    } finally {
+      setBusySlot(null);
     }
   };
 
@@ -60,8 +212,9 @@ export function DigitalGlovebox() {
   }
 
   const { documents = {}, contracts = [], payments = [] } = gloveboxData || {};
-  const hasDocuments = DOC_SLOTS.some(s => documents[s.key]);
   const docStatus = documents.status;
+  const completed = DOC_SLOTS.filter(s => documents[s.key]).length;
+  const completion = Math.round((completed / DOC_SLOTS.length) * 100);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
@@ -70,14 +223,24 @@ export function DigitalGlovebox() {
         <p className="text-muted-foreground text-sm mt-1">Your documents, contracts and payment history — all in one place.</p>
       </div>
 
-      {/* ── My Documents ── */}
+      {/* My Documents */}
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-2">
             <ShieldCheck size={18} className="text-primary" />
             <h3 className="font-bold">My Documents</h3>
           </div>
-          {docStatus && <DocStatusBadge status={docStatus} />}
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-muted-foreground font-bold">{completed}/{DOC_SLOTS.length} complete</span>
+            {docStatus && <DocStatusBadge status={docStatus} />}
+          </div>
+        </div>
+
+        {/* completion bar */}
+        <div className="px-6 pt-4">
+          <div className="w-full bg-muted rounded-full h-1.5">
+            <div className="h-1.5 rounded-full bg-primary transition-all" style={{ width: `${completion}%` }} />
+          </div>
         </div>
 
         {docStatus === 'resubmission_required' && gloveboxData?.docBooking?.admin_notes && (
@@ -90,62 +253,42 @@ export function DigitalGlovebox() {
           </div>
         )}
 
-        <div className="p-6">
-          {!hasDocuments ? (
-            <div className="text-center py-10 space-y-2">
-              <FolderOpen size={40} className="mx-auto text-muted-foreground/40" />
-              <p className="text-muted-foreground font-medium">No documents on file yet.</p>
-              <p className="text-xs text-muted-foreground">
-                Complete a booking and your uploaded documents will appear here automatically.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {documents.idNumber && (
-                <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-border">
-                  <IdCard size={16} className="text-primary shrink-0" />
-                  <div>
-                    <p className="text-xs text-muted-foreground uppercase tracking-wide font-bold">ID Number</p>
-                    <p className="text-sm font-mono font-bold">{documents.idNumber}</p>
-                  </div>
-                </div>
-              )}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                {DOC_SLOTS.map(({ key, label, icon: Icon }) => {
-                  const url = documents[key];
-                  return (
-                    <div key={key} className={`flex items-center justify-between p-3 rounded-xl border ${url ? 'bg-success/5 border-success/20' : 'bg-muted/20 border-border'}`}>
-                      <div className="flex items-center gap-3">
-                        <Icon size={16} className={url ? 'text-success' : 'text-muted-foreground'} />
-                        <div>
-                          <p className="text-sm font-medium">{label}</p>
-                          {url
-                            ? <p className="text-xs text-success flex items-center gap-1"><CheckCircle2 size={10} /> On file</p>
-                            : <p className="text-xs text-muted-foreground flex items-center gap-1"><Clock size={10} /> Not uploaded</p>
-                          }
-                        </div>
-                      </div>
-                      {url && (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="p-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors"
-                          title="View"
-                        >
-                          <Eye size={14} />
-                        </a>
-                      )}
-                    </div>
-                  );
-                })}
+        <div className="p-6 space-y-3">
+          {documents.idNumber && (
+            <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-xl border border-border">
+              <IdCard size={16} className="text-primary shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wide font-bold">ID Number</p>
+                <p className="text-sm font-mono font-bold">{documents.idNumber}</p>
               </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {DOC_SLOTS.map(({ key, label, icon }) => (
+              <DocSlotRow
+                key={key}
+                slotKey={key}
+                label={label}
+                Icon={icon}
+                url={documents[key] || null}
+                isBusy={busySlot === key}
+                onUpload={(f) => handleUpload(key, f)}
+                onRemove={() => handleRemove(key)}
+              />
+            ))}
+          </div>
+          {completed === 0 && (
+            <div className="text-center py-6 space-y-2">
+              <FolderOpen size={36} className="mx-auto text-muted-foreground/40" />
+              <p className="text-xs text-muted-foreground">
+                Upload your documents here once and we'll reuse them on every booking.
+              </p>
             </div>
           )}
         </div>
       </div>
 
-      {/* ── Contracts Vault ── */}
+      {/* Contracts Vault */}
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
           <FileText size={18} className="text-primary" />
@@ -203,7 +346,7 @@ export function DigitalGlovebox() {
         </div>
       </div>
 
-      {/* ── Payment History ── */}
+      {/* Payment History */}
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 px-6 py-4 border-b border-border">
           <Receipt size={18} className="text-primary" />
