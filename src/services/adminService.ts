@@ -782,9 +782,6 @@ export const adminService = {
   },
 
   deleteFleetOwner: async (id: string) => {
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-    const serviceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
-
     // Delete fleet_owner_settings first (FK constraint)
     await supabase.from('fleet_owner_settings').delete().eq('id', id);
 
@@ -797,18 +794,14 @@ export const adminService = {
     invalidateCachePrefix('admin:fleetOwners');
     invalidateCachePrefix('admin:users');
 
-    // Hard-delete from Supabase Auth if service role key is available
-    if (serviceRoleKey) {
-      const res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${id}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${serviceRoleKey}`,
-          'apikey': serviceRoleKey,
-        },
-      });
-      if (!res.ok) {
-        logger.warn('Could not delete auth user (non-fatal):', await res.text());
-      }
+    // Hard-delete from Supabase Auth via secure edge function
+    const { data, error: invokeError } = await supabase.functions.invoke('delete-user', {
+      body: { userId: id },
+    });
+    if (invokeError) {
+      logger.warn('Could not delete auth user (non-fatal):', invokeError.message);
+    } else if (data?.error) {
+      logger.warn('Could not delete auth user (non-fatal):', data.error);
     }
   },
 
