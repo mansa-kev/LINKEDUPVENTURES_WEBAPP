@@ -165,6 +165,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const srcDoc = htmlTemplate
     ? (() => {
         const replacedTemplate = htmlTemplate
+          .replace(/(src|href)\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"/gi, `$1="${clientSignature || blankSignature}"`)
           .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
           .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg);
         // Inject overrides + script before </body> (or append if no </body>)
