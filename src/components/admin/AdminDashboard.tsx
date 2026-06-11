@@ -290,7 +290,7 @@ export function AdminDashboard() {
           color={parseFloat(cancellationRate) > 20 ? 'bg-error' : parseFloat(cancellationRate) >= 10 ? 'bg-warning' : 'bg-success'}
         />
         <button
-          onClick={() => window.location.href = '/admin/payment-approvals'}
+          onClick={() => window.location.href = '/admin/financials?tab=approvals'}
           className="bg-card p-6 rounded-2xl border border-border shadow-sm hover:-translate-y-1 hover:shadow-lg transition-all duration-200 text-left"
         >
           <div className="flex justify-between items-start mb-4">

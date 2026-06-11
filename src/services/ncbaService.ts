@@ -31,13 +31,82 @@ interface NcbaQueryResponse {
   success: boolean;
   paid: boolean;
   failed: boolean;
+  /** True when NCBA has not resolved the payment yet — keep polling. */
+  pending: boolean;
   status?: string;
   description?: string;
   raw?: any;
   error?: string;
 }
 
+/** NCBA returns status FAILED for query errors — not always a declined payment. */
+const RETRYABLE_QUERY_PHRASES = [
+  'error occurred while processing query',
+  'system internal error',
+  'still processing',
+  'pending',
+  'not found',
+  'try again',
+];
+
+const DEFINITIVE_FAILURE_PHRASES = [
+  'cancel',
+  'declined',
+  'rejected',
+  'insufficient',
+  'invalid pin',
+  'wrong pin',
+  'no response from user',
+  'user failed',
+];
+
+function classifyNcbaQueryResult(data: any, httpOk: boolean): Pick<NcbaQueryResponse, 'paid' | 'failed' | 'pending' | 'status' | 'description'> {
+  const status = String(data?.status ?? data?.Status ?? '').trim();
+  const normalized = status.toUpperCase();
+  const description = String(data?.description ?? data?.Description ?? data?.message ?? '').trim();
+  const descLower = description.toLowerCase();
+
+  if (normalized === 'SUCCESS') {
+    return { paid: true, failed: false, pending: false, status, description };
+  }
+
+  if (!httpOk || !normalized) {
+    return {
+      paid: false,
+      failed: false,
+      pending: true,
+      status: status || 'PENDING',
+      description: description || 'Awaiting NCBA response',
+    };
+  }
+
+  if (normalized === 'FAILED') {
+    const isRetryable = RETRYABLE_QUERY_PHRASES.some((phrase) => descLower.includes(phrase));
+    if (isRetryable) {
+      return { paid: false, failed: false, pending: true, status, description };
+    }
+
+    const isDefinitiveFailure = DEFINITIVE_FAILURE_PHRASES.some((phrase) => descLower.includes(phrase));
+    if (isDefinitiveFailure) {
+      return { paid: false, failed: true, pending: false, status, description };
+    }
+
+    // Unknown FAILED — prefer retry over wrongly marking the payment failed.
+    return { paid: false, failed: false, pending: true, status, description };
+  }
+
+  return {
+    paid: false,
+    failed: false,
+    pending: true,
+    status: status || 'PENDING',
+    description: description || 'Payment still pending',
+  };
+}
+
 let cachedToken: { token: string; expiresAt: number } | null = null;
+
+const NCBA_DEFAULT_ACCOUNT_NO = '1006230208';
 
 function getConfig(): NcbaConfig {
   return {
@@ -45,7 +114,7 @@ function getConfig(): NcbaConfig {
     username: process.env.NCBA_USERNAME || '',
     password: process.env.NCBA_PASSWORD || '',
     paybillNo: process.env.NCBA_PAYBILL_NO || '',
-    accountNo: process.env.NCBA_ACCOUNT_NO || '',
+    accountNo: process.env.NCBA_ACCOUNT_NO || NCBA_DEFAULT_ACCOUNT_NO,
     network: process.env.NCBA_NETWORK || 'Safaricom',
     transactionType: process.env.NCBA_TRANSACTION_TYPE || 'CustomerPayBillOnline',
     tokenMethod: ((process.env.NCBA_TOKEN_METHOD || 'GET').toUpperCase() === 'POST' ? 'POST' : 'GET'),
@@ -175,20 +244,27 @@ export const ncbaService = {
       });
 
       const data = await readJsonSafe(response);
-      const normalized = String(data.status || '').toUpperCase();
+      const classified = classifyNcbaQueryResult(data, response.ok);
+
+      if (classified.pending && !classified.paid) {
+        logger.log('[NCBA] Query still pending', { transactionId, description: classified.description });
+      }
 
       return {
         success: response.ok,
-        paid: normalized === 'SUCCESS',
-        failed: normalized === 'FAILED',
-        status: data.status,
-        description: data.description,
+        ...classified,
         raw: data,
-        error: response.ok ? undefined : (data.message || data.description || `NCBA query failed (${response.status})`),
+        error: response.ok ? undefined : (data.message || classified.description || `NCBA query failed (${response.status})`),
       };
     } catch (error: any) {
       logger.error('[NCBA] Query error:', error);
-      return { success: false, paid: false, failed: false, error: error.message || 'Failed to query NCBA payment status' };
+      return {
+        success: false,
+        paid: false,
+        failed: false,
+        pending: true,
+        error: error.message || 'Failed to query NCBA payment status',
+      };
     }
   },
 };

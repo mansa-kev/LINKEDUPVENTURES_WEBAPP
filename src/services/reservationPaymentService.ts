@@ -29,6 +29,7 @@ interface ReservationStkQueryResult {
   success: boolean;
   paid: boolean;
   failed: boolean;
+  pending?: boolean;
   status?: string;
   description?: string;
   error?: string;
@@ -76,28 +77,40 @@ export const reservationPaymentService = {
     }
   },
 
-  async pollUntilPaid(paymentRequestId: string, reservationId: string, intervalMs = 5000, timeoutMs = 120000): Promise<'paid' | 'failed' | 'timeout'> {
+  async pollUntilPaid(
+    paymentRequestId: string,
+    reservationId: string,
+    intervalMs = 3000,
+    timeoutMs = 180000,
+    initialDelayMs = 3000,
+  ): Promise<'paid' | 'failed' | 'timeout'> {
     const start = Date.now();
     return new Promise((resolve) => {
       const check = async () => {
-        if (Date.now() - start > timeoutMs) {
+        const elapsed = Date.now() - start;
+        if (elapsed > timeoutMs) {
           resolve('timeout');
           return;
         }
-        const query = await this.querySTKStatus(paymentRequestId);
-        if (query.paid) {
-          resolve('paid');
-          return;
-        }
-        if (query.failed) {
-          resolve('failed');
-          return;
-        }
+
         const status = await this.getPaymentStatus(reservationId);
         if (status.paid && status.reserved) {
           resolve('paid');
           return;
         }
+
+        if (paymentRequestId && elapsed >= initialDelayMs) {
+          const query = await this.querySTKStatus(paymentRequestId);
+          if (query.paid) {
+            resolve('paid');
+            return;
+          }
+          if (query.failed && !query.pending) {
+            resolve('failed');
+            return;
+          }
+        }
+
         setTimeout(check, intervalMs);
       };
       check();

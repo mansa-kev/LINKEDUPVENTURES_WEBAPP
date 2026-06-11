@@ -4,6 +4,7 @@ import { fleetService } from '../../services/fleetService';
 import { bookingService } from '../../services/bookingService';
 import { paymentService } from '../../services/paymentService';
 import { enhancedContractService } from '../../services/enhancedContractService';
+import { generateAndSaveContract } from '../../services/contractPdfService';
 import { supabase } from '../../lib/supabase';
 import { DirectContractDisplay } from '../public/BookingFlow/DirectContractDisplay';
 import {
@@ -255,28 +256,35 @@ export function FleetConciergeBooking() {
 
       setBookingId(booking.id);
       
-      // Auto-sign contract if template exists
-      if (contract) {
-        await enhancedContractService.saveSignedContract(
-          booking.id,
-          bookingData.signatureUrl,
-          {
-            client_name: bookingData.fullName,
-            car_make: selectedCarDetails?.make || '',
-            car_model: selectedCarDetails?.model || '',
-            pickup_date: bookingData.startDate,
-            dropoff_date: bookingData.endDate,
-            total_amount: bookingData.totalAmount,
-            booking_id: booking.id,
-            client_email: bookingData.email,
-            client_phone: bookingData.phone,
-            license_plate: selectedCarDetails?.license_plate || '',
-            daily_rate: selectedCarDetails?.daily_rate || 0,
-            security_deposit: selectedCarDetails?.security_deposit || 0,
-            id_number: bookingData.idNumber,
-            color: selectedCarDetails?.color || ''
-          }
-        ).catch(err => console.error('Failed to create contract:', err));
+      if (
+        contract &&
+        bookingData.signatureUrl &&
+        bookingData.signatureUrl !== 'signed_physically_in_person' &&
+        selectedCarDetails
+      ) {
+        try {
+          await generateAndSaveContract(booking.id, {
+            contract,
+            bookingData: {
+              fullName: bookingData.fullName,
+              email: bookingData.email,
+              phone: bookingData.phone,
+              idNumber: bookingData.idNumber,
+              startDate: bookingData.startDate,
+              endDate: bookingData.endDate,
+              totalAmount: bookingData.totalAmount,
+              signatureUrl: bookingData.signatureUrl,
+            },
+            car: selectedCarDetails,
+            signatureData: bookingData.signatureUrl,
+          });
+        } catch (contractErr: any) {
+          console.error('Failed to create contract:', contractErr);
+          toast.error(
+            contractErr?.message ||
+              'Booking created, but the signed contract PDF could not be saved. Regenerate it from the booking details page.'
+          );
+        }
       }
 
       if (bookingData.paymentMethod === 'stk_push') {

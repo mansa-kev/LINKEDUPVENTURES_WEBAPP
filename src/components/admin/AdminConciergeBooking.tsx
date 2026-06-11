@@ -5,6 +5,7 @@ import { reservationService } from '../../services/reservationService';
 import { paymentService } from '../../services/paymentService';
 import { bookingService } from '../../services/bookingService';
 import { enhancedContractService } from '../../services/enhancedContractService';
+import { generateAndSaveContract } from '../../services/contractPdfService';
 import { supabase } from '../../lib/supabase';
 import { DirectContractDisplay } from '../public/BookingFlow/DirectContractDisplay';
 import {
@@ -250,6 +251,35 @@ export function AdminConciergeBooking() {
       });
       
       setBookingId(result.id);
+
+      if (contract && bookingData.signatureUrl && bookingData.signatureUrl !== 'signed_physically_in_person') {
+        const carForContract = cars.find((c) => c.id === bookingData.carId);
+        if (carForContract) {
+          try {
+            await generateAndSaveContract(result.id, {
+              contract,
+              bookingData: {
+                fullName: bookingData.fullName,
+                email: bookingData.email,
+                phone: bookingData.phone,
+                idNumber: bookingData.idNumber,
+                startDate: bookingData.startDate,
+                endDate: bookingData.endDate,
+                totalAmount: bookingData.totalAmount,
+                signatureUrl: bookingData.signatureUrl,
+              },
+              car: carForContract,
+              signatureData: bookingData.signatureUrl,
+            });
+          } catch (contractErr: any) {
+            console.error('Failed to save concierge contract PDF:', contractErr);
+            toast.error(
+              contractErr?.message ||
+                'Booking created, but the signed contract PDF could not be saved. Regenerate it from the booking details page.'
+            );
+          }
+        }
+      }
       
       if (bookingData.paymentMethod === 'stk_push') {
         const pushResult = await paymentService.initiateSTKPush({

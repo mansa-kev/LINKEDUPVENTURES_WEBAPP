@@ -28,6 +28,7 @@ interface StkQueryResult {
   success: boolean;
   paid: boolean;
   failed: boolean;
+  pending?: boolean;
   status?: string;
   description?: string;
   error?: string;
@@ -94,27 +95,38 @@ export const paymentService = {
     paymentRequestId: string,
     bookingId: string,
     statusToken?: string,
-    intervalMs = 5000,
-    timeoutMs = 120000,
+    intervalMs = 3000,
+    timeoutMs = 180000,
+    initialDelayMs = 3000,
   ): Promise<'paid' | 'failed' | 'timeout'> {
     const start = Date.now();
     return new Promise((resolve) => {
       const check = async () => {
-        if (Date.now() - start > timeoutMs) {
+        const elapsed = Date.now() - start;
+        if (elapsed > timeoutMs) {
           resolve('timeout');
           return;
         }
-        if (paymentRequestId) {
-          const query = await this.querySTKStatus(paymentRequestId);
-          if (query.paid) { resolve('paid'); return; }
-          if (query.failed) { resolve('failed'); return; }
-        }
-        // Trigger on payment_status='paid' alone; don't require status='confirmed'
+
+        // Webhook/DB updates can confirm payment before NCBA query resolves.
         const status = await this.getPaymentStatus(bookingId, statusToken);
         if (status.paid) {
           resolve('paid');
           return;
         }
+
+        if (paymentRequestId && elapsed >= initialDelayMs) {
+          const query = await this.querySTKStatus(paymentRequestId);
+          if (query.paid) {
+            resolve('paid');
+            return;
+          }
+          if (query.failed && !query.pending) {
+            resolve('failed');
+            return;
+          }
+        }
+
         setTimeout(check, intervalMs);
       };
       check();

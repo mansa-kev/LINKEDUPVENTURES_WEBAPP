@@ -3,6 +3,7 @@ import { adminService } from '../../services/adminService';
 import { reservationService } from '../../services/reservationService';
 import { paymentService } from '../../services/paymentService';
 import { enhancedContractService } from '../../services/enhancedContractService';
+import { generateAndSaveContract } from '../../services/contractPdfService';
 import { DirectContractDisplay } from '../public/BookingFlow/DirectContractDisplay';
 import { supabase } from '../../lib/supabase';
 import {
@@ -276,6 +277,38 @@ export function DriverFieldBooking({ onBack }: DriverFieldBookingProps) {
       });
       
       setBookingId(result.id);
+
+      const carForContract = cars.find((c) => c.id === bookingData.carId);
+      if (
+        contract &&
+        carForContract &&
+        bookingData.signatureUrl &&
+        bookingData.signatureUrl !== 'signed_physically_in_person'
+      ) {
+        try {
+          await generateAndSaveContract(result.id, {
+            contract,
+            bookingData: {
+              fullName: bookingData.fullName,
+              email: bookingData.email,
+              phone: bookingData.phone,
+              idNumber: bookingData.idNumber,
+              startDate: bookingData.startDate,
+              endDate: bookingData.endDate,
+              totalAmount: bookingData.totalAmount,
+              signatureUrl: bookingData.signatureUrl,
+            },
+            car: carForContract,
+            signatureData: bookingData.signatureUrl,
+          });
+        } catch (contractErr: any) {
+          console.error('Failed to save field booking contract PDF:', contractErr);
+          toast.error(
+            contractErr?.message ||
+              'Booking created, but the signed contract PDF could not be saved. Regenerate it from the booking details page.'
+          );
+        }
+      }
       
       if (bookingData.paymentMethod === 'stk_push') {
         const pushResult = await paymentService.initiateSTKPush({

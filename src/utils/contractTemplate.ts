@@ -1,0 +1,165 @@
+export type ContractBookingData = Record<string, any>;
+export type ContractCar = Record<string, any>;
+
+const BLANK_SIGNATURE =
+  'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+
+export function formatContractDate(date: string | Date | null | undefined): string {
+  if (!date) return '';
+  const d = typeof date === 'string' ? new Date(date) : date;
+  if (Number.isNaN(d.getTime())) return String(date);
+  return d.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+export function getClientNameFromBooking(bookingData: ContractBookingData): string {
+  return (
+    bookingData?.fullName ||
+    bookingData?.full_name ||
+    bookingData?.metadata?.guest_info?.full_name ||
+    `${bookingData?.firstName || ''} ${bookingData?.lastName || ''}`.trim() ||
+    'the Client'
+  );
+}
+
+export function getTotalCostFromBooking(bookingData: ContractBookingData): number {
+  const totalCost =
+    bookingData?.totalCost ??
+    bookingData?.total_amount ??
+    bookingData?.totalAmount ??
+    bookingData?.amount ??
+    bookingData?.total ??
+    0;
+  return typeof totalCost === 'number' ? totalCost : parseFloat(String(totalCost)) || 0;
+}
+
+export function getMasterTemplateUrl(contract: any): string | null {
+  if (!contract) return null;
+  const url = contract.preview_url || contract.pdf_url || contract.contract_url || contract.template_url;
+  return url || null;
+}
+
+export function isHtmlContract(contract: any): boolean {
+  const url = getMasterTemplateUrl(contract);
+  return !!url && url.includes('.html');
+}
+
+export async function fetchCompanySettings(): Promise<Record<string, string>> {
+  const response = await fetch(
+    '/api/public-app-settings?keys=company_po_box,company_signature_url,contract_logo,site_logo,logo_url'
+  );
+  if (!response.ok) return {};
+
+  const data = await response.json();
+  const settings: Record<string, string> = {};
+  (data.settings || []).forEach((item: any) => {
+    settings[item.key] = item.logo_url || item.value || '';
+  });
+  return settings;
+}
+
+export function applyTemplateReplacements(
+  templateHtml: string,
+  bookingData: ContractBookingData,
+  car: ContractCar,
+  settings: Record<string, string>,
+  signatureData = ''
+): string {
+  const clientName = getClientNameFromBooking(bookingData);
+  const clientSignature = signatureData || bookingData?.signatureData || bookingData?.signatureUrl || '';
+  const companySig = settings.company_signature_url || BLANK_SIGNATURE;
+  const contractLogo =
+    settings.contract_logo || settings.site_logo || settings.logo_url || companySig;
+  const clientSigImg = `<img data-client-signature="1" src="${clientSignature || BLANK_SIGNATURE}" alt="Client Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
+  const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
+
+  let replaced = templateHtml;
+  replaced = replaced.replace(/\{\{clientName\}\}/g, clientName);
+  replaced = replaced.replace(/\{\{idNumber\}\}/g, bookingData?.idNumber || bookingData?.id_number || '_____________');
+  replaced = replaced.replace(/\{\{clientPhone\}\}/g, bookingData?.phone || bookingData?.phone_number || '_____________');
+  replaced = replaced.replace(/\{\{clientPoBox\}\}/g, bookingData?.poBox || bookingData?.po_box || '_____________');
+  replaced = replaced.replace(/\{\{carMake\}\}/g, car?.make || '');
+  replaced = replaced.replace(/\{\{carModel\}\}/g, car?.model || '');
+  replaced = replaced.replace(/\{\{licensePlate\}\}/g, car?.license_plate || '');
+  replaced = replaced.replace(/\{\{color\}\}/g, car?.color || '_____________');
+  replaced = replaced.replace(/\{\{startDate\}\}/g, formatContractDate(bookingData?.startDate || bookingData?.start_date));
+  replaced = replaced.replace(/\{\{endDate\}\}/g, formatContractDate(bookingData?.endDate || bookingData?.end_date));
+  replaced = replaced.replace(/\{\{totalAmount\}\}/g, getTotalCostFromBooking(bookingData).toLocaleString());
+  replaced = replaced.replace(/\{\{dailyRate\}\}/g, car?.daily_rate?.toLocaleString?.() || String(car?.daily_rate || ''));
+  replaced = replaced.replace(/\{\{companyPoBox\}\}/g, settings.company_po_box || '2345');
+  replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings.site_logo || companySig);
+  replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings.site_logo || companySig);
+  replaced = replaced.replace(
+    /(src|href)\s*=\s*"\s*\{\{\s*(companySignatureUrl|company_signature_url|companySignature|company_signature|ownerSignatureUrl|owner_signature_url|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}\s*"/gi,
+    `$1="${companySig}"`
+  );
+  replaced = replaced.replace(
+    /\{\{\s*(companySignatureUrl|company_signature_url|ownerSignatureUrl|owner_signature_url)\s*\}\}/g,
+    companySig
+  );
+  replaced = replaced.replace(
+    /\{\{\s*(companySignature|company_signature|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}/g,
+    companySigImg
+  );
+  replaced = replaced.replace(
+    /<img([^>]*?)src\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"([^>]*?)>/gi,
+    `<img$1data-client-signature="1" src="${clientSignature || BLANK_SIGNATURE}"$3>`
+  );
+  replaced = replaced.replace(
+    /(src|href)\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"/gi,
+    `$1="${clientSignature || BLANK_SIGNATURE}"`
+  );
+  replaced = replaced.replace(
+    /\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g,
+    clientSignature || BLANK_SIGNATURE
+  );
+  replaced = replaced.replace(
+    /\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g,
+    clientSigImg
+  );
+  replaced = replaced.replace(/\(as confirmed at the pickup\)/gi, '(as confirmed during pickup)');
+
+  return replaced;
+}
+
+export async function loadFilledContractHtml(
+  contract: any,
+  bookingData: ContractBookingData,
+  car: ContractCar,
+  signatureData = ''
+): Promise<string | null> {
+  if (!isHtmlContract(contract)) return null;
+
+  const templateUrl = getMasterTemplateUrl(contract);
+  if (!templateUrl) return null;
+
+  const [templateHtml, settings] = await Promise.all([
+    fetch(templateUrl).then((res) => {
+      if (!res.ok) throw new Error('Failed to load contract template');
+      return res.text();
+    }),
+    fetchCompanySettings(),
+  ]);
+
+  return applyTemplateReplacements(templateHtml, bookingData, car, settings, signatureData);
+}
+
+export function wrapContractHtmlForPdf(html: string): string {
+  const overrideStyles = `
+    <style>
+      html, body { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 24px !important; box-sizing: border-box !important; background: #ffffff !important; color: #111 !important; font-family: Arial, Helvetica, sans-serif !important; }
+      img { max-width: 100% !important; height: auto !important; }
+      table { width: 100% !important; }
+      .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 24px !important; width: 100% !important; }
+      .signature-box { flex: 1 1 0 !important; min-width: 0 !important; }
+    </style>
+  `;
+
+  if (/<\/body>/i.test(html)) {
+    return html.replace(/<\/body>/i, `${overrideStyles}</body>`);
+  }
+  return `${html}${overrideStyles}`;
+}

@@ -8,6 +8,7 @@ import { bookingService } from '../../services/bookingService';
 import { fleetService } from '../../services/fleetService';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
+import { paymentService } from '../../services/paymentService';
 import { toast } from 'sonner';
 
 export function BookingConfirmation() {
@@ -125,6 +126,41 @@ export function BookingConfirmation() {
       supabase.removeChannel(channel);
     };
   }, [bookingId]);
+
+  // Poll NCBA while payment is still pending (covers closed-tab / missed realtime cases)
+  useEffect(() => {
+    if (!bookingId || !booking || isCancelled) return;
+    const stillPending =
+      booking.status === 'pending_payment_verification' ||
+      booking.payment_status === 'pending' ||
+      booking.status === 'pending';
+    if (!stillPending) return;
+
+    const statusToken = booking.metadata?.client_status_token;
+    let active = true;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const poll = async () => {
+      if (!active) return;
+      const status = await paymentService.getPaymentStatus(bookingId, statusToken);
+      if (!active) return;
+
+      if (status.paid) {
+        const refreshed = await bookingService.getBookingById(bookingId);
+        if (refreshed && active) setBooking(refreshed);
+        toast.success('Payment confirmed! Your booking is all set.');
+        return;
+      }
+
+      timeoutId = setTimeout(poll, 5000);
+    };
+
+    timeoutId = setTimeout(poll, 15000);
+    return () => {
+      active = false;
+      clearTimeout(timeoutId);
+    };
+  }, [bookingId, booking?.status, booking?.payment_status, booking?.metadata?.client_status_token, isCancelled]);
 
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [showContract, setShowContract] = useState(false);

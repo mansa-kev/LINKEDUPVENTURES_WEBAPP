@@ -131,14 +131,12 @@ export const clientService = {
           .eq('user_id', clientId)
           .order('created_at', { ascending: false }),
         supabase
-          .from('signed_contracts')
+          .from('e_contracts')
           .select(`
             id,
             booking_id,
-            contract_url,
-            signature_data,
+            pdf_url,
             signed_at,
-            agreement_status,
             bookings!inner(
               id,
               start_date,
@@ -169,8 +167,8 @@ export const clientService = {
         car: contract.bookings?.cars ? `${contract.bookings.cars.make} ${contract.bookings.cars.model}` : 'Unknown Car',
         start_date: contract.bookings?.start_date || null,
         end_date: contract.bookings?.end_date || null,
-        contract_url: contract.contract_url || null,
-        signature_url: contract.signature_data || null,
+        contract_url: contract.pdf_url || null,
+        signature_url: contract.bookings?.metadata?.signature_data || null,
         signed_at: contract.signed_at || null
       }));
 

@@ -289,23 +289,12 @@ export function AdminReservations() {
 
   const handleDeleteReservation = async (reservation: Reservation) => {
     try {
-      const { error } = await supabase.from('car_reservations').delete().eq('id', reservation.id);
-      if (error) throw error;
-
-      await supabase.from('cars').update({ status: 'available', updated_at: new Date().toISOString() }).eq('id', reservation.car_id);
-
-      await supabase.from('notifications').insert({
-        user_id: reservation.client_id,
-        type: 'reservation_deleted',
-        message: `Your reservation #${reservation.id} has been deleted. The car is now available for booking.`,
-        created_at: new Date().toISOString()
-      });
-
+      await reservationService.deleteReservation(reservation.id);
       toast.success('Reservation deleted successfully and car is now available!');
       fetchReservations();
       setDeleteConfirm(null);
-    } catch (error) {
-      toast.error('Failed to delete reservation');
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to delete reservation');
     }
   };
 

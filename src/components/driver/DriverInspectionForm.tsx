@@ -14,7 +14,7 @@ import {
   Info
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { compressImage } from '../../utils/imageCompression';
+import { uploadInspectionPhoto } from '../../services/inspectionUploadService';
 
 interface DriverInspectionFormProps {
   booking: any;
@@ -148,23 +148,8 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
 
     setUploading(target);
     try {
-      const compressedFile = await compressImage(file, 1200, 1200, 0.7);
-      
-      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
-      const fileName = `${booking.id}_${target}_${Date.now()}.${fileExt}`;
-      const filePath = `${target}/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('booking_inspections')
-        .upload(filePath, compressedFile);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from('booking_inspections')
-        .getPublicUrl(filePath);
-
-      const url = data.publicUrl;
+      const subfolder = target === 'fuel' ? 'fuel' : target;
+      const url = await uploadInspectionPhoto(booking.id, file, subfolder);
 
       if (target === 'fuel') {
         setPhotoFuelMileage(url);
@@ -179,6 +164,7 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
       toast.error('Upload failed: ' + (err.message || err));
     } finally {
       setUploading(null);
+      e.target.value = '';
     }
   };
 
@@ -219,19 +205,7 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
         const response = await fetch(signatureUrl);
         const blob = await response.blob();
         const signatureFile = new File([blob], 'signature.png', { type: 'image/png' });
-        const filePath = `signatures/${booking.id}_sig_${Date.now()}.png`;
-        
-        const { error: signatureUploadError } = await supabase.storage
-          .from('booking_inspections')
-          .upload(filePath, signatureFile);
-
-        if (signatureUploadError) throw signatureUploadError;
-
-        const { data } = supabase.storage
-          .from('booking_inspections')
-          .getPublicUrl(filePath);
-
-        clientSignatureStorageUrl = data.publicUrl;
+        clientSignatureStorageUrl = await uploadInspectionPhoto(booking.id, signatureFile, 'photos');
       }
 
       // Get authenticated user ID
@@ -256,7 +230,12 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
           conducted_by: user?.id || null
         });
 
-      if (inspectionError) throw inspectionError;
+      if (inspectionError) {
+        if (inspectionError.code === '23505') {
+          throw new Error('An inspection of this type already exists for this booking.');
+        }
+        throw inspectionError;
+      }
 
       // 3. Update booking status
       const nextBookingStatus = type === 'pre_handover' ? 'on_trip' : 'completed';

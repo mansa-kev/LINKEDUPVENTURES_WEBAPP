@@ -6,10 +6,13 @@ import {
   ChevronLeft, Loader2, CreditCard, FileText, CheckCircle2, 
   XCircle, Car, MapPin, Flag, AlertTriangle, ShieldCheck, 
   Calendar, Clock, User, ArrowRight, Save, Image as ImageIcon, Send, X,
-  Trash2, Mail, Phone, ExternalLink, MessageSquare, Ban, RotateCcw, Sparkles
+  Trash2, Mail, Phone, ExternalLink, MessageSquare, Ban, RotateCcw, Sparkles, Download
 } from 'lucide-react';
 import { logger } from '../../utils/logger';
 import { adminService } from '../../services/adminService';
+import { enhancedContractService } from '../../services/enhancedContractService';
+import { buildBookingSummaryForContract, generateAndSaveContract } from '../../services/contractPdfService';
+import { sendAdminEmail } from '../../services/adminEmailService';
 import { AdminBookingLifecycle } from './AdminBookingLifecycle';
 type ModalType = 'pickup' | 'return' | 'extend' | 'flag' | null;
 type CommunicateMode = 'approval' | 'payment_rejected' | 'docs_rejected';
@@ -48,6 +51,8 @@ export function AdminBookingCommandCenter() {
   const [additionalNotes, setAdditionalNotes] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [regeneratingContract, setRegeneratingContract] = useState(false);
+  const [isSyncingPayment, setIsSyncingPayment] = useState(false);
   const [isApproving, setIsApproving] = useState(false);
   const [docRejectionReason, setDocRejectionReason] = useState('');
   const [showDocRejection, setShowDocRejection] = useState(false);
@@ -96,7 +101,7 @@ export function AdminBookingCommandCenter() {
           driver:user_profiles!bookings_driver_id_fkey (*),
           booking_inspections (*),
           booking_extensions (*),
-          signed_contracts (*)
+          e_contracts (*)
         `)
         .eq('id', id)
         .single();
@@ -146,6 +151,68 @@ export function AdminBookingCommandCenter() {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     await fetchBooking(true);
+  };
+
+  const handleDownloadContract = async () => {
+    if (!booking) return;
+    const url = booking.e_contracts?.[0]?.pdf_url || booking.metadata?.contract_url;
+    if (!url) return;
+    const ref = booking.id.slice(0, 8).toUpperCase();
+
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error('Download failed');
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `contract-${ref}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  const handleRegenerateContract = async () => {
+    if (!booking?.cars) {
+      toast.error('Vehicle details are required to generate the contract.');
+      return;
+    }
+
+    const meta = booking.metadata || {};
+    const docs = meta.documents || {};
+    const signature = docs.signatureUrl || meta.signature || meta.signature_url;
+
+    if (!signature || signature === 'signed_physically_in_person') {
+      toast.error('A stored digital client signature is required to regenerate the contract PDF.');
+      return;
+    }
+
+    setRegeneratingContract(true);
+    try {
+      const masterContract = await enhancedContractService.getMasterContract();
+      if (!masterContract) {
+        throw new Error('No active HTML contract template found. Upload one in Contract Manager.');
+      }
+
+      await generateAndSaveContract(booking.id, {
+        contract: masterContract,
+        bookingData: buildBookingSummaryForContract(booking, booking.cars),
+        car: booking.cars,
+        signatureData: signature,
+      });
+
+      toast.success('Signed contract PDF generated successfully.');
+      await fetchBooking(true);
+    } catch (err: any) {
+      logger.error('Contract regeneration failed:', err);
+      toast.error(err?.message || 'Failed to generate contract PDF');
+    } finally {
+      setRegeneratingContract(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -217,7 +284,6 @@ export function AdminBookingCommandCenter() {
         status: 'cancelled',
         sub_status: refund ? 'refund_pending' : 'cancelled',
         admin_notes: `[CANCELLED by admin] ${reason}`,
-        updated_at: new Date().toISOString(),
       };
       const { error } = await supabase.from('bookings').update(updates).eq('id', booking.id);
       if (error) throw error;
@@ -275,11 +341,13 @@ export function AdminBookingCommandCenter() {
   const licenseNum  = booking.client?.license_number || guestInfo.license_number || guestInfo.license || 'N/A';
   const transactionCode = booking.transaction_code || null;
   const isPaid      = booking.payment_status === 'paid';
-  const docsOk      = booking.document_status === 'approved';
+  const docsOk =
+    booking.document_status === 'approved' ||
+    meta.documentsVerifiedPhysically === true;
   
-  const signedContract = booking.signed_contracts?.[0];
-  const contractUrl = signedContract?.contract_url || meta.contract_url;
-  const signatureData = signedContract?.signature_data || docs.signatureUrl || meta.signature || meta.signature_url;
+  const eContract = booking.e_contracts?.[0];
+  const contractUrl = eContract?.pdf_url || meta.contract_url;
+  const signatureData = docs.signatureUrl || meta.signature || meta.signature_url;
 
   const bookingRef  = booking.id.slice(0, 8).toUpperCase();
   const carLine     = `${booking.cars?.make || ''} ${booking.cars?.model || ''}`.trim() || 'N/A';
@@ -317,6 +385,26 @@ export function AdminBookingCommandCenter() {
     setCommunicateMode(mode);
     setAdminMessage(buildMessage(mode));
     setActiveTab('communications');
+  };
+
+  const handleSyncNcbaPayment = async () => {
+    setIsSyncingPayment(true);
+    try {
+      const result = await adminService.syncPaymentByBookingId(booking.id);
+      if (result.paid) {
+        toast.success('NCBA payment confirmed — booking updated');
+        fetchBooking(true);
+      } else if (result.failed) {
+        toast.error(result.description || 'NCBA reports payment was not completed');
+        fetchBooking(true);
+      } else {
+        toast.message(result.description || 'Payment still pending at NCBA');
+      }
+    } catch (e: any) {
+      toast.error(e.message || 'Failed to sync NCBA payment');
+    } finally {
+      setIsSyncingPayment(false);
+    }
   };
 
   const handleVerifyPayment = async (status: 'verified' | 'rejected') => {
@@ -361,18 +449,61 @@ export function AdminBookingCommandCenter() {
     }
   };
 
+  const sendClientEmail = async (subject: string, fullMsg: string) => {
+    if (clientEmail === 'N/A') {
+      return { success: false, error: 'No client email on record' };
+    }
+    const htmlBody = `<div style="font-family:sans-serif;line-height:1.6;white-space:pre-wrap">${fullMsg.replace(/\n/g, '<br>')}</div>`;
+    return sendAdminEmail({ to: clientEmail, subject, html: htmlBody, text: fullMsg });
+  };
+
   const handleApproveDocuments = async () => {
     setIsApproving(true);
+    const approvalMsg = buildMessage('approval');
+
     try {
-      await supabase.from('bookings').update({
+      const { data, error } = await supabase.from('bookings').update({
         document_status: 'approved',
-        updated_at: new Date().toISOString(),
-      }).eq('id', booking.id);
-      toast.success('Documents approved ✓');
+        status: 'confirmed',
+        payment_status: 'paid',
+      }).eq('id', booking.id).select('document_status, status, payment_status').single();
+
+      if (error) throw error;
+      if (!data || data.document_status !== 'approved') {
+        throw new Error('Document approval did not persist. Check admin permissions.');
+      }
+
+      setBooking((prev: any) =>
+        prev ? { ...prev, document_status: 'approved', status: 'confirmed', payment_status: 'paid' } : prev
+      );
+
+      const emailResult = await sendClientEmail('Booking Confirmed — LinkedUp Cars', approvalMsg);
+      if (emailResult.success) {
+        toast.success('Documents approved — confirmation email sent ✓');
+      } else {
+        toast.warning(`Documents approved, but email failed: ${emailResult.error}`);
+      }
+
+      if (booking.client_id) {
+        try {
+          await supabase.from('notifications').insert({
+            user_id: booking.client_id,
+            type: 'booking_confirmed',
+            title: 'Booking Confirmed 🎉',
+            content: approvalMsg.slice(0, 300),
+            is_read: false,
+            link: `/booking-confirmation/${booking.id}`,
+          });
+        } catch (e) {
+          logger.warn('Notification error:', e);
+        }
+      }
+
       fetchBooking(true);
       enterCommunicateStep('approval');
     } catch (e: any) {
-      toast.error('Failed to approve documents');
+      logger.error('Approve documents failed:', e);
+      toast.error(e?.message || 'Failed to approve documents');
     } finally {
       setIsApproving(false);
     }
@@ -385,7 +516,6 @@ export function AdminBookingCommandCenter() {
       await supabase.from('bookings').update({
         document_status: 'resubmission_required',
         admin_notes: docRejectionReason,
-        updated_at: new Date().toISOString(),
       }).eq('id', booking.id);
       setShowDocRejection(false);
       toast.info('Documents rejected — composing client notification');
@@ -408,11 +538,9 @@ export function AdminBookingCommandCenter() {
       : 'Action Required: Resubmit Documents — LinkedUp Cars';
 
     try {
-      if (clientEmail !== 'N/A') {
-        const htmlBody = `<div style="font-family:sans-serif;line-height:1.6;white-space:pre-wrap">${fullMsg.replace(/\n/g, '<br>')}</div>`;
-        await supabase.functions.invoke('send-email', {
-          body: { to: clientEmail, subject, html: htmlBody, text: fullMsg },
-        }).catch(e => logger.warn('Email send error:', e));
+      const emailResult = await sendClientEmail(subject, fullMsg);
+      if (!emailResult.success) {
+        throw new Error(emailResult.error || 'Email could not be sent');
       }
 
       if (booking.client_id) {
@@ -428,16 +556,18 @@ export function AdminBookingCommandCenter() {
         } catch (e) { logger.warn('Notification error:', e); }
       }
 
-      if (communicateMode === 'approval') {
-        await supabase.from('bookings').update({
+      if (communicateMode === 'approval' && booking.status !== 'confirmed') {
+        const { error: confirmError } = await supabase.from('bookings').update({
           status: 'confirmed',
           payment_status: 'paid',
-          updated_at: new Date().toISOString(),
+          document_status: 'approved',
         }).eq('id', booking.id);
+        if (confirmError) throw confirmError;
+        setBooking((prev: any) => prev ? { ...prev, status: 'confirmed', payment_status: 'paid', document_status: 'approved' } : prev);
         fetchBooking(true);
       }
 
-      toast.success('Message sent successfully!');
+      toast.success('Email sent successfully!');
       setAdminMessage('');
       setAdditionalNotes('');
     } catch (e: any) {
@@ -452,18 +582,7 @@ export function AdminBookingCommandCenter() {
     const text = encodeURIComponent(adminMessage.trim() + (additionalNotes.trim() ? `\n\nAdmin Notes:\n${additionalNotes.trim()}` : ''));
     window.open(`https://wa.me/${waPhone}?text=${text}`, '_blank', 'noopener,noreferrer');
 
-    if (communicateMode === 'approval') {
-      try {
-        await supabase.from('bookings').update({
-          status: 'confirmed',
-          payment_status: 'paid',
-          updated_at: new Date().toISOString(),
-        }).eq('id', booking.id);
-        fetchBooking(true);
-      } catch (e: any) {
-        logger.warn('WhatsApp confirm DB update failed:', e);
-      }
-    }
+    toast.message('WhatsApp opened — send the message manually from your device.');
   };
 
   // --- Reusable Layout Components ---
@@ -878,9 +997,17 @@ export function AdminBookingCommandCenter() {
                   <div className="flex items-start gap-3">
                     <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={16} />
                     <p className="text-xs text-amber-600 font-bold leading-relaxed">
-                      Payment must be confirmed by NCBA STK Push. Do not manually approve unless you have verified via portal.
+                      Payment must be confirmed by NCBA STK Push. Sync with NCBA first, then force-verify only if needed.
                     </p>
                   </div>
+                  <button
+                    onClick={handleSyncNcbaPayment}
+                    disabled={isSyncingPayment || !transactionCode}
+                    className="w-full py-2.5 bg-primary text-primary-foreground rounded-lg text-xs font-black hover:bg-primary/90 flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    {isSyncingPayment ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                    Sync NCBA Status
+                  </button>
                   <div className="flex gap-2">
                     <button onClick={() => handleVerifyPayment('verified')} disabled={isVerifying} className="flex-1 py-2.5 bg-green-600 text-white rounded-lg text-xs font-black hover:bg-green-700 flex items-center justify-center gap-2">
                       {isVerifying ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Force Verify
@@ -989,26 +1116,81 @@ export function AdminBookingCommandCenter() {
                 </div>
               </SectionCard>
 
-              {(contractUrl || signatureData) && (
-                <SectionCard title="Contract & Signature" icon={<FileText size={16} />}>
-                  <div className="flex flex-col gap-6">
-                    {contractUrl && (
-                      <a href={contractUrl} target="_blank" rel="noopener noreferrer"
-                        className="flex items-center justify-center gap-2 px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl text-sm font-black text-primary hover:bg-primary/20 transition-colors w-full">
-                        <ExternalLink size={16} /> View Final Signed Contract (PDF)
-                      </a>
-                    )}
-                    {signatureData && (
-                      <div>
-                        <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Digital Signature Specimen</p>
-                        <button onClick={() => setLightboxUrl(signatureData)} className="cursor-zoom-in w-full">
-                          <img src={signatureData} alt="Signature" className="h-24 w-full bg-white rounded-xl p-2 border border-border hover:border-primary transition-colors object-contain" />
+              <SectionCard title="Contract & Signature" icon={<FileText size={16} />}>
+                <div className="flex flex-col gap-6">
+                  {contractUrl ? (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={contractUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-4 py-3 bg-primary/10 border border-primary/20 rounded-xl text-sm font-black text-primary hover:bg-primary/20 transition-colors"
+                        >
+                          <ExternalLink size={16} /> Open PDF
+                        </a>
+                        <button
+                          type="button"
+                          onClick={handleDownloadContract}
+                          className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-4 py-3 bg-muted/40 border border-border rounded-xl text-sm font-black text-foreground hover:bg-muted transition-colors"
+                        >
+                          <Download size={16} /> Download PDF
                         </button>
                       </div>
-                    )}
-                  </div>
-                </SectionCard>
-              )}
+                      <div className="rounded-xl border border-border overflow-hidden bg-white">
+                        <iframe
+                          title="Signed rental contract"
+                          src={contractUrl}
+                          className="w-full bg-white"
+                          style={{ height: '520px', border: 'none' }}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-border bg-muted/20 px-4 py-6 text-center">
+                      <FileText size={28} className="mx-auto mb-2 text-muted-foreground opacity-60" />
+                      <p className="text-sm font-bold text-foreground">No signed contract PDF on file</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {signatureData
+                          ? 'Generate the final PDF from the stored client signature and active contract template.'
+                          : 'Complete the booking contract step with a client signature to enable PDF generation.'}
+                      </p>
+                      {signatureData && signatureData !== 'signed_physically_in_person' && (
+                        <button
+                          type="button"
+                          onClick={handleRegenerateContract}
+                          disabled={regeneratingContract}
+                          className="mt-4 inline-flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-black disabled:opacity-50"
+                        >
+                          {regeneratingContract ? <Loader2 size={16} className="animate-spin" /> : <RotateCcw size={16} />}
+                          {regeneratingContract ? 'Generating…' : 'Generate Contract PDF'}
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {signatureData && signatureData !== 'signed_physically_in_person' && (
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground mb-2">Digital Signature Specimen</p>
+                      <button type="button" onClick={() => setLightboxUrl(signatureData)} className="cursor-zoom-in w-full">
+                        <img src={signatureData} alt="Signature" className="h-24 w-full bg-white rounded-xl p-2 border border-border hover:border-primary transition-colors object-contain" />
+                      </button>
+                    </div>
+                  )}
+
+                  {contractUrl && signatureData && signatureData !== 'signed_physically_in_person' && (
+                    <button
+                      type="button"
+                      onClick={handleRegenerateContract}
+                      disabled={regeneratingContract}
+                      className="inline-flex items-center justify-center gap-2 px-4 py-2.5 border border-border rounded-xl text-xs font-black text-muted-foreground hover:bg-muted/40 disabled:opacity-50"
+                    >
+                      {regeneratingContract ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+                      Regenerate PDF from template
+                    </button>
+                  )}
+                </div>
+              </SectionCard>
             </div>
           </div>
         )}
@@ -1100,7 +1282,7 @@ export function AdminBookingCommandCenter() {
                     className="flex-[2] flex items-center justify-center gap-2 px-4 py-3 bg-primary text-primary-foreground rounded-xl text-sm font-black hover:bg-primary/90 transition-colors disabled:opacity-50"
                   >
                     {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-                    {communicateMode === 'approval' ? 'Send & Confirm Booking' : 'Send Message'}
+                    {communicateMode === 'approval' ? 'Resend Confirmation Email' : 'Send Message'}
                   </button>
                 </div>
               </div>

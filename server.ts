@@ -5,6 +5,14 @@ import { fileURLToPath } from "url";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { ncbaService } from "./src/services/ncbaService.js";
+import { createInspectionUploadHandler } from "./src/server/inspectionUploadHandler.js";
+import { createContractSaveHandler } from "./src/server/contractSaveHandler.js";
+import { createDeleteBookingHandler } from "./src/server/deleteBookingHandler.js";
+import { createBookingDocumentUploadHandler } from "./src/server/bookingDocumentUploadHandler.js";
+import { createPrepareContinuationHandler } from "./src/server/reservationContinuationHandler.js";
+import { createEmailSendHandler } from "./src/server/emailSendHandler.js";
+import { createInspectionInsertHandler } from "./src/server/inspectionInsertHandler.js";
+import { createDeleteReservationHandler } from "./src/server/deleteReservationHandler.js";
 
 dotenv.config({ path: '.env.local' });
 
@@ -31,9 +39,11 @@ const supabase: any = new Proxy({}, {
   get: (_t, prop) => getSupabase()[prop],
 });
 
+const NCBA_DEFAULT_ACCOUNT_NO = '1006230208';
+
 const getNcbaAccountNo = () => {
-  const accountNo = (process.env.NCBA_ACCOUNT_NO || '').replace(/\s+/g, '').trim();
-  return /^\d+$/.test(accountNo) ? accountNo : '';
+  const accountNo = (process.env.NCBA_ACCOUNT_NO || NCBA_DEFAULT_ACCOUNT_NO).replace(/\s+/g, '').trim();
+  return /^\d+$/.test(accountNo) ? accountNo : NCBA_DEFAULT_ACCOUNT_NO;
 };
 
 if (!supabaseUrl || !supabaseKey) {
@@ -80,6 +90,43 @@ async function startServer() {
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
     next();
   });
+
+  // Inspection photo upload needs a larger body limit (base64 images)
+  app.post(
+    '/api/inspections/upload',
+    express.json({ limit: '12mb' }),
+    createInspectionUploadHandler(supabase, Boolean(supabaseServiceRoleKey))
+  );
+
+  app.post(
+    '/api/booking-documents/upload',
+    express.json({ limit: '14mb' }),
+    createBookingDocumentUploadHandler(supabase)
+  );
+
+  app.post(
+    '/api/contracts/save-signed',
+    express.json({ limit: '16mb' }),
+    createContractSaveHandler(supabase, Boolean(supabaseServiceRoleKey))
+  );
+
+  app.delete(
+    '/api/bookings/:bookingId',
+    createDeleteBookingHandler(supabase, Boolean(supabaseServiceRoleKey))
+  );
+
+  app.post('/api/email/send', express.json({ limit: '1mb' }), createEmailSendHandler(supabase));
+
+  app.post(
+    '/api/bookings/:bookingId/inspections',
+    express.json({ limit: '2mb' }),
+    createInspectionInsertHandler(supabase)
+  );
+
+  app.delete(
+    '/api/reservations/:reservationId',
+    createDeleteReservationHandler(supabase)
+  );
 
   // Parse JSON bodies for API routes (must come before Vite middleware)
   app.use('/api', express.json());
@@ -906,6 +953,7 @@ async function startServer() {
         dropoff_location: dropoffLocation || pickupLocation || location,
         total_amount: total,
         platform_commission: platformCommission,
+        document_status: bookingData.documentsVerifiedPhysically ? 'approved' : 'pending',
         status: 'pending_payment_verification',
         payment_status: 'pending',
         payment_method: paymentMethod || 'ncba_stk',
@@ -929,6 +977,7 @@ async function startServer() {
             id_number: bookingData.idNumber || null,
           },
           signature_url: bookingData.signatureUrl,
+          documentsVerifiedPhysically: !!bookingData.documentsVerifiedPhysically,
           documents: bookingData.documents ?? {
             facePhotoUrl: bookingData.facePhotoUrl || null,
             licenseFrontUrl: bookingData.licenseFrontUrl || null,
@@ -1141,7 +1190,7 @@ async function startServer() {
       }
 
       if (paymentRequest.status === 'success') {
-        return res.json({ success: true, paid: true, failed: false, status: 'SUCCESS', description: 'Already confirmed' });
+        return res.json({ success: true, paid: true, failed: false, pending: false, status: 'SUCCESS', description: 'Already confirmed' });
       }
 
       const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
@@ -1151,6 +1200,7 @@ async function startServer() {
         success: result.success,
         paid: result.paid,
         failed: result.failed,
+        pending: result.pending,
         status: result.status,
         description: result.description,
         error: result.error,
@@ -1195,7 +1245,7 @@ async function startServer() {
         return res.status(403).json({ success: false, error: 'Forbidden' });
       }
 
-      const { data: paymentRequest } = await supabase
+      let { data: paymentRequest } = await supabase
         .from('payment_requests')
         .select('*')
         .eq('booking_id', bookingId)
@@ -1203,17 +1253,93 @@ async function startServer() {
         .limit(1)
         .maybeSingle();
 
+      let currentBooking = booking;
+      if (
+        currentBooking.payment_status !== 'paid' &&
+        paymentRequest?.provider_transaction_id &&
+        paymentRequest.status !== 'success'
+      ) {
+        const ageMs = Date.now() - new Date(paymentRequest.created_at).getTime();
+        if (ageMs >= 15000) {
+          const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
+          await finalizeNcbaPayment(paymentRequest, result);
+          const { data: refreshedBooking } = await supabase
+            .from('bookings')
+            .select('id, client_id, status, payment_status, payment_method, payment_provider, payment_reference, transaction_code, metadata')
+            .eq('id', bookingId)
+            .single();
+          const { data: refreshedPaymentRequest } = await supabase
+            .from('payment_requests')
+            .select('*')
+            .eq('booking_id', bookingId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (refreshedBooking) currentBooking = refreshedBooking;
+          if (refreshedPaymentRequest) paymentRequest = refreshedPaymentRequest;
+        }
+      }
+
       return res.json({
         success: true,
-        bookingId: booking.id,
-        status: booking.status,
-        paymentStatus: booking.payment_status,
-        paid: booking.payment_status === 'paid',
-        confirmed: booking.status === 'confirmed',
+        bookingId: currentBooking.id,
+        status: currentBooking.status,
+        paymentStatus: currentBooking.payment_status,
+        paid: currentBooking.payment_status === 'paid',
+        confirmed: currentBooking.status === 'confirmed',
         paymentRequest,
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/api/ncba/sync-booking/:bookingId', async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+
+      const { data: paymentRequest, error: paymentError } = await supabase
+        .from('payment_requests')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (paymentError || !paymentRequest) {
+        return res.status(404).json({ success: false, error: 'No payment request found for this booking' });
+      }
+
+      if (!paymentRequest.provider_transaction_id) {
+        return res.status(400).json({ success: false, error: 'Payment request has no NCBA TransactionID' });
+      }
+
+      if (paymentRequest.status === 'success') {
+        return res.json({
+          success: true,
+          paid: true,
+          failed: false,
+          pending: false,
+          status: 'SUCCESS',
+          description: 'Already confirmed',
+        });
+      }
+
+      const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
+      await finalizeNcbaPayment(paymentRequest, result);
+
+      return res.json({
+        success: result.success,
+        paid: result.paid,
+        failed: result.failed,
+        pending: result.pending,
+        status: result.status,
+        description: result.description,
+        error: result.error,
+      });
+    } catch (error: any) {
+      console.error('[API] NCBA sync-booking error:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
     }
   });
 
@@ -1403,7 +1529,7 @@ async function startServer() {
       }
 
       if (paymentRequest.status === 'success') {
-        return res.json({ success: true, paid: true, failed: false, status: 'SUCCESS', description: 'Already confirmed' });
+        return res.json({ success: true, paid: true, failed: false, pending: false, status: 'SUCCESS', description: 'Already confirmed' });
       }
 
       const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
@@ -1413,6 +1539,7 @@ async function startServer() {
         success: result.success,
         paid: result.paid,
         failed: result.failed,
+        pending: result.pending,
         status: result.status,
         description: result.description,
         error: result.error,
@@ -1460,6 +1587,11 @@ async function startServer() {
       return res.status(500).json({ success: false, error: error.message });
     }
   });
+
+  app.post(
+    '/api/reservations/:reservationId/prepare-continuation',
+    createPrepareContinuationHandler(supabase)
+  );
 
   app.get('/api/reservations/continuation/:token', async (req, res) => {
     try {
@@ -1576,8 +1708,45 @@ async function startServer() {
     });
   }
 
+  const syncPendingNcbaPayments = async () => {
+    try {
+      const cutoff = new Date(Date.now() - 15000).toISOString();
+      const { data: rows, error } = await supabase
+        .from('payment_requests')
+        .select('*')
+        .in('status', ['pending', 'failed', 'initiated'])
+        .not('provider_transaction_id', 'is', null)
+        .lt('created_at', cutoff)
+        .order('updated_at', { ascending: true })
+        .limit(25);
+
+      if (error || !rows?.length) return;
+
+      for (const paymentRequest of rows) {
+        const { data: booking } = await supabase
+          .from('bookings')
+          .select('payment_status')
+          .eq('id', paymentRequest.booking_id)
+          .maybeSingle();
+
+        if (booking?.payment_status === 'paid') continue;
+
+        const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
+        await finalizeNcbaPayment(paymentRequest, result);
+      }
+    } catch (err) {
+      console.error('[NCBA] Background payment sync error:', err);
+    }
+  };
+
+  const syncIntervalMs = Number(process.env.NCBA_SYNC_INTERVAL_MS || 120000);
+  setInterval(() => {
+    syncPendingNcbaPayments();
+  }, syncIntervalMs);
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    syncPendingNcbaPayments();
   });
 }
 

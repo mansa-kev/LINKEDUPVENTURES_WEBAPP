@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import {
+  formatContractDate,
+  getClientNameFromBooking,
+  getTotalCostFromBooking,
+  isHtmlContract,
+  loadFilledContractHtml,
+} from '../../../utils/contractTemplate';
 
 interface DirectContractDisplayProps {
   contract: any;
@@ -20,106 +27,24 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
     );
   }
 
-  const templateUrl = contract.preview_url || contract.pdf_url || contract.contract_url || contract.template_url;
-  const isHtmlTemplate = !!templateUrl && templateUrl.includes('.html');
-
-  // Format the date professionally
-  const formatDate = (date: string) => {
-    if (!date) return '';
-    const d = new Date(date);
-    return d.toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
-    });
-  };
-
-  const getClientName = () => {
-    // The data comes from Step2 as fullName field
-    const fullName = bookingData?.fullName || 
-                     bookingData?.full_name || 
-                     `${bookingData?.firstName || ''} ${bookingData?.lastName || ''}`.trim() ||
-                     'the Client';
-    
-    return fullName;
-  };
-
-  const getTotalCost = () => {
-    // Try multiple possible total cost fields
-    const totalCost = bookingData?.totalCost || 
-                     bookingData?.total_amount || 
-                     bookingData?.totalAmount || 
-                     bookingData?.amount ||
-                     bookingData?.total || 
-                     0;
-    return typeof totalCost === 'number' ? totalCost : parseFloat(totalCost) || 0;
-  };
+  const isHtmlTemplate = isHtmlContract(contract);
+  const getClientName = () => getClientNameFromBooking(bookingData);
+  const getTotalCost = () => getTotalCostFromBooking(bookingData);
+  const formatDate = formatContractDate;
 
   const [htmlTemplate, setHtmlTemplate] = useState<string | null>(null);
   const [loadingHtml, setLoadingHtml] = useState(false);
 
   useEffect(() => {
-    if (isHtmlTemplate && templateUrl) {
-      setLoadingHtml(true);
-      
-      Promise.all([
-        fetch(templateUrl).then(res => res.text()),
-        fetch('/api/public-app-settings?keys=company_po_box,company_signature_url,contract_logo,site_logo,logo_url')
-          .then(res => res.ok ? res.json() : { settings: [] })
-          .then(data => data.settings || [])
-      ])
-      .then(([text, settingsData]) => {
-        const settings: Record<string, any> = {};
-        if (settingsData) {
-          settingsData.forEach((item: any) => {
-            // Prefer logo_url for image settings (uploaded files) and fall back to value
-            settings[item.key] = item.logo_url || item.value || '';
-          });
-        }
-        
-        let replaced = text;
-        replaced = replaced.replace(/\{\{clientName\}\}/g, getClientName());
-        replaced = replaced.replace(/\{\{idNumber\}\}/g, bookingData?.idNumber || '_____________');
-        replaced = replaced.replace(/\{\{clientPhone\}\}/g, bookingData?.phone || '_____________');
-        replaced = replaced.replace(/\{\{clientPoBox\}\}/g, bookingData?.poBox || '_____________');
-        replaced = replaced.replace(/\{\{carMake\}\}/g, car?.make || '');
-        replaced = replaced.replace(/\{\{carModel\}\}/g, car?.model || '');
-        replaced = replaced.replace(/\{\{licensePlate\}\}/g, car?.license_plate || '');
-        replaced = replaced.replace(/\{\{color\}\}/g, car?.color || '_____________');
-        replaced = replaced.replace(/\{\{startDate\}\}/g, formatDate(bookingData?.startDate));
-        replaced = replaced.replace(/\{\{endDate\}\}/g, formatDate(bookingData?.endDate));
-        replaced = replaced.replace(/\{\{totalAmount\}\}/g, getTotalCost().toLocaleString());
-        replaced = replaced.replace(/\{\{dailyRate\}\}/g, car?.daily_rate?.toLocaleString() || '');
-        
-        // Inject company settings
-        replaced = replaced.replace(/\{\{companyPoBox\}\}/g, settings['company_po_box'] || '2345');
-        const companySig = settings['company_signature_url'] || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-        const contractLogo = settings['contract_logo'] || settings['site_logo'] || settings['logo_url'] || '';
-        replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
-        replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings['site_logo'] || companySig);
-        const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
-        // If a placeholder appears inside an attribute like src="{{companySignature}}", replace with the URL.
-        replaced = replaced.replace(/(src|href)\s*=\s*"\s*\{\{\s*(companySignatureUrl|company_signature_url|companySignature|company_signature|ownerSignatureUrl|owner_signature_url|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}\s*"/gi, `$1="${companySig}"`);
-        // URL-style placeholders → URL string
-        replaced = replaced.replace(/\{\{\s*(companySignatureUrl|company_signature_url|ownerSignatureUrl|owner_signature_url)\s*\}\}/g, companySig);
-        // Bare placeholders in text content → full <img> tag
-        replaced = replaced.replace(/\{\{\s*(companySignature|company_signature|ownerSignature|owner_signature|companyRepSignature|company_rep_signature)\s*\}\}/g, companySigImg);
-        
-        
-        // Fix wording for mileage if present
-        replaced = replaced.replace(/\(as confirmed at the pickup\)/gi, '(as confirmed during pickup)');
-        
-        setHtmlTemplate(replaced);
-      })
-      .catch(err => console.error('Failed to load HTML contract', err))
-      .finally(() => setLoadingHtml(false));
-    }
-  }, [isHtmlTemplate, templateUrl, bookingData, car]);
+    if (!isHtmlTemplate) return;
 
-  const clientSignature = signatureData || bookingData?.signatureData || bookingData?.liveSignatureData || '';
-  const blankSignature = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-  // Mark the client signature image so we can reposition it above the name
-  const clientSigImg = `<img data-client-signature="1" src="${clientSignature || blankSignature}" alt="Client Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
+    setLoadingHtml(true);
+    loadFilledContractHtml(contract, bookingData, car, signatureData)
+      .then((html) => setHtmlTemplate(html))
+      .catch((err) => console.error('Failed to load HTML contract', err))
+      .finally(() => setLoadingHtml(false));
+  }, [isHtmlTemplate, contract, bookingData, car, signatureData]);
+
   // Build a full-document srcDoc for the iframe so the template's CSS is
   // completely isolated from the app and cannot collapse the layout.
   const clientNameForScript = JSON.stringify(getClientName() || '');
@@ -168,16 +93,10 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   `;
   const srcDoc = htmlTemplate
     ? (() => {
-        const replacedTemplate = htmlTemplate
-          .replace(/<img([^>]*?)src\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"([^>]*?)>/gi, `<img$1data-client-signature="1" src="${clientSignature || blankSignature}"$3>`)
-          .replace(/(src|href)\s*=\s*"\s*\{\{\s*(clientSignatureUrl|client_signature_url|clientSignature|client_signature|hirerSignatureUrl|hirer_signature_url|hirerSignature|hirer_signature)\s*\}\}\s*"/gi, `$1="${clientSignature || blankSignature}"`)
-          .replace(/\{\{\s*(clientSignatureUrl|client_signature_url|hirerSignatureUrl|hirer_signature_url)\s*\}\}/g, clientSignature || blankSignature)
-          .replace(/\{\{\s*(clientSignature|client_signature|hirerSignature|hirer_signature)\s*\}\}/g, clientSigImg);
-        // Inject overrides + script before </body> (or append if no </body>)
-        if (/<\/body>/i.test(replacedTemplate)) {
-          return replacedTemplate.replace(/<\/body>/i, `${overrideStyles}${repositionScript}</body>`);
+        if (/<\/body>/i.test(htmlTemplate)) {
+          return htmlTemplate.replace(/<\/body>/i, `${overrideStyles}${repositionScript}</body>`);
         }
-        return `${replacedTemplate}${overrideStyles}${repositionScript}`;
+        return `${htmlTemplate}${overrideStyles}${repositionScript}`;
       })()
     : '';
 

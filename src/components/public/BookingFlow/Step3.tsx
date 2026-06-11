@@ -6,6 +6,7 @@ import SignatureCanvas from 'react-signature-canvas';
 import { ArrowLeft, ArrowRight, FileText, Loader2, AlertCircle, CheckCircle2, Eraser, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { enhancedContractService } from '../../../services/enhancedContractService';
+import { generateContractPdfBase64 } from '../../../services/contractPdfService';
 import { DirectContractDisplay } from './DirectContractDisplay';
 
 interface Step3Props {
@@ -74,48 +75,19 @@ export function Step3({ car, bookingData, onNext, onPrev }: Step3Props) {
       const signatureData = sigPad.current.toDataURL();
       setLiveSignatureData(signatureData);
 
-      let pdfBase64 = null;
-      const contractElement = document.getElementById('contract-html-container');
-      
-      if (contractElement) {
-        // We import html2pdf dynamically to avoid SSR/Vite issues
+      let pdfBase64: string | null = null;
+      if (contract) {
         try {
-          const html2pdf = (await import('html2pdf.js')).default;
-          
-          const wrapper = document.createElement('div');
-          wrapper.innerHTML = contractElement.innerHTML;
-          wrapper.style.padding = '20px';
-          wrapper.style.fontFamily = 'sans-serif';
-          wrapper.style.color = 'black';
-          wrapper.style.background = 'white';
-          
-          const sigImg = document.createElement('img');
-          sigImg.src = signatureData;
-          sigImg.style.maxHeight = '60px';
-          sigImg.style.marginTop = '10px';
-          
-          const placeholder = wrapper.querySelector('#client-signature-placeholder');
-          if (placeholder) {
-            placeholder.innerHTML = '';
-            placeholder.appendChild(sigImg);
-          } else {
-            const sigText = document.createElement('p');
-            sigText.innerHTML = '<strong>Client Signature:</strong>';
-            wrapper.appendChild(sigText);
-            wrapper.appendChild(sigImg);
-          }
-          
-          const opt = {
-            margin: 10,
-            filename: 'contract.pdf',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, allowTaint: true },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-          };
-          
-          pdfBase64 = await html2pdf().from(wrapper).set(opt).outputPdf('datauristring');
+          pdfBase64 = await generateContractPdfBase64({
+            contract,
+            bookingData,
+            car,
+            signatureData,
+          });
         } catch (err) {
-          console.error("Failed to generate PDF snapshot on client", err);
+          console.error('Failed to generate contract PDF', err);
+          toast.error(err instanceof Error ? err.message : 'Failed to generate contract PDF');
+          return;
         }
       }
 

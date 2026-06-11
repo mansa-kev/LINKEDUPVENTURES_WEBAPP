@@ -4,15 +4,18 @@ import { Car } from '../../../types';
 import { Upload, ArrowRight, ArrowLeft, User, Mail, Phone, FileText, CheckCircle2, Loader2, Camera, Image, ShieldCheck, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 // Removed react-dropzone for mobile stability
-import { bookingService } from '../../../services/bookingService';
 import { clientService } from '../../../services/clientService';
-import { AuthModal } from '../auth/AuthModal';
 import { supabase } from '../../../lib/supabase';
 import { InternationalPhoneInput } from '../../ui/InternationalPhoneInput';
 import { toast } from 'sonner';
-import { validateFile } from '../../../utils/fileValidation';
 import { CameraCapture } from './CameraCapture';
-import { compressImage } from '../../../utils/imageCompression';
+import {
+  type BookingDocType,
+  resumePendingUpload,
+  stashPendingFile,
+  uploadBookingDocument,
+} from '../../../services/bookingDocumentUploadService';
+import { listPendingUploadsForCar } from '../../../utils/pendingUploadStore';
 
 interface Step2Props {
   car: Car;
@@ -21,7 +24,7 @@ interface Step2Props {
   initialData?: any;
 }
 
-type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
+type DocType = BookingDocType;
 
 type GloveboxDocuments = {
   idNumber?: string;
@@ -139,7 +142,6 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
                 </button>
                 <button
                   type="button"
-                  onPointerUp={openPicker}
                   onClick={openPicker}
                   disabled={disablePicker}
                   className={`flex items-center gap-1.5 px-3 py-2 bg-white/5 rounded-xl text-white/70 hover:bg-white/10 transition-colors active:scale-95 ${disablePicker ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
@@ -157,9 +159,10 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
 }
 
 export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
-  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadingSlots, setUploadingSlots] = useState<Set<DocType>>(new Set());
   const [showCamera, setShowCamera] = useState<DocType | null>(null);
   const [prefilled, setPrefilled] = useState(false);
+  const resumeLockRef = useRef(false);
   const [formData, setFormData] = useState(() => {
     const saved = sessionStorage.getItem(`step2_data_${car.id}`);
     if (saved) {
@@ -245,35 +248,74 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
     }
   }, [initialData]);
 
-  const uploadFile = useCallback(async (file: File, type: DocType) => {
-    if (uploading) return;
+  const markUploading = useCallback((type: DocType, active: boolean) => {
+    setUploadingSlots((prev) => {
+      const next = new Set(prev);
+      if (active) next.add(type);
+      else next.delete(type);
+      return next;
+    });
+  }, []);
 
-    setUploading(type);
+  const applyUploadedUrl = useCallback((type: DocType, url: string) => {
+    setFormData((prev) => ({ ...prev, [`${type}Url`]: url }));
+  }, []);
+
+  const runUpload = useCallback(async (file: File, type: DocType) => {
+    if (uploadingSlots.has(type)) return;
+
+    markUploading(type, true);
     try {
-      const validation = await validateFile(file);
-      if (!validation.isValid) {
-        toast.error(`File validation failed: ${validation.error}`);
-        return;
-      }
-      
-      let finalFile = file;
-      // Compress only if it's an image (exclude PDFs)
-      if (file.type.startsWith('image/')) {
-        // Yield one frame so mobile browsers can fully close the file picker
-        // before expensive image processing begins.
-        await new Promise(resolve => requestAnimationFrame(() => resolve(undefined)));
-        finalFile = await compressImage(file, 1200, 1200, 0.7);
-      }
-      
-      const url = await bookingService.uploadDocument(finalFile, type, `temp_${Date.now()}`);
-      setFormData(prev => ({ ...prev, [`${type}Url`]: url }));
+      await stashPendingFile(car.id, type, file);
+      const url = await uploadBookingDocument(car.id, type, file);
+      applyUploadedUrl(type, url);
       toast.success(`${DOC_LABELS[type]} uploaded successfully`);
     } catch (error) {
       toast.error(`Failed to upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      setUploading(null);
+      markUploading(type, false);
     }
-  }, [uploading]);
+  }, [applyUploadedUrl, car.id, markUploading, uploadingSlots]);
+
+  const uploadFile = useCallback(async (file: File, type: DocType) => {
+    await runUpload(file, type);
+  }, [runUpload]);
+
+  const resumePendingUploads = useCallback(async () => {
+    if (resumeLockRef.current) return;
+    resumeLockRef.current = true;
+
+    try {
+      const pending = await listPendingUploadsForCar(car.id);
+      for (const record of pending) {
+        const type = record.docType as DocType;
+        if (!DOC_LABELS[type]) continue;
+
+        markUploading(type, true);
+        try {
+          const url = await resumePendingUpload(record);
+          applyUploadedUrl(type, url);
+          toast.success(`${DOC_LABELS[type]} uploaded (resumed after refresh)`);
+        } catch (error) {
+          console.warn('Pending upload resume failed:', error);
+        } finally {
+          markUploading(type, false);
+        }
+      }
+    } finally {
+      resumeLockRef.current = false;
+    }
+  }, [applyUploadedUrl, car.id, markUploading]);
+
+  useEffect(() => {
+    void resumePendingUploads();
+
+    const onPageShow = () => {
+      void resumePendingUploads();
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, [resumePendingUploads]);
 
   const clearDocument = useCallback((type: DocType) => {
     setFormData(prev => ({ ...prev, [`${type}Url`]: '' }));
@@ -380,7 +422,7 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">Face Photo / Passport Photo</label>
             <div className="max-w-xs mx-auto">
-              <DocumentSlot type="facePhoto" uploadedUrl={formData.facePhotoUrl} isUploading={uploading === 'facePhoto'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="facePhoto" uploadedUrl={formData.facePhotoUrl} isUploading={uploadingSlots.has('facePhoto')} disablePicker={uploadingSlots.has('facePhoto')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
 
@@ -388,8 +430,8 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">Driver's License</label>
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <DocumentSlot type="licenseFront" uploadedUrl={formData.licenseFrontUrl} isUploading={uploading === 'licenseFront'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
-              <DocumentSlot type="licenseBack" uploadedUrl={formData.licenseBackUrl} isUploading={uploading === 'licenseBack'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="licenseFront" uploadedUrl={formData.licenseFrontUrl} isUploading={uploadingSlots.has('licenseFront')} disablePicker={uploadingSlots.has('licenseFront')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="licenseBack" uploadedUrl={formData.licenseBackUrl} isUploading={uploadingSlots.has('licenseBack')} disablePicker={uploadingSlots.has('licenseBack')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
 
@@ -397,8 +439,8 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">National ID / Passport</label>
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <DocumentSlot type="idFront" uploadedUrl={formData.idFrontUrl} isUploading={uploading === 'idFront'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
-              <DocumentSlot type="idBack" uploadedUrl={formData.idBackUrl} isUploading={uploading === 'idBack'} disablePicker={Boolean(uploading)} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="idFront" uploadedUrl={formData.idFrontUrl} isUploading={uploadingSlots.has('idFront')} disablePicker={uploadingSlots.has('idFront')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="idBack" uploadedUrl={formData.idBackUrl} isUploading={uploadingSlots.has('idBack')} disablePicker={uploadingSlots.has('idBack')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
         </div>

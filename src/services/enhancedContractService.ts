@@ -1,4 +1,4 @@
-import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
 import { invalidateCachePrefix } from '../utils/queryCache';
 
 export interface ContractData {
@@ -24,10 +24,23 @@ export interface SignedContract {
   booking_id: string;
   contract_url: string;
   signed_at: string;
-  signature_data: string;
-  agreement_status: 'pending' | 'signed' | 'rejected';
-  payment_hold_status: 'pending' | 'authorized' | 'released';
+  signature_data?: string;
+  agreement_status?: 'pending' | 'signed' | 'rejected';
+  payment_hold_status?: 'pending' | 'authorized' | 'released';
   created_at: string;
+}
+
+function mapEContract(row: any, signatureData?: string): SignedContract {
+  return {
+    id: row.id,
+    booking_id: row.booking_id,
+    contract_url: row.pdf_url,
+    signed_at: row.signed_at,
+    signature_data: signatureData,
+    agreement_status: 'signed',
+    payment_hold_status: 'pending',
+    created_at: row.created_at,
+  };
 }
 
 export const enhancedContractService = {
@@ -43,7 +56,6 @@ export const enhancedContractService = {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // No active contract found
           return null;
         }
         throw error;
@@ -60,20 +72,45 @@ export const enhancedContractService = {
     bookingId: string,
     signatureData: string,
     contractData: ContractData,
-    contractPdfBase64?: string | null
+    contractPdfBase64?: string | null,
+    statusToken?: string | null
   ): Promise<SignedContract> => {
     try {
-      let contractUrl = '';
-
       if (!contractPdfBase64) {
         throw new Error('Final contract PDF is required');
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      const response = await fetch('/api/contracts/save-signed', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({
+          bookingId,
+          signatureData,
+          contractData,
+          contractPdfBase64,
+          statusToken: statusToken || null,
+        }),
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok && payload?.contract) {
+        return mapEContract(payload.contract, signatureData);
+      }
+
+      if (response.ok) {
+        throw new Error('Contract save returned an unexpected response.');
       }
 
       const base64Data = contractPdfBase64.split(',')[1] || contractPdfBase64;
       const pdfBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
 
       const fileName = `signed-contract-${bookingId}-${Date.now()}.pdf`;
-      const filePath = `signed_contracts/${fileName}`;
+      const filePath = `e_contracts/${fileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('public_assets')
@@ -85,37 +122,35 @@ export const enhancedContractService = {
         .from('public_assets')
         .getPublicUrl(filePath);
 
-      contractUrl = publicUrl;
-
       const { data, error } = await supabase
-        .from('signed_contracts')
+        .from('e_contracts')
         .insert([{
           booking_id: bookingId,
-          contract_url: contractUrl,
-          signature_data: signatureData,
-          agreement_status: 'signed',
-          payment_hold_status: 'pending',
-          client_data: contractData
+          pdf_url: publicUrl,
         }])
         .select()
         .single();
 
       if (error) throw error;
 
+      const { data: bookingRow } = await supabase
+        .from('bookings')
+        .select('client_id, metadata')
+        .eq('id', bookingId)
+        .maybeSingle();
+
       await supabase
         .from('bookings')
         .update({
           contract_signed: true,
-          contract_id: data.id,
-          status: 'contract_signed'
+          metadata: {
+            ...(bookingRow?.metadata || {}),
+            contract_url: publicUrl,
+            signature_data: signatureData,
+            contract_client_data: contractData,
+          },
         })
         .eq('id', bookingId);
-
-      const { data: bookingRow } = await supabase
-        .from('bookings')
-        .select('client_id')
-        .eq('id', bookingId)
-        .maybeSingle();
 
       const clientId = bookingRow?.client_id;
       if (clientId) {
@@ -124,7 +159,7 @@ export const enhancedContractService = {
         invalidateCachePrefix(`client:bookings:${clientId}`);
       }
 
-      return data;
+      return mapEContract(data, signatureData);
     } catch (error) {
       console.error('Error saving signed contract:', error);
       throw error;
@@ -134,7 +169,7 @@ export const enhancedContractService = {
   getSignedContracts: async (userId: string) => {
     try {
       const { data, error } = await supabase
-        .from('signed_contracts')
+        .from('e_contracts')
         .select(`
           *,
           bookings!inner(
@@ -146,7 +181,10 @@ export const enhancedContractService = {
         .order('signed_at', { ascending: false });
 
       if (error) throw error;
-      return data;
+      return (data || []).map((row: any) => ({
+        ...mapEContract(row),
+        bookings: row.bookings,
+      }));
     } catch (error) {
       console.error('Error fetching signed contracts:', error);
       return [];
@@ -154,66 +192,32 @@ export const enhancedContractService = {
   },
 
   updateContractStatus: async (
-    contractId: string,
-    status: 'pending' | 'signed' | 'rejected'
+    _contractId: string,
+    _status: 'pending' | 'signed' | 'rejected'
   ): Promise<void> => {
-    try {
-      const { error } = await supabase
-        .from('signed_contracts')
-        .update({ agreement_status: status })
-        .eq('id', contractId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error updating contract status:', error);
-      throw error;
-    }
+    // e_contracts table has no status column — contract presence implies signed.
   },
 
-  triggerPaymentHold: async (contractId: string): Promise<void> => {
-    try {
-      const { error } = await supabase
-        .from('signed_contracts')
-        .update({
-          payment_hold_status: 'authorized',
-          payment_hold_triggered_at: new Date().toISOString()
-        })
-        .eq('id', contractId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error triggering payment hold:', error);
-      throw error;
-    }
+  triggerPaymentHold: async (_contractId: string): Promise<void> => {
+    // Payment hold is not tracked on e_contracts.
   },
 
-  releasePaymentHold: async (contractId: string): Promise<void> => {
-    try {
-      const { error } = await supabase
-        .from('signed_contracts')
-        .update({
-          payment_hold_status: 'released',
-          payment_hold_released_at: new Date().toISOString()
-        })
-        .eq('id', contractId);
-
-      if (error) throw error;
-    } catch (error) {
-      console.error('Error releasing payment hold:', error);
-      throw error;
-    }
+  releasePaymentHold: async (_contractId: string): Promise<void> => {
+    // Payment hold is not tracked on e_contracts.
   },
 
   getContractByBooking: async (bookingId: string) => {
     try {
       const { data, error } = await supabase
-        .from('signed_contracts')
+        .from('e_contracts')
         .select('*')
         .eq('booking_id', bookingId)
-        .single();
+        .order('signed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
-      return data;
+      return data ? mapEContract(data) : null;
     } catch (error) {
       console.error('Error fetching contract by booking:', error);
       return null;

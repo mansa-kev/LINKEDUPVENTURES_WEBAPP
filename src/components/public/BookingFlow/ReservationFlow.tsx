@@ -185,24 +185,37 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
       const id = await getOrCreateReservation();
 
       setPhase('sending_stk');
-      const result = await reservationPaymentService.initiateSTKPush({ phone: cleanPhone, reservationId: id });
+      const stkPromise = reservationPaymentService.initiateSTKPush({ phone: cleanPhone, reservationId: id });
+      const timeoutPromise = new Promise<any>((resolve) =>
+        setTimeout(() => resolve({ __timedOut: true }), 25000)
+      );
+      const result: any = await Promise.race([stkPromise, timeoutPromise]);
 
-      if (result.paymentRequestId) {
+      if (result?.paymentRequestId) {
         setPaymentRequestId(result.paymentRequestId);
       }
 
-      if (!result.success || !result.paymentRequestId) {
+      setPhase('waiting');
+      if (result?.__timedOut) {
+        setLastMessage('STK Push is taking longer than usual. If you received the prompt on your phone, enter your PIN — we are still listening for confirmation.');
+        toast.message('Still sending STK… check your phone.');
+      } else if (!result?.success && !result?.paymentRequestId) {
         setPhase('failed');
-        setLastMessage(result.error || result.statusDescription || 'STK Push could not be sent. Please try again.');
-        toast.error(result.error || 'Reservation payment could not be started.');
+        setLastMessage(result?.error || result?.statusDescription || 'STK Push could not be sent. Please try again.');
+        toast.error(result?.error || 'Reservation payment could not be started.');
         return;
+      } else {
+        setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
+        toast.success('Reservation STK Push sent. Check your phone.');
       }
 
-      setPhase('waiting');
-      setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
-      toast.success('Reservation STK Push sent. Check your phone.');
-
-      const pollResult = await reservationPaymentService.pollUntilPaid(result.paymentRequestId, id);
+      const pollResult = await reservationPaymentService.pollUntilPaid(
+        result?.paymentRequestId || '',
+        id,
+        3000,
+        180000,
+        3000,
+      );
 
       if (pollResult === 'paid') {
         setPhase('paid');
@@ -276,13 +289,22 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
         throw new Error('Reservation was not found');
       }
 
-      const result = await reservationService.prepareBookingContinuation(activeReservationId, 'client');
-      if (!result?.token) {
+      // Token is issued at reservation create — use it directly when available (avoids guest RLS issues).
+      let token = reservationToken;
+      if (!token) {
+        const result = await reservationService.prepareBookingContinuation(activeReservationId, 'client');
+        token = result?.token || null;
+      } else {
+        // Best-effort: record flow start via server (service role) without blocking navigation.
+        void reservationService.prepareBookingContinuation(activeReservationId, 'client').catch(() => {});
+      }
+
+      if (!token) {
         throw new Error('Booking continuation link could not be prepared');
       }
 
       onClose();
-      navigate(`/cars/${car.id}?booking=true&reservationToken=${result.token}`);
+      navigate(`/cars/${car.id}?booking=true&reservationToken=${token}`);
     } catch (error: any) {
       toast.error(error.message || 'Could not start the booking flow.');
     }
@@ -493,8 +515,12 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
               <span className="font-bold">{formData.contactName}</span>
             </div>
             <div className="flex justify-between items-center pt-2 border-t border-warning/20">
-              <span className="text-sm font-bold">Total Amount</span>
-              <span className="text-lg font-bold text-warning">KES {calculateTotal().toLocaleString()}</span>
+              <span className="text-sm text-muted-foreground">Reservation Fee Due Now</span>
+              <span className="font-bold text-warning">KES {reservationFee.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between items-center mt-2">
+              <span className="text-sm text-muted-foreground">Full Booking Amount Due Later</span>
+              <span className="font-bold">KES {calculateBookingAmount().toLocaleString()}</span>
             </div>
           </div>
 
@@ -539,14 +565,8 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
 
             <div className="grid grid-cols-2 gap-2">
               <div className="p-3 bg-card/50 rounded-[14px] border border-border space-y-1">
-                <label className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reservation Fee (Editable)</label>
-                <input
-                  type="number"
-                  value={reservationFee}
-                  onChange={(e) => setReservationFee(Number(e.target.value))}
-                  disabled={isBusy}
-                  className="w-full bg-transparent text-sm sm:text-lg font-black text-warning border-none outline-none focus:ring-0 p-0 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                />
+                <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Reservation Fee (STK Amount)</p>
+                <p className="text-sm sm:text-lg font-black text-warning">KES {reservationFee.toLocaleString()}</p>
               </div>
               <div className="p-3 bg-card/50 rounded-[14px] border border-border">
                 <p className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Full Booking Due Later</p>

@@ -1547,6 +1547,20 @@ export const adminService = {
     return data;
   },
 
+  syncPaymentByBookingId: async (bookingId: string) => {
+    const response = await fetch(`/api/ncba/sync-booking/${bookingId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const data = await response.json();
+    if (!response.ok || data.error) {
+      throw new Error(data.error || 'Failed to sync NCBA payment for booking');
+    }
+
+    return data;
+  },
+
   verifyPayment: async (_id: string, status: 'verified' | 'rejected', _verifiedById: string, bookingId?: string, amount?: number, clientId?: string, transactionCode?: string) => {
     logger.log('Verifying payment:', { status, bookingId, amount, clientId, transactionCode });
     const data = { status };
@@ -1749,17 +1763,22 @@ export const adminService = {
     try {
       logger.log('Deleting booking:', bookingId);
 
-      const { data, error } = await supabase.functions.invoke('delete-booking', {
-        body: { bookingId },
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        throw new Error('You must be signed in to delete bookings.');
+      }
+
+      const response = await fetch(`/api/bookings/${bookingId}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
       });
 
-      if (error) {
-        logger.error('Error invoking delete-booking function:', error);
-        throw error;
-      }
-      if (data?.error) {
-        logger.error('delete-booking function returned error:', data.error);
-        throw new Error(data.error);
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to delete booking (${response.status})`);
       }
 
       logger.log('Booking deleted');

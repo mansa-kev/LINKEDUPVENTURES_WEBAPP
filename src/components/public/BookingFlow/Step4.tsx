@@ -117,7 +117,8 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
             id_number: bookingData.idNumber,
             color: car.color
           },
-          bookingData.contractPdfBase64
+          bookingData.contractPdfBase64,
+          booking.statusToken || statusToken
         );
       } catch (err) {
         console.error('Failed to save signed contract:', err);

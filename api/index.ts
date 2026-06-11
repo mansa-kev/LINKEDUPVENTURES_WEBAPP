@@ -2,6 +2,14 @@ import express from "express";
 import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import { ncbaService } from "../src/services/ncbaService.js";
+import { createInspectionUploadHandler } from "../src/server/inspectionUploadHandler.js";
+import { createContractSaveHandler } from "../src/server/contractSaveHandler.js";
+import { createDeleteBookingHandler } from "../src/server/deleteBookingHandler.js";
+import { createBookingDocumentUploadHandler } from "../src/server/bookingDocumentUploadHandler.js";
+import { createPrepareContinuationHandler } from "../src/server/reservationContinuationHandler.js";
+import { createEmailSendHandler } from "../src/server/emailSendHandler.js";
+import { createInspectionInsertHandler } from "../src/server/inspectionInsertHandler.js";
+import { createDeleteReservationHandler } from "../src/server/deleteReservationHandler.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
 // and this call is a no-op (the file won't exist), which is fine.
@@ -13,9 +21,11 @@ const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SU
 const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+const NCBA_DEFAULT_ACCOUNT_NO = '1006230208';
+
 const getNcbaAccountNo = () => {
-  const accountNo = (process.env.NCBA_ACCOUNT_NO || '').replace(/\s+/g, '').trim();
-  return /^\d+$/.test(accountNo) ? accountNo : '';
+  const accountNo = (process.env.NCBA_ACCOUNT_NO || NCBA_DEFAULT_ACCOUNT_NO).replace(/\s+/g, '').trim();
+  return /^\d+$/.test(accountNo) ? accountNo : NCBA_DEFAULT_ACCOUNT_NO;
 };
 
 const app = express();
@@ -58,6 +68,42 @@ const app = express();
     res.setHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
     next();
   });
+
+  app.post(
+    '/api/inspections/upload',
+    express.json({ limit: '12mb' }),
+    createInspectionUploadHandler(supabase, Boolean(supabaseServiceRoleKey))
+  );
+
+  app.post(
+    '/api/booking-documents/upload',
+    express.json({ limit: '14mb' }),
+    createBookingDocumentUploadHandler(supabase)
+  );
+
+  app.post(
+    '/api/contracts/save-signed',
+    express.json({ limit: '16mb' }),
+    createContractSaveHandler(supabase, Boolean(supabaseServiceRoleKey))
+  );
+
+  app.delete(
+    '/api/bookings/:bookingId',
+    createDeleteBookingHandler(supabase, Boolean(supabaseServiceRoleKey))
+  );
+
+  app.post('/api/email/send', express.json({ limit: '1mb' }), createEmailSendHandler(supabase));
+
+  app.post(
+    '/api/bookings/:bookingId/inspections',
+    express.json({ limit: '2mb' }),
+    createInspectionInsertHandler(supabase)
+  );
+
+  app.delete(
+    '/api/reservations/:reservationId',
+    createDeleteReservationHandler(supabase)
+  );
 
   // Parse JSON bodies for API routes (must come before Vite middleware)
   app.use('/api', express.json());
@@ -809,6 +855,7 @@ const app = express();
         dropoff_location: dropoffLocation || pickupLocation || location,
         total_amount: total,
         platform_commission: platformCommission,
+        document_status: bookingData.documentsVerifiedPhysically ? 'approved' : 'pending',
         status: 'pending_payment_verification',
         payment_status: 'pending',
         payment_method: paymentMethod || 'ncba_stk',
@@ -827,6 +874,7 @@ const app = express();
             id_number: bookingData.idNumber || null,
           } : null,
           signature_url: bookingData.signatureUrl,
+          documentsVerifiedPhysically: !!bookingData.documentsVerifiedPhysically,
           documents: bookingData.documents ?? {
             facePhotoUrl: bookingData.facePhotoUrl || null,
             licenseFrontUrl: bookingData.licenseFrontUrl || null,
@@ -1029,7 +1077,7 @@ const app = express();
       }
 
       if (paymentRequest.status === 'success') {
-        return res.json({ success: true, paid: true, failed: false, status: 'SUCCESS', description: 'Already confirmed' });
+        return res.json({ success: true, paid: true, failed: false, pending: false, status: 'SUCCESS', description: 'Already confirmed' });
       }
 
       const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
@@ -1039,6 +1087,7 @@ const app = express();
         success: result.success,
         paid: result.paid,
         failed: result.failed,
+        pending: result.pending,
         status: result.status,
         description: result.description,
         error: result.error,
@@ -1063,7 +1112,7 @@ const app = express();
         return res.status(404).json({ success: false, error: 'Booking not found' });
       }
 
-      const { data: paymentRequest } = await supabase
+      let { data: paymentRequest } = await supabase
         .from('payment_requests')
         .select('*')
         .eq('booking_id', bookingId)
@@ -1071,17 +1120,93 @@ const app = express();
         .limit(1)
         .maybeSingle();
 
+      let currentBooking = booking;
+      if (
+        currentBooking.payment_status !== 'paid' &&
+        paymentRequest?.provider_transaction_id &&
+        paymentRequest.status !== 'success'
+      ) {
+        const ageMs = Date.now() - new Date(paymentRequest.created_at).getTime();
+        if (ageMs >= 15000) {
+          const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
+          await finalizeNcbaPayment(paymentRequest, result);
+          const { data: refreshedBooking } = await supabase
+            .from('bookings')
+            .select('id, status, payment_status, payment_method, payment_provider, payment_reference, transaction_code')
+            .eq('id', bookingId)
+            .single();
+          const { data: refreshedPaymentRequest } = await supabase
+            .from('payment_requests')
+            .select('*')
+            .eq('booking_id', bookingId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (refreshedBooking) currentBooking = refreshedBooking;
+          if (refreshedPaymentRequest) paymentRequest = refreshedPaymentRequest;
+        }
+      }
+
       return res.json({
         success: true,
-        bookingId: booking.id,
-        status: booking.status,
-        paymentStatus: booking.payment_status,
-        paid: booking.payment_status === 'paid',
-        confirmed: booking.status === 'confirmed',
+        bookingId: currentBooking.id,
+        status: currentBooking.status,
+        paymentStatus: currentBooking.payment_status,
+        paid: currentBooking.payment_status === 'paid',
+        confirmed: currentBooking.status === 'confirmed',
         paymentRequest,
       });
     } catch (error: any) {
       return res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  app.post('/api/ncba/sync-booking/:bookingId', async (req, res) => {
+    try {
+      const { bookingId } = req.params;
+
+      const { data: paymentRequest, error: paymentError } = await supabase
+        .from('payment_requests')
+        .select('*')
+        .eq('booking_id', bookingId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (paymentError || !paymentRequest) {
+        return res.status(404).json({ success: false, error: 'No payment request found for this booking' });
+      }
+
+      if (!paymentRequest.provider_transaction_id) {
+        return res.status(400).json({ success: false, error: 'Payment request has no NCBA TransactionID' });
+      }
+
+      if (paymentRequest.status === 'success') {
+        return res.json({
+          success: true,
+          paid: true,
+          failed: false,
+          pending: false,
+          status: 'SUCCESS',
+          description: 'Already confirmed',
+        });
+      }
+
+      const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
+      await finalizeNcbaPayment(paymentRequest, result);
+
+      return res.json({
+        success: result.success,
+        paid: result.paid,
+        failed: result.failed,
+        pending: result.pending,
+        status: result.status,
+        description: result.description,
+        error: result.error,
+      });
+    } catch (error: any) {
+      console.error('[API] NCBA sync-booking error:', error);
+      return res.status(500).json({ success: false, error: error.message || 'Internal server error' });
     }
   });
 
@@ -1204,7 +1329,7 @@ const app = express();
       }
 
       if (paymentRequest.status === 'success') {
-        return res.json({ success: true, paid: true, failed: false, status: 'SUCCESS', description: 'Already confirmed' });
+        return res.json({ success: true, paid: true, failed: false, pending: false, status: 'SUCCESS', description: 'Already confirmed' });
       }
 
       const result = await ncbaService.querySTKPush(paymentRequest.provider_transaction_id);
@@ -1214,6 +1339,7 @@ const app = express();
         success: result.success,
         paid: result.paid,
         failed: result.failed,
+        pending: result.pending,
         status: result.status,
         description: result.description,
         error: result.error,
@@ -1261,6 +1387,11 @@ const app = express();
       return res.status(500).json({ success: false, error: error.message });
     }
   });
+
+  app.post(
+    '/api/reservations/:reservationId/prepare-continuation',
+    createPrepareContinuationHandler(supabase)
+  );
 
   app.get('/api/reservations/continuation/:token', async (req, res) => {
     try {

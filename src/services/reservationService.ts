@@ -10,12 +10,6 @@ export interface ReservationData {
   notes?: string;
 }
 
-const generateContinuationToken = () => {
-  const first = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now()}`;
-  const second = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Math.random().toString(36).slice(2)}`;
-  return `${first}${second}`;
-};
-
 export const reservationService = {
   // Get current reservation fee from settings
   getReservationFee: async (): Promise<number> => {
@@ -59,6 +53,26 @@ export const reservationService = {
     } catch (error) {
       return handleSupabaseError(error, 'createReservation');
     }
+  },
+
+  deleteReservation: async (reservationId: string) => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      throw new Error('You must be signed in as admin to delete reservations.');
+    }
+
+    const response = await fetch(`/api/reservations/${reservationId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok || !body?.success) {
+      throw new Error(body?.error || `Failed to delete reservation (${response.status})`);
+    }
+
+    return true;
   },
 
   // Get user's reservations
@@ -158,56 +172,28 @@ export const reservationService = {
 
   prepareBookingContinuation: async (reservationId: string, initiatedBy: 'client' | 'admin', notifyClient: boolean = false) => {
     try {
-      const { data: reservation, error: resError } = await supabase
-        .from('car_reservations')
-        .select('*')
-        .eq('id', reservationId)
-        .single();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
 
-      if (resError || !reservation) {
-        throw new Error('Reservation not found');
-      }
+      const response = await fetch(`/api/reservations/${reservationId}/prepare-continuation`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+        },
+        body: JSON.stringify({ initiatedBy, notifyClient }),
+      });
 
-      if (reservation.payment_status !== 'paid' || !['reserved', 'confirmed'].includes(reservation.status)) {
-        throw new Error('Only paid active reservations can continue to booking');
-      }
-
-      const continuationToken = reservation.booking_completion_token || generateContinuationToken();
-
-      const { error: updateError } = await supabase
-        .from('car_reservations')
-        .update({
-          booking_completion_token: continuationToken,
-          booking_flow_started_at: new Date().toISOString(),
-          booking_flow_initiated_by: initiatedBy,
-        })
-        .eq('id', reservationId);
-
-      if (updateError) throw updateError;
-
-      const link = `${window.location.origin}/cars/${reservation.car_id}?booking=true&reservationToken=${continuationToken}`;
-
-      if (notifyClient && reservation.client_id) {
-        const { error: notificationError } = await supabase
-          .from('notifications')
-          .insert({
-            user_id: reservation.client_id,
-            title: 'Complete Your Booking',
-            content: 'Your reservation is paid. Use this link to complete the full booking flow.',
-            type: 'info',
-            is_read: false,
-            link,
-          });
-
-        if (notificationError) {
-          console.warn('Failed to notify client about booking continuation:', notificationError);
-        }
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.success || !result?.token) {
+        throw new Error(result?.error || 'Failed to prepare booking continuation');
       }
 
       return {
-        link,
-        reservationId: reservation.id,
-        token: continuationToken,
+        link: result.link,
+        reservationId: result.reservationId,
+        token: result.token,
+        carId: result.carId,
       };
     } catch (error) {
       return handleSupabaseError(error, 'prepareBookingContinuation');

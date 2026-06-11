@@ -5,7 +5,7 @@ import {
   Search, Eye, CheckCircle2, XCircle, Calendar, User, Car,
   Loader2, AlertCircle, X, CreditCard, Clock, Trash2, Phone,
   Flag, AlertTriangle, ChevronDown, ArrowRight, DollarSign,
-  MapPin, Plus, FileText
+  MapPin, Plus, FileText, RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
@@ -99,7 +99,9 @@ const BookingCard: React.FC<{
   onManage: () => void;
   onViewDetails: () => void;
   onDelete: () => void;
-}> = ({ booking, now, onManage, onViewDetails, onDelete }) => {
+  onSyncPayment?: () => void;
+  isSyncing?: boolean;
+}> = ({ booking, now, onManage, onViewDetails, onDelete, onSyncPayment, isSyncing }) => {
   const clientName = booking.client?.full_name || booking.metadata?.guest_info?.full_name || 'Guest';
   const clientInitials = clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
   const carLine = `${booking.cars?.make || ''} ${booking.cars?.model || ''}`.trim() || 'N/A';
@@ -201,6 +203,16 @@ const BookingCard: React.FC<{
 
       {/* Actions */}
       <div className="px-4 pb-4 flex gap-2">
+        {booking.payment_status !== 'paid' && booking.status !== 'cancelled' && onSyncPayment && (
+          <button
+            onClick={onSyncPayment}
+            disabled={isSyncing}
+            className="p-2.5 bg-amber-500/10 hover:bg-amber-500/20 rounded-xl text-amber-500 transition-colors disabled:opacity-50"
+            title="Sync NCBA payment"
+          >
+            {isSyncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          </button>
+        )}
         <button
           onClick={onManage}
           className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold hover:bg-primary/90 transition-colors"
@@ -237,6 +249,7 @@ export function AdminBookings() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<JourneyTab>('all');
   const [deleteConfirm, setDeleteConfirm] = useState<Booking | null>(null);
+  const [syncingBookingId, setSyncingBookingId] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
   // A single timer for the entire bookings list, only running if there are bookings currently on trip.
@@ -331,6 +344,25 @@ export function AdminBookings() {
     navigate(`/admin/bookings/${booking.id}`);
   };
 
+  const handleSyncPayment = async (booking: Booking) => {
+    setSyncingBookingId(booking.id);
+    try {
+      const result = await adminService.syncPaymentByBookingId(booking.id);
+      if (result.paid) {
+        toast.success('Payment confirmed via NCBA');
+        fetchBookings();
+      } else if (result.failed) {
+        toast.error(result.description || 'Payment not completed at NCBA');
+      } else {
+        toast.message(result.description || 'Payment still pending at NCBA');
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to sync NCBA payment');
+    } finally {
+      setSyncingBookingId(null);
+    }
+  };
+
   if (loading && bookings.length === 0) {
     return (
       <div className="h-full w-full flex items-center justify-center p-20">
@@ -409,6 +441,8 @@ export function AdminBookings() {
               onManage={() => handleManageBooking(booking)}
               onViewDetails={() => handleManageBooking(booking)}
               onDelete={() => { setDeleteConfirm(booking); }}
+              onSyncPayment={() => handleSyncPayment(booking)}
+              isSyncing={syncingBookingId === booking.id}
             />
           ))}
         </div>

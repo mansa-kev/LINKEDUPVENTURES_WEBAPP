@@ -161,17 +161,17 @@ export function MyBookings() {
     // 1. metadata fallback (legacy)
     const legacy = booking.metadata?.contract_url;
     if (legacy) { window.open(legacy, '_blank'); return; }
-    // 2. signed_contracts table
+    // 2. e_contracts table
     try {
       const { data, error } = await supabase
-        .from('signed_contracts')
-        .select('contract_url')
+        .from('e_contracts')
+        .select('pdf_url')
         .eq('booking_id', booking.id)
         .order('signed_at', { ascending: false })
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      if (data?.contract_url) { window.open(data.contract_url, '_blank'); return; }
+      if (data?.pdf_url) { window.open(data.pdf_url, '_blank'); return; }
       toast.error('Contract not available yet. It will appear once signed.');
     } catch {
       toast.error('Unable to load contract.');

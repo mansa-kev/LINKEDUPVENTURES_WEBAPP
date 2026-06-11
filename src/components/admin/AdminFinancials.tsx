@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { AdminPaymentApprovals } from './AdminPaymentApprovals';
 import { AdminPayoutEngine } from './AdminPayoutEngine';
@@ -53,10 +54,13 @@ const TransactionStatus = ({ status }: { status: Transaction['status'] }) => {
 };
 
 export function AdminFinancials() {
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const initialTab = tabParam === 'approvals' || tabParam === 'payouts' ? tabParam : 'overview';
   const [data, setData] = useState<{ transactions: any[], expenses: any[], settlements: any[], totalRevenue: number, totalPayouts: number, totalExpenses: number, netRevenue: number, pendingSettlementAmount: number, chartData: any[] }>({ transactions: [], expenses: [], settlements: [], totalRevenue: 0, totalPayouts: 0, totalExpenses: 0, netRevenue: 0, pendingSettlementAmount: 0, chartData: [] });
   const [reservationStats, setReservationStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'payouts'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'payouts'>(initialTab);
   const [txTab, setTxTab] = useState<'all' | 'payment_in' | 'payout_out'>('all');
 
   const fetchFinancials = async () => {

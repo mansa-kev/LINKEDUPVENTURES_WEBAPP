@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { 
   X, Car, MapPin, Clock, CheckCircle2, User, Loader2, Send, 
-  AlertTriangle, Gauge, ChevronDown, ChevronUp, Upload, Image as ImageIcon, Camera 
+  AlertTriangle, Gauge, ChevronDown, ChevronUp, Camera 
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
+import { InspectionPhotoUpload } from './InspectionPhotoUpload';
+import { insertBookingInspection } from '../../services/inspectionService';
 
 type Stage = 'pickup' | 'in_transit' | 'return_form' | 'completed';
 
@@ -54,6 +56,157 @@ const F = ({ l, v }: { l: string; v: string }) => (
   </div>
 );
 
+type InspectionFormProps = {
+  type: 'pickup' | 'return';
+  bookingId: string;
+  odo: string;
+  setOdo: (v: string) => void;
+  fuel: string;
+  setFuel: (v: string) => void;
+  loc: string;
+  setLoc: (v: string) => void;
+  notes: string;
+  setNotes: (v: string) => void;
+  dashPhoto: string;
+  setDashPhoto: (v: string) => void;
+  exteriorPhotos: string[];
+  setExteriorPhotos: React.Dispatch<React.SetStateAction<string[]>>;
+  interiorPhotos: string[];
+  setInteriorPhotos: React.Dispatch<React.SetStateAction<string[]>>;
+  pickupChecks: Record<string, boolean>;
+  setPickupChecks: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  returnChecks: Record<string, boolean>;
+  setReturnChecks: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+};
+
+function BookingInspectionForm({
+  type,
+  bookingId,
+  odo,
+  setOdo,
+  fuel,
+  setFuel,
+  loc,
+  setLoc,
+  notes,
+  setNotes,
+  dashPhoto,
+  setDashPhoto,
+  exteriorPhotos,
+  setExteriorPhotos,
+  interiorPhotos,
+  setInteriorPhotos,
+  pickupChecks,
+  setPickupChecks,
+  returnChecks,
+  setReturnChecks,
+}: InspectionFormProps) {
+  const checks = type === 'pickup' ? pickupChecks : returnChecks;
+  const setChecks = type === 'pickup' ? setPickupChecks : setReturnChecks;
+  const checklist = type === 'pickup' ? PICKUP_CHECKS : RETURN_CHECKS;
+
+  return (
+    <>
+      <SCard title={`${type === 'pickup' ? 'Pre-Handover' : 'Post-Return'} Checklist`} icon={<CheckCircle2 size={14} />}>
+        <div className="space-y-2 mb-4">
+          {checklist.map((item) => (
+            <label key={item} className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={checks[item] || false}
+                onChange={(e) => setChecks((p) => ({ ...p, [item]: e.target.checked }))}
+                className="w-4 h-4 accent-primary"
+              />
+              <span className={`text-sm ${checks[item] ? 'text-success line-through' : 'text-foreground'}`}>{item}</span>
+            </label>
+          ))}
+        </div>
+      </SCard>
+
+      <SCard title="Vital Readings" icon={<Gauge size={14} />}>
+        <div className="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Odometer (km)</label>
+            <input
+              type="number"
+              value={odo}
+              onChange={(e) => setOdo(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20"
+              placeholder="e.g. 45230"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Fuel Level</label>
+            <select
+              value={fuel}
+              onChange={(e) => setFuel(e.target.value)}
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20"
+            >
+              <option value="full">Full (1/1)</option>
+              <option value="3/4">3/4</option>
+              <option value="1/2">Half (1/2)</option>
+              <option value="1/4">1/4</option>
+              <option value="empty">Empty</option>
+            </select>
+          </div>
+        </div>
+        <div className="mb-2">
+          <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Current Location</label>
+          <input
+            value={loc}
+            onChange={(e) => setLoc(e.target.value)}
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20"
+            placeholder="e.g. Airport Terminal 2"
+          />
+        </div>
+      </SCard>
+
+      <SCard title="Visual Inspection" icon={<Camera size={14} />}>
+        <InspectionPhotoUpload
+          bookingId={bookingId}
+          label="Dashboard (Odo/Fuel)"
+          images={dashPhoto}
+          onChange={(v) => setDashPhoto(v as string)}
+          sectionKey="dash"
+          subfolder="fuel"
+        />
+        <InspectionPhotoUpload
+          bookingId={bookingId}
+          label="Exterior Photos"
+          images={exteriorPhotos}
+          onChange={(v) => setExteriorPhotos(v as string[])}
+          multi
+          sectionKey="exterior"
+          subfolder="exterior"
+        />
+        <InspectionPhotoUpload
+          bookingId={bookingId}
+          label="Interior Photos"
+          images={interiorPhotos}
+          onChange={(v) => setInteriorPhotos(v as string[])}
+          multi
+          sectionKey="interior"
+          subfolder="interior"
+        />
+
+        <div className="scroll-mt-4">
+          <label htmlFor="inspection-notes" className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">
+            Damage / Condition Notes
+          </label>
+          <textarea
+            id="inspection-notes"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20 scroll-mt-4"
+            placeholder="Note any scratches, dents, or interior issues..."
+          />
+        </div>
+      </SCard>
+    </>
+  );
+}
+
 function HistoryCard({ emoji, title, color, children, defaultOpen = false }: {
   emoji: string; title: string; color: string; children: React.ReactNode; defaultOpen?: boolean;
 }) {
@@ -96,7 +249,7 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
   const [exteriorPhotos, setExteriorPhotos] = useState<string[]>([]);
   const [interiorPhotos, setInteriorPhotos] = useState<string[]>([]);
   const [dashPhoto, setDashPhoto] = useState<string>('');
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const scrollBodyRef = useRef<HTMLDivElement>(null);
 
   // Checklists
   const [pickupChecks, setPickupChecks] = useState<Record<string, boolean>>(
@@ -148,55 +301,45 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
   const otRate    = booking.cars?.overtime_rate || (booking.cars?.daily_rate ? booking.cars.daily_rate / 24 : 0);
   const otCharge  = parseFloat((otHrs * otRate).toFixed(2));
 
+  const inspectionFormProps: InspectionFormProps = {
+    type: 'pickup',
+    bookingId: booking.id,
+    odo,
+    setOdo,
+    fuel,
+    setFuel,
+    loc,
+    setLoc,
+    notes,
+    setNotes,
+    dashPhoto,
+    setDashPhoto,
+    exteriorPhotos,
+    setExteriorPhotos,
+    interiorPhotos,
+    setInteriorPhotos,
+    pickupChecks,
+    setPickupChecks,
+    returnChecks,
+    setReturnChecks,
+  };
+
+  const pickupMissing = [
+    ...PICKUP_CHECKS.filter((item) => !pickupChecks[item]),
+    ...(!odo ? ['Odometer reading'] : []),
+    ...(!dashPhoto ? ['Dashboard (Odo/Fuel) photo'] : []),
+  ];
+  const pickupReady = pickupMissing.length === 0;
+
+  const returnMissing = [
+    ...RETURN_CHECKS.filter((item) => !returnChecks[item]),
+    ...(!odo ? ['Odometer reading'] : []),
+  ];
+  const returnReady = returnMissing.length === 0;
+
   // --- Handlers ---
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, setter: any, multi = false) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-    
-    setUploadingImage(true);
-    try {
-      const urls: string[] = [];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        const ext = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2, 15)}_${Date.now()}.${ext}`;
-        const filePath = `${booking.id}/${fileName}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('booking_inspections')
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-        
-        const { data } = supabase.storage
-          .from('booking_inspections')
-          .getPublicUrl(filePath);
-          
-        urls.push(data.publicUrl);
-      }
-      
-      if (multi) {
-        setter((prev: string[]) => [...prev, ...urls]);
-      } else {
-        setter(urls[0]);
-      }
-      toast.success('Image(s) uploaded');
-    } catch (err: any) {
-      logger.error('Upload error:', err);
-      toast.error('Failed to upload image');
-    } finally {
-      setUploadingImage(false);
-    }
-  };
-
-  const removePhoto = (setter: any, index: number) => {
-    setter((prev: string[]) => prev.filter((_, i) => i !== index));
-  };
-
   const submitInspection = async (type: 'pre_handover' | 'post_return') => {
-    const { data: { user } } = await supabase.auth.getUser();
-    const { error } = await supabase.from('booking_inspections').insert({
-      booking_id: booking.id,
+    await insertBookingInspection(booking.id, {
       type,
       fuel_level: fuel,
       mileage: parseInt(odo, 10) || null,
@@ -204,18 +347,16 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
       scratches_notes: notes,
       photos_exterior: exteriorPhotos,
       photos_interior: interiorPhotos,
-      photo_fuel_mileage: dashPhoto,
-      conducted_by: user?.id
+      photo_fuel_mileage: dashPhoto || null,
     });
-    if (error) throw error;
   };
 
   const handleLogPickup = async () => {
-    const allPickup = Object.values(pickupChecks).every(Boolean);
-    if (!allPickup) { toast.error('Complete the entire checklist first'); return; }
-    if (!odo) { toast.error('Odometer reading is required'); return; }
-    if (!dashPhoto) { toast.error('Dashboard photo is required'); return; }
-    
+    if (!pickupReady) {
+      toast.error(`Complete before pickup: ${pickupMissing.join(', ')}`);
+      return;
+    }
+
     setSaving(true);
     try {
       await submitInspection('pre_handover');
@@ -235,19 +376,20 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
       toast.success('Pickup logged — now In Transit');
       setStage('in_transit');
       onRefresh();
-    } catch (e) { 
+    } catch (e: any) { 
       logger.error('Pickup error:', e); 
-      toast.error('Failed to log pickup'); 
+      toast.error(e?.message || 'Failed to log pickup'); 
     } finally { 
       setSaving(false); 
     }
   };
 
   const handleLogReturn = async () => {
-    const allReturn = Object.values(returnChecks).every(Boolean);
-    if (!allReturn) { toast.error('Complete the entire checklist first'); return; }
-    if (!odo) { toast.error('Odometer reading is required'); return; }
-    
+    if (!returnReady) {
+      toast.error(`Complete before return: ${returnMissing.join(', ')}`);
+      return;
+    }
+
     setSaving(true);
     try {
       await submitInspection('post_return');
@@ -269,9 +411,9 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
       toast.success('Return logged — booking completed!');
       setStage('completed');
       onRefresh();
-    } catch (e) { 
+    } catch (e: any) { 
       logger.error('Return error:', e); 
-      toast.error('Failed to log return'); 
+      toast.error(e?.message || 'Failed to log return'); 
     } finally { 
       setSaving(false); 
     }
@@ -287,91 +429,6 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
     finally { setSaving(false); }
   };
 
-  const PhotoUploadSection = ({ label, images, setter, multi }: any) => (
-    <div className="mb-4">
-      <div className="flex items-center justify-between mb-2">
-        <label className="text-xs text-muted-foreground uppercase tracking-wide">{label}</label>
-        <label className="cursor-pointer bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 transition-colors">
-          <Camera size={12} /> {multi ? 'Add Photos' : 'Add Photo'}
-          <input type="file" multiple={multi} accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, setter, multi)} disabled={uploadingImage} />
-        </label>
-      </div>
-      
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {(!multi && images) ? (
-          <div className="relative w-24 h-24 shrink-0 rounded-xl border border-border overflow-hidden">
-            <img src={images} alt={label} className="w-full h-full object-cover" />
-            <button onClick={() => setter('')} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X size={10} /></button>
-          </div>
-        ) : multi && images.map((img: string, i: number) => (
-          <div key={i} className="relative w-24 h-24 shrink-0 rounded-xl border border-border overflow-hidden">
-            <img src={img} alt={`${label} ${i}`} className="w-full h-full object-cover" />
-            <button onClick={() => removePhoto(setter, i)} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1"><X size={10} /></button>
-          </div>
-        ))}
-        {((!multi && !images) || (multi && images.length === 0)) && (
-          <div className="w-full h-24 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center text-muted-foreground bg-muted/20">
-            <ImageIcon size={20} className="mb-1 opacity-50" />
-            <span className="text-[10px]">No photos</span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  const InspectionForm = ({ type }: { type: 'pickup' | 'return' }) => (
-    <>
-      <SCard title={`${type === 'pickup' ? 'Pre-Handover' : 'Post-Return'} Checklist`} icon={<CheckCircle2 size={14} />}>
-        <div className="space-y-2 mb-4">
-          {(type === 'pickup' ? PICKUP_CHECKS : RETURN_CHECKS).map(item => {
-            const checks = type === 'pickup' ? pickupChecks : returnChecks;
-            const setChecks = type === 'pickup' ? setPickupChecks : setReturnChecks;
-            return (
-              <label key={item} className="flex items-center gap-3 cursor-pointer">
-                <input type="checkbox" checked={checks[item] || false} onChange={e => setChecks(p => ({ ...p, [item]: e.target.checked }))} className="w-4 h-4 accent-primary" />
-                <span className={`text-sm ${checks[item] ? 'text-success line-through' : 'text-foreground'}`}>{item}</span>
-              </label>
-            );
-          })}
-        </div>
-      </SCard>
-
-      <SCard title="Vital Readings" icon={<Gauge size={14} />}>
-        <div className="grid grid-cols-2 gap-4 mb-4">
-          <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Odometer (km)</label>
-            <input type="number" value={odo} onChange={e => setOdo(e.target.value)} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20" placeholder="e.g. 45230" />
-          </div>
-          <div>
-            <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Fuel Level</label>
-            <select value={fuel} onChange={e => setFuel(e.target.value)} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20">
-              <option value="full">Full (1/1)</option>
-              <option value="3/4">3/4</option>
-              <option value="1/2">Half (1/2)</option>
-              <option value="1/4">1/4</option>
-              <option value="empty">Empty</option>
-            </select>
-          </div>
-        </div>
-        <div className="mb-2">
-          <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Current Location</label>
-          <input value={loc} onChange={e => setLoc(e.target.value)} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm focus:ring-2 focus:ring-primary/20" placeholder="e.g. Airport Terminal 2" />
-        </div>
-      </SCard>
-
-      <SCard title="Visual Inspection" icon={<Camera size={14} />}>
-        <PhotoUploadSection label="Dashboard (Odo/Fuel)" images={dashPhoto} setter={setDashPhoto} multi={false} />
-        <PhotoUploadSection label="Exterior Photos" images={exteriorPhotos} setter={setExteriorPhotos} multi={true} />
-        <PhotoUploadSection label="Interior Photos" images={interiorPhotos} setter={setInteriorPhotos} multi={true} />
-        
-        <div>
-          <label className="text-xs text-muted-foreground uppercase tracking-wide block mb-1">Damage / Condition Notes</label>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full px-3 py-2 bg-background border border-border rounded-lg text-sm resize-none focus:ring-2 focus:ring-primary/20" placeholder="Note any scratches, dents, or interior issues..." />
-        </div>
-      </SCard>
-    </>
-  );
-
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 md:p-4 bg-background/80 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="bg-card border border-border rounded-xl md:rounded-2xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
@@ -386,7 +443,7 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
         </div>
 
         {/* Scrollable body */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6">
+        <div ref={scrollBodyRef} className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 overscroll-contain">
           {stage === 'pickup' && (
             <>
               <div className="bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-3 mb-4 flex gap-3">
@@ -396,8 +453,23 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
                   <p className="text-xs text-muted-foreground">Complete the mandatory inspection form below before releasing the vehicle.</p>
                 </div>
               </div>
-              <InspectionForm type="pickup" />
-              <button onClick={handleLogPickup} disabled={saving} className="w-full mt-4 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+              <BookingInspectionForm {...inspectionFormProps} type="pickup" />
+              {!pickupReady && (
+                <div className="mt-4 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                  <p className="text-xs font-bold text-amber-600 mb-2">Required before pickup:</p>
+                  <ul className="text-xs text-amber-700/90 space-y-1 list-disc list-inside">
+                    {pickupMissing.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleLogPickup}
+                disabled={saving || !pickupReady}
+                className="w-full mt-4 py-3 bg-primary text-primary-foreground rounded-xl font-bold flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <Car size={16} />}
                 Confirm Pickup & Start Rental
               </button>
@@ -468,8 +540,23 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
                 </div>
               )}
 
-              <InspectionForm type="return" />
-              <button onClick={handleLogReturn} disabled={saving} className="w-full mt-4 py-3 bg-teal-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-700 disabled:opacity-50">
+              <BookingInspectionForm {...inspectionFormProps} type="return" />
+              {!returnReady && (
+                <div className="mt-4 p-3 rounded-xl border border-amber-500/30 bg-amber-500/10">
+                  <p className="text-xs font-bold text-amber-600 mb-2">Required before return:</p>
+                  <ul className="text-xs text-amber-700/90 space-y-1 list-disc list-inside">
+                    {returnMissing.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleLogReturn}
+                disabled={saving || !returnReady}
+                className="w-full mt-4 py-3 bg-teal-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-teal-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 {saving ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
                 Finalise Return
               </button>

@@ -42,26 +42,8 @@ export const bookingService = {
     return data;
   },
 
-  uploadDocument: async (file: File, type: string, bookingId: string) => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${bookingId}_${type}_${Date.now()}.${fileExt}`;
-      const filePath = `booking-docs/${fileName}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('public_assets')
-        .upload(filePath, file);
-
-      if (uploadError) throw uploadError;
-
-      const { data } = supabase.storage
-        .from('public_assets')
-        .getPublicUrl(filePath);
-
-      return data.publicUrl;
-    } catch (error) {
-      console.error('Document upload error:', error);
-      throw error;
-    }
+  uploadDocument: async (file: File, type: string, carOrBookingId: string) => {
+    const { uploadBookingDocument } = await import('./bookingDocumentUploadService');
+    return uploadBookingDocument(carOrBookingId, type as any, file);
   }
 };
