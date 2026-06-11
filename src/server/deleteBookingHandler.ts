@@ -55,9 +55,10 @@ export function createDeleteBookingHandler(supabase: SupabaseClient, requireServ
           '';
 
         if (!serviceKey) {
-          return res.status(500).json({
+          return res.status(503).json({
             success: false,
-            error: 'Server misconfiguration: service role key required for booking deletion.',
+            error:
+              'Server misconfiguration: SUPABASE_SERVICE_ROLE_KEY is required on Vercel for booking deletion.',
           });
         }
       }
@@ -71,14 +72,25 @@ export function createDeleteBookingHandler(supabase: SupabaseClient, requireServ
         'payment_requests',
         'pending_payments',
         'transactions',
+        'payout_settlements',
+        'car_reviews',
       ];
+
+      const cleanupErrors: string[] = [];
 
       for (const table of relatedTables) {
         const { error } = await supabase.from(table).delete().eq('booking_id', bookingId);
         if (error && error.code !== '42P01') {
           console.warn(`[delete-booking] ${table}:`, error.message);
+          cleanupErrors.push(`${table}: ${error.message}`);
         }
       }
+
+      // Unlink reservations (ON DELETE SET NULL may not run before explicit delete)
+      await supabase
+        .from('car_reservations')
+        .update({ linked_booking_id: null })
+        .eq('linked_booking_id', bookingId);
 
       const { error: bookingError } = await supabase
         .from('bookings')
@@ -86,7 +98,11 @@ export function createDeleteBookingHandler(supabase: SupabaseClient, requireServ
         .eq('id', bookingId);
 
       if (bookingError) {
-        return res.status(500).json({ success: false, error: bookingError.message });
+        const detail = cleanupErrors.length ? ` Related cleanup issues: ${cleanupErrors.join('; ')}` : '';
+        return res.status(500).json({
+          success: false,
+          error: `${bookingError.message}${detail}`,
+        });
       }
 
       return res.json({ success: true });

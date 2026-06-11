@@ -1,7 +1,12 @@
 import express from "express";
 import dotenv from "dotenv";
-import { createClient } from "@supabase/supabase-js";
 import { ncbaService } from "../src/services/ncbaService.js";
+import {
+  getSupabase,
+  getSupabaseServiceRoleKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+} from "./supabaseServer.js";
 import { createInspectionUploadHandler } from "../src/server/inspectionUploadHandler.js";
 import { createContractSaveHandler } from "../src/server/contractSaveHandler.js";
 import { createDeleteBookingHandler } from "../src/server/deleteBookingHandler.js";
@@ -15,11 +20,15 @@ import { createDeleteReservationHandler } from "../src/server/deleteReservationH
 // and this call is a no-op (the file won't exist), which is fine.
 dotenv.config({ path: '.env.local' });
 
-// Server-side Supabase client (uses service role or anon key)
-const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://edroffvtzrowpsooszqh.supabase.co';
-const supabaseServiceRoleKey = process.env.SB_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_SERVICE_ROLE_KEY || '';
-const supabaseKey = supabaseServiceRoleKey || process.env.VITE_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseKey);
+// Lazy Supabase client — avoids crashing the Vercel function at import when env is missing.
+const supabaseServiceRoleKey = getSupabaseServiceRoleKey();
+const supabase = new Proxy({} as ReturnType<typeof getSupabase>, {
+  get(_target, prop) {
+    const client = getSupabase();
+    const value = (client as any)[prop];
+    return typeof value === 'function' ? value.bind(client) : value;
+  },
+});
 
 const NCBA_DEFAULT_ACCOUNT_NO = '1006230208';
 
@@ -58,6 +67,25 @@ const app = express();
 
   // Apply rate limiting to API routes
   app.use('/api', rateLimitMiddleware);
+
+  app.get('/api/health', (_req, res) => {
+    res.json({
+      success: true,
+      supabase: isSupabaseConfigured(),
+      serviceRole: Boolean(supabaseServiceRoleKey),
+    });
+  });
+
+  app.use('/api', (req, res, next) => {
+    if (!isSupabaseConfigured()) {
+      return res.status(503).json({
+        success: false,
+        error:
+          'Server misconfiguration: set SUPABASE_SERVICE_ROLE_KEY, SUPABASE_URL, and VITE_SUPABASE_ANON_KEY in Vercel environment variables.',
+      });
+    }
+    return next();
+  });
 
   // Security headers middleware
   app.use((req, res, next) => {
@@ -140,7 +168,7 @@ const app = express();
     }
 
     try {
-      const imageUrl = `${supabaseUrl}/storage/v1/object/public/public_assets/${filename}`;
+      const imageUrl = `${getSupabaseUrl()}/storage/v1/object/public/public_assets/${filename}`;
 
       const response = await fetch(imageUrl);
 
