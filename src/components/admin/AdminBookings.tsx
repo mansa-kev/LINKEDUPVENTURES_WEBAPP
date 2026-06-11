@@ -110,9 +110,12 @@ const BookingCard: React.FC<{
   const balance = booking.total_amount - totalPaid;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const endDate = new Date(booking.end_date);
-  
+  endDate.setHours(23, 59, 59, 999);
+
   // Real-time Countdown logic calculated from a single parent clock
   const timeLeftMs = endDate.getTime() - now;
+  const pickupAt = booking.pickup_confirmed_at ? new Date(booking.pickup_confirmed_at) : null;
+  const elapsedSincePickupMs = pickupAt ? Math.max(0, now - pickupAt.getTime()) : null;
   const isOverdue = booking.status === 'on_trip' && timeLeftMs <= 0;
   const isLessThanAnHour = booking.status === 'on_trip' && timeLeftMs > 0 && timeLeftMs <= 3600000;
   const isApproaching = booking.status === 'on_trip' && timeLeftMs > 3600000 && timeLeftMs <= 10800000; // < 3 hours
@@ -167,7 +170,7 @@ const BookingCard: React.FC<{
 
       {/* Live Timer for In Transit */}
       {booking.status === 'on_trip' && (
-        <div className="px-4 pb-3">
+        <div className="px-4 pb-3 space-y-2">
           <div className={`p-2.5 rounded-xl border flex items-center justify-between transition-colors ${
             isOverdue ? 'bg-red-500/10 border-red-500/30 text-red-500' :
             isLessThanAnHour ? 'bg-red-500/10 border-red-500 animate-pulse text-red-500' :
@@ -177,13 +180,18 @@ const BookingCard: React.FC<{
             <div className="flex items-center gap-2">
               <Clock size={14} className={isLessThanAnHour ? 'animate-bounce' : ''} />
               <span className="text-xs font-bold uppercase tracking-wider">
-                {isOverdue ? 'Return Overdue' : 'Time Remaining'}
+                {isOverdue ? 'Return Overdue' : pickupAt ? 'Time Remaining' : 'Awaiting Pickup'}
               </span>
             </div>
             <span className="font-mono font-black text-sm">
-              {isOverdue ? '00:00:00' : formatTimeLeft(timeLeftMs)}
+              {pickupAt ? (isOverdue ? '00:00:00' : formatTimeLeft(timeLeftMs)) : '—'}
             </span>
           </div>
+          {pickupAt && elapsedSincePickupMs != null && (
+            <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider px-1">
+              On trip for {formatTimeLeft(elapsedSincePickupMs)}
+            </p>
+          )}
         </div>
       )}
 

@@ -14,6 +14,11 @@ import { createBookingDocumentUploadHandler } from "../src/server/bookingDocumen
 import { createPrepareContinuationHandler } from "../src/server/reservationContinuationHandler.js";
 import { createEmailSendHandler } from "../src/server/emailSendHandler.js";
 import { createInspectionInsertHandler } from "../src/server/inspectionInsertHandler.js";
+import {
+  createBookingPickupHandler,
+  createBookingReturnHandler,
+} from "../src/server/bookingLifecycleHandler.js";
+import { createBookingExtendHandler } from "../src/server/bookingExtendHandler.js";
 import { createDeleteReservationHandler } from "../src/server/deleteReservationHandler.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
@@ -126,6 +131,24 @@ const app = express();
     '/api/bookings/:bookingId/inspections',
     express.json({ limit: '2mb' }),
     createInspectionInsertHandler(supabase)
+  );
+
+  app.post(
+    '/api/bookings/:bookingId/pickup',
+    express.json({ limit: '2mb' }),
+    createBookingPickupHandler(supabase)
+  );
+
+  app.post(
+    '/api/bookings/:bookingId/return',
+    express.json({ limit: '2mb' }),
+    createBookingReturnHandler(supabase)
+  );
+
+  app.post(
+    '/api/bookings/:bookingId/extend',
+    express.json({ limit: '1mb' }),
+    createBookingExtendHandler(supabase)
   );
 
   app.delete(
@@ -721,27 +744,12 @@ const app = express();
     }
   });
 
-  // Extend Booking Endpoint
-  app.post('/api/bookings/:id/extend', async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { days_extended, new_end_date, extension_cost } = req.body;
-      
-      const { data: extension, error: extError } = await supabase
-        .from('booking_extensions')
-        .insert([{ booking_id: id, days_extended, new_end_date, extension_cost, status: 'pending_payment' }])
-        .select()
-        .single();
-        
-      if (extError) throw extError;
-      
-      // Update the main booking total_price (if needed) or just leave it for the frontend to calculate
-      res.json({ success: true, extension });
-    } catch (error: any) {
-      console.error('[API] Extend booking error:', error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
+  // Legacy extend path (same handler as :bookingId/extend)
+  app.post(
+    '/api/bookings/:id/extend',
+    express.json({ limit: '1mb' }),
+    createBookingExtendHandler(supabase)
+  );
 
   // Create Inspection Endpoint
   app.post('/api/bookings/:id/inspections', async (req, res) => {

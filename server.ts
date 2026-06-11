@@ -12,6 +12,11 @@ import { createBookingDocumentUploadHandler } from "./src/server/bookingDocument
 import { createPrepareContinuationHandler } from "./src/server/reservationContinuationHandler.js";
 import { createEmailSendHandler } from "./src/server/emailSendHandler.js";
 import { createInspectionInsertHandler } from "./src/server/inspectionInsertHandler.js";
+import {
+  createBookingPickupHandler,
+  createBookingReturnHandler,
+} from "./src/server/bookingLifecycleHandler.js";
+import { createBookingExtendHandler } from "./src/server/bookingExtendHandler.js";
 import { createDeleteReservationHandler } from "./src/server/deleteReservationHandler.js";
 
 dotenv.config({ path: '.env.local' });
@@ -121,6 +126,24 @@ async function startServer() {
     '/api/bookings/:bookingId/inspections',
     express.json({ limit: '2mb' }),
     createInspectionInsertHandler(supabase)
+  );
+
+  app.post(
+    '/api/bookings/:bookingId/pickup',
+    express.json({ limit: '2mb' }),
+    createBookingPickupHandler(supabase)
+  );
+
+  app.post(
+    '/api/bookings/:bookingId/return',
+    express.json({ limit: '2mb' }),
+    createBookingReturnHandler(supabase)
+  );
+
+  app.post(
+    '/api/bookings/:bookingId/extend',
+    express.json({ limit: '1mb' }),
+    createBookingExtendHandler(supabase)
   );
 
   app.delete(

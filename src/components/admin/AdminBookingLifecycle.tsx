@@ -7,14 +7,26 @@ import {
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
 import { InspectionPhotoUpload } from './InspectionPhotoUpload';
-import { insertBookingInspection } from '../../services/inspectionService';
+import { logBookingPickup, logBookingReturn } from '../../services/bookingLifecycleService';
 
 type Stage = 'pickup' | 'in_transit' | 'return_form' | 'completed';
 
 interface Props {
   booking: any;
+  mode?: 'pickup' | 'return';
   onClose: () => void;
   onRefresh: () => void;
+}
+
+function resolveStage(b: any, mode?: 'pickup' | 'return'): Stage {
+  const inspections = b.booking_inspections || [];
+  const hasPre = !!b.pickup_confirmed_at || inspections.some((i: any) => i.type === 'pre_handover');
+  const hasPost = !!b.return_confirmed_at || inspections.some((i: any) => i.type === 'post_return');
+
+  if (b.status === 'completed' || b.status === 'returned' || hasPost) return 'completed';
+  if (mode === 'return' && (b.status === 'on_trip' || hasPre)) return 'return_form';
+  if (b.status === 'on_trip' || hasPre) return 'in_transit';
+  return 'pickup';
 }
 
 const PICKUP_CHECKS = [
@@ -227,16 +239,21 @@ function HistoryCard({ emoji, title, color, children, defaultOpen = false }: {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Props) {
+export function AdminBookingLifecycle({ booking: init, mode, onClose, onRefresh }: Props) {
   const [booking, setBooking] = useState(init);
 
-  const getStage = (b: any): Stage => {
-    if (b.status === 'on_trip') return 'in_transit';
-    if (b.status === 'returned' || b.status === 'completed') return 'completed';
-    return 'pickup';
-  };
+  const [stage, setStage] = useState<Stage>(() => resolveStage(init, mode));
 
-  const [stage, setStage] = useState<Stage>(getStage(init));
+  useEffect(() => {
+    setStage(resolveStage(booking, mode));
+  }, [
+    booking.id,
+    booking.status,
+    booking.pickup_confirmed_at,
+    booking.return_confirmed_at,
+    booking.booking_inspections,
+    mode,
+  ]);
   const [saving, setSaving] = useState(false);
 
   // Common Inspection State
@@ -285,16 +302,21 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
   const plate   = booking.cars?.license_plate || '';
   const ref     = booking.id.slice(0, 8).toUpperCase();
 
-  const endDate   = new Date(booking.end_date);   endDate.setHours(23, 59, 59, 999);
-  const startDate = new Date(booking.start_date);
-  const totalMs   = endDate.getTime() - startDate.getTime();
-  const pickupTime = booking.pickup_confirmed_at ? new Date(booking.pickup_confirmed_at) : startDate;
-  const elapsedMs = now.getTime() - pickupTime.getTime();
-  const remainMs  = endDate.getTime() - now.getTime();
-  const pct       = Math.min(100, Math.max(0, (elapsedMs / totalMs) * 100));
+  const endDate = new Date(booking.end_date);
+  endDate.setHours(23, 59, 59, 999);
+  const pickupTime = booking.pickup_confirmed_at ? new Date(booking.pickup_confirmed_at) : null;
+  const rentalActive = Boolean(pickupTime);
+  const rentalStartMs = pickupTime?.getTime() ?? endDate.getTime();
+  const rentalWindowMs = Math.max(1, endDate.getTime() - rentalStartMs);
+  const elapsedMs = rentalActive ? Math.max(0, now.getTime() - rentalStartMs) : 0;
+  const remainMs = endDate.getTime() - now.getTime();
+  const pct = rentalActive ? Math.min(100, Math.max(0, (elapsedMs / rentalWindowMs) * 100)) : 0;
   const isOverdue = remainMs < 0;
   const isWarn    = !isOverdue && remainMs < 86400000;
-  const rentalDays = Math.max(1, Math.ceil(totalMs / 86400000));
+  const rentalDays = Math.max(
+    1,
+    Math.ceil(rentalWindowMs / 86400000)
+  );
 
   const otMs      = Math.max(0, now.getTime() - endDate.getTime());
   const otHrs     = parseFloat((otMs / 3600000).toFixed(2));
@@ -337,19 +359,15 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
   ];
   const returnReady = returnMissing.length === 0;
 
-  // --- Handlers ---
-  const submitInspection = async (type: 'pre_handover' | 'post_return') => {
-    await insertBookingInspection(booking.id, {
-      type,
-      fuel_level: fuel,
-      mileage: parseInt(odo, 10) || null,
-      location: loc,
-      scratches_notes: notes,
-      photos_exterior: exteriorPhotos,
-      photos_interior: interiorPhotos,
-      photo_fuel_mileage: dashPhoto || null,
-    });
-  };
+  const inspectionPayload = () => ({
+    fuel_level: fuel,
+    mileage: parseInt(odo, 10) || null,
+    location: loc,
+    scratches_notes: notes,
+    photos_exterior: exteriorPhotos,
+    photos_interior: interiorPhotos,
+    photo_fuel_mileage: dashPhoto || null,
+  });
 
   const handleLogPickup = async () => {
     if (!pickupReady) {
@@ -359,28 +377,16 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
 
     setSaving(true);
     try {
-      await submitInspection('pre_handover');
-
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('bookings').update({
-        status: 'on_trip',
-        sub_status: 'in_transit',
-        pickup_confirmed_at: new Date().toISOString(),
-        pickup_confirmed_by: user?.id,
-        actual_pickup_location: loc,
-        pickup_odometer: parseInt(odo, 10),
-      }).eq('id', booking.id);
-      
-      if (error) throw error;
-      
+      const result = await logBookingPickup(booking.id, inspectionPayload());
+      setBooking(result.booking);
       toast.success('Pickup logged — now In Transit');
       setStage('in_transit');
       onRefresh();
-    } catch (e: any) { 
-      logger.error('Pickup error:', e); 
-      toast.error(e?.message || 'Failed to log pickup'); 
-    } finally { 
-      setSaving(false); 
+    } catch (e: any) {
+      logger.error('Pickup error:', e);
+      toast.error(e?.message || 'Failed to log pickup');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -392,30 +398,20 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
 
     setSaving(true);
     try {
-      await submitInspection('post_return');
-
-      const { data: { user } } = await supabase.auth.getUser();
-      const { error } = await supabase.from('bookings').update({
-        status: 'completed',
-        sub_status: 'completed',
-        return_confirmed_at: new Date().toISOString(),
-        return_confirmed_by: user?.id,
-        return_notes: notes,
+      const result = await logBookingReturn(booking.id, {
+        ...inspectionPayload(),
         overtime_hours: otHrs,
         overtime_charge: otCharge,
-        return_odometer: parseInt(odo, 10),
-      }).eq('id', booking.id);
-      
-      if (error) throw error;
-      
+      });
+      setBooking(result.booking);
       toast.success('Return logged — booking completed!');
       setStage('completed');
       onRefresh();
-    } catch (e: any) { 
-      logger.error('Return error:', e); 
-      toast.error(e?.message || 'Failed to log return'); 
-    } finally { 
-      setSaving(false); 
+    } catch (e: any) {
+      logger.error('Return error:', e);
+      toast.error(e?.message || 'Failed to log return');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -482,22 +478,34 @@ export function AdminBookingLifecycle({ booking: init, onClose, onRefresh }: Pro
                 <span className="text-2xl">{isOverdue ? '🚨' : isWarn ? '⏰' : '🚗'}</span>
                 <div>
                   <p className={`text-sm font-bold ${isOverdue ? 'text-error' : isWarn ? 'text-warning' : 'text-blue-500'}`}>
-                    {isOverdue ? `OVERDUE by ${fmtDur(Math.abs(remainMs))}` : isWarn ? `Due in ${fmtDur(remainMs)}` : `In Transit — ${fmtDur(remainMs)} remaining`}
+                    {!rentalActive
+                      ? 'Awaiting pickup confirmation — timer starts after handover'
+                      : isOverdue
+                      ? `OVERDUE by ${fmtDur(Math.abs(remainMs))}`
+                      : isWarn
+                      ? `Due in ${fmtDur(remainMs)}`
+                      : `In Transit — ${fmtDur(remainMs)} remaining`}
                   </p>
-                  <p className="text-xs text-muted-foreground">Return by {endDate.toLocaleDateString()} · {endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {rentalActive
+                      ? `Rental started ${pickupTime!.toLocaleString()} · Return by ${endDate.toLocaleDateString()} ${endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+                      : `Return by ${endDate.toLocaleDateString()} · ${endDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                  </p>
                 </div>
               </div>
 
               {/* Progress bar */}
-              <div className="bg-muted/30 rounded-xl p-4 border border-border">
-                <div className="flex justify-between text-xs text-muted-foreground mb-2">
-                  <span>Elapsed: {fmtDur(elapsedMs)}</span>
-                  <span>{isOverdue ? 'Overdue' : 'Remaining: ' + fmtDur(remainMs)}</span>
+              {rentalActive && (
+                <div className="bg-muted/30 rounded-xl p-4 border border-border">
+                  <div className="flex justify-between text-xs text-muted-foreground mb-2">
+                    <span>Elapsed since pickup: {fmtDur(elapsedMs)}</span>
+                    <span>{isOverdue ? 'Overdue' : 'Remaining: ' + fmtDur(remainMs)}</span>
+                  </div>
+                  <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${isOverdue ? 'bg-error' : isWarn ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
+                  </div>
                 </div>
-                <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all ${isOverdue ? 'bg-error' : isWarn ? 'bg-warning' : 'bg-primary'}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                </div>
-              </div>
+              )}
 
               {!showReminder ? (
                 <button onClick={() => {

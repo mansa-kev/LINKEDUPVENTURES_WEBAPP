@@ -257,17 +257,27 @@ export function AdminBookingCommandCenter() {
   const handleAddExtension = async () => {
     setIsSubmitting(true);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) throw new Error('You must be signed in to add an extension.');
+
       const res = await fetch(`/api/bookings/${booking.id}/extend`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ days_extended: extensionDays, extension_cost: extensionCost })
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ days_extended: extensionDays, extension_cost: extensionCost }),
       });
-      if (!res.ok) throw new Error('Failed to extend');
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok || !payload?.success) {
+        throw new Error(payload?.error || `Failed to add extension (${res.status})`);
+      }
       toast.success('Extension added successfully');
       setActiveModal(null);
       fetchBooking(true);
-    } catch (e) {
-      toast.error('Failed to add extension');
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to add extension');
     } finally {
       setIsSubmitting(false);
     }
@@ -369,6 +379,25 @@ export function AdminBookingCommandCenter() {
   const inspections = booking.booking_inspections || [];
   const preInspection = inspections.find((i: any) => i.type === 'pre_handover');
   const postInspection = inspections.find((i: any) => i.type === 'post_return');
+
+  const pickupAlreadyLogged =
+    !!booking.pickup_confirmed_at ||
+    !!preInspection ||
+    booking.status === 'on_trip' ||
+    ['returned', 'completed'].includes(booking.status);
+
+  const returnAlreadyLogged =
+    !!booking.return_confirmed_at ||
+    !!postInspection ||
+    ['returned', 'completed'].includes(booking.status);
+
+  const canStartPickup =
+    (booking.status === 'confirmed' || booking.status === 'pending_collection') &&
+    !pickupAlreadyLogged;
+
+  const canProcessReturn = booking.status === 'on_trip' && !returnAlreadyLogged;
+
+  const canExtend = booking.status === 'on_trip' && !returnAlreadyLogged;
 
   // --- Helpers ---
   const buildMessage = (mode: CommunicateMode) => {
@@ -669,7 +698,7 @@ export function AdminBookingCommandCenter() {
           { key: 'pickup',      label: 'Pickup',       icon: MapPin,         done: !!booking.pickup_confirmed_at || ['on_trip','returned','completed'].includes(booking.status) },
           { key: 'transit',     label: 'In Transit',   icon: Car,            done: ['on_trip','returned','completed'].includes(booking.status) },
           { key: 'returned',    label: 'Returned',     icon: RotateCcw,      done: !!booking.return_confirmed_at || ['returned','completed'].includes(booking.status) },
-          { key: 'completed',   label: 'Completed',    icon: Sparkles,       done: booking.status === 'completed' },
+          { key: 'completed',   label: 'Completed',    icon: Sparkles,       done: ['completed', 'returned'].includes(booking.status) },
         ];
         const isCancelled = booking.status === 'cancelled';
         const currentIdx = stages.findIndex(s => !s.done);
@@ -773,20 +802,24 @@ export function AdminBookingCommandCenter() {
 
       {/* Action Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        {(booking.status === 'confirmed' || booking.status === 'pending_collection') ? (
+        {canStartPickup ? (
           <button onClick={() => setActiveModal('pickup')} className="col-span-2 py-4 bg-orange-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-orange-600 transition-all shadow-lg hover:shadow-orange-500/20">
             <MapPin size={18} /> Start Trip (Pickup Log)
           </button>
         ) : null}
 
-        {booking.status === 'on_trip' ? (
+        {canProcessReturn || canExtend ? (
           <>
-            <button onClick={() => setActiveModal('return')} className="col-span-2 py-4 bg-teal-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-teal-600 transition-all shadow-lg hover:shadow-teal-500/20">
-              <CheckCircle2 size={18} /> Process Return
-            </button>
-            <button onClick={() => setActiveModal('extend')} className="py-4 bg-purple-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-purple-600 transition-all">
-              <Calendar size={18} /> Extend
-            </button>
+            {canProcessReturn ? (
+              <button onClick={() => setActiveModal('return')} className="col-span-2 py-4 bg-teal-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-teal-600 transition-all shadow-lg hover:shadow-teal-500/20">
+                <CheckCircle2 size={18} /> Process Return
+              </button>
+            ) : null}
+            {canExtend ? (
+              <button onClick={() => setActiveModal('extend')} className="py-4 bg-purple-500 text-white rounded-2xl font-black text-sm flex items-center justify-center gap-2 hover:bg-purple-600 transition-all">
+                <Calendar size={18} /> Extend
+              </button>
+            ) : null}
           </>
         ) : null}
 
@@ -1527,6 +1560,7 @@ export function AdminBookingCommandCenter() {
       {(activeModal === 'pickup' || activeModal === 'return') && (
         <AdminBookingLifecycle
           booking={booking}
+          mode={activeModal === 'return' ? 'return' : 'pickup'}
           onClose={() => setActiveModal(null)}
           onRefresh={() => fetchBooking(true)}
         />
