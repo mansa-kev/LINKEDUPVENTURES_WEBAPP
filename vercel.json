@@ -5,12 +5,15 @@
   "installCommand": "npm install",
   "functions": {
     "api/index.ts": {
-      "runtime": "@vercel/node@3.2.29",
       "memory": 1024,
       "maxDuration": 30
+    },
+    "api/health.ts": {
+      "maxDuration": 10
     }
   },
   "rewrites": [
+    { "source": "/api/health", "destination": "/api/health" },
     { "source": "/api/(.*)", "destination": "/api/index" },
     { "source": "/((?!assets/|.*\\..*).*)", "destination": "/index.html" }
   ],

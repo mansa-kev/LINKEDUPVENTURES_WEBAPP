@@ -6,7 +6,7 @@ import {
   getSupabaseServiceRoleKey,
   getSupabaseUrl,
   isSupabaseConfigured,
-} from "./supabaseServer.js";
+} from "../src/server/supabaseServer.js";
 import { createInspectionUploadHandler } from "../src/server/inspectionUploadHandler.js";
 import { createContractSaveHandler } from "../src/server/contractSaveHandler.js";
 import { createDeleteBookingHandler } from "../src/server/deleteBookingHandler.js";

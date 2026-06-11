@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { invalidateCachePrefix } from '../utils/queryCache';
+import { invalidateCachePrefix } from '../utils/queryCache.js';
 
 const MAX_PDF_BYTES = 12 * 1024 * 1024;
 
