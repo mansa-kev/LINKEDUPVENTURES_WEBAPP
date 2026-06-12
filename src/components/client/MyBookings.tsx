@@ -6,6 +6,7 @@ import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { isOnTripStatus } from '../../constants/bookingStatuses';
+import { openBookingReceiptPdf } from '../../services/receiptPdfService';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -34,6 +35,7 @@ export function MyBookings() {
   const [submitting, setSubmitting] = useState(false);
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [receiptLoadingId, setReceiptLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchBookings();
@@ -182,24 +184,45 @@ export function MyBookings() {
   const openReceipt = async (booking: any) => {
     const legacy = booking.metadata?.receipt_url;
     if (legacy) { window.open(legacy, '_blank'); return; }
+
+    if (booking.payment_status !== 'paid') {
+      toast.error('Receipt is available after payment is completed.');
+      return;
+    }
+
+    setReceiptLoadingId(booking.id);
     try {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      let profile: { full_name?: string; email?: string; phone_number?: string } | null = null;
+      if (user) {
+        const { data: profileData } = await supabase
+          .from('user_profiles')
+          .select('full_name, email, phone_number')
+          .eq('id', user.id)
+          .maybeSingle();
+        profile = profileData;
+      }
+
+      const { data: transaction, error } = await supabase
         .from('transactions')
-        .select('receipt_url, reference_number, amount, created_at, type, status')
+        .select('amount, transaction_code, created_at, type, status')
         .eq('booking_id', booking.id)
         .eq('status', 'completed')
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
+
       if (error) throw error;
-      if (data?.receipt_url) { window.open(data.receipt_url, '_blank'); return; }
-      if (data) {
-        toast.success(`Receipt: ${data.reference_number || 'N/A'} • KES ${Number(data.amount).toLocaleString()} • ${new Date(data.created_at).toLocaleDateString()}`);
-        return;
-      }
-      toast.error('No receipt available yet — payment not yet completed.');
-    } catch {
-      toast.error('Unable to load receipt.');
+
+      await openBookingReceiptPdf(
+        { ...booking, client: profile },
+        transaction
+      );
+    } catch (err: any) {
+      console.error('Receipt error:', err);
+      toast.error(err?.message || 'Unable to generate receipt.');
+    } finally {
+      setReceiptLoadingId(null);
     }
   };
 
@@ -411,8 +434,13 @@ export function MyBookings() {
                 <button onClick={() => openContract(booking)} className="hover:text-primary flex items-center gap-1">
                   <FileText size={14} /> View Contract
                 </button>
-                <button onClick={() => openReceipt(booking)} className="hover:text-primary flex items-center gap-1">
-                  <CreditCard size={14} /> View Receipt
+                <button
+                  onClick={() => openReceipt(booking)}
+                  disabled={receiptLoadingId === booking.id}
+                  className="hover:text-primary flex items-center gap-1 disabled:opacity-50"
+                >
+                  {receiptLoadingId === booking.id ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                  View Receipt
                 </button>
               </div>
             </div>
@@ -571,8 +599,13 @@ export function MyBookings() {
               <button onClick={() => openContract(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
                 <FileText size={14} /> Contract
               </button>
-              <button onClick={() => openReceipt(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
-                <CreditCard size={14} /> Receipt
+              <button
+                onClick={() => openReceipt(detailsBooking)}
+                disabled={receiptLoadingId === detailsBooking.id}
+                className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {receiptLoadingId === detailsBooking.id ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
+                Receipt
               </button>
               {isOnTripStatus(detailsBooking.status) && (
                 <button

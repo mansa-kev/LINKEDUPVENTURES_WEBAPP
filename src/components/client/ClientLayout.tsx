@@ -1,6 +1,6 @@
 // @ts-nocheck
-import React, { useState, useEffect, useCallback, Suspense } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useCallback, Suspense, useMemo } from 'react';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { useTheme } from '../../contexts/ThemeContext';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -12,14 +12,13 @@ import {
   Settings as SettingsIcon,
   Menu,
   X,
-  ChevronDown,
-  ChevronUp,
   User,
   Search,
 } from 'lucide-react';
 import { Logo } from '../shared/Logo';
 import { LogoLoader } from '../shared/LogoLoader';
 import { PortalHeader } from '../PortalHeader';
+import { PortalSidebarNav, type PortalNavGroup } from '../shared/PortalSidebarNav';
 import { supabase } from '../../lib/supabase';
 import { clientService } from '../../services/clientService';
 
@@ -62,30 +61,30 @@ const scheduleIdle = (cb: () => void) => {
   return () => window.clearTimeout(id);
 };
 
-const navGroups = [
+const NAV_GROUPS: PortalNavGroup[] = [
   {
-    category: 'Main',
+    title: 'Main',
     items: [
-      { name: 'Dashboard', path: '/client', icon: LayoutDashboard },
-      { name: 'Browse Cars', path: '/client/browse', icon: Search },
-      { name: 'My Bookings', path: '/client/bookings', icon: Car },
-    ]
+      { id: 'dashboard', label: 'Dashboard', path: '/client', icon: LayoutDashboard },
+      { id: 'browse', label: 'Browse Cars', path: '/client/browse', icon: Search },
+      { id: 'bookings', label: 'My Bookings', path: '/client/bookings', icon: Car },
+    ],
   },
   {
-    category: 'Account',
+    title: 'Account',
     items: [
-      { name: 'My Profile', path: '/client/profile', icon: User },
-      { name: 'Digital Glovebox', path: '/client/glovebox', icon: FileText },
-      { name: 'Loyalty & Rewards', path: '/client/rewards', icon: Award },
-    ]
+      { id: 'profile', label: 'My Profile', path: '/client/profile', icon: User },
+      { id: 'glovebox', label: 'Digital Glovebox', path: '/client/glovebox', icon: FileText, shortLabel: 'Glovebox' },
+      { id: 'rewards', label: 'Loyalty & Rewards', path: '/client/rewards', icon: Award, shortLabel: 'Rewards' },
+    ],
   },
   {
-    category: 'Support',
+    title: 'Support',
     items: [
-      { name: 'My Inbox', path: '/client/inbox', icon: Inbox },
-      { name: 'Settings', path: '/client/settings', icon: SettingsIcon },
-    ]
-  }
+      { id: 'inbox', label: 'My Inbox', path: '/client/inbox', icon: Inbox },
+      { id: 'settings', label: 'Settings', path: '/client/settings', icon: SettingsIcon },
+    ],
+  },
 ];
 
 export function ClientLayout() {
@@ -95,16 +94,24 @@ export function ClientLayout() {
   const setIsDarkMode = (isDark: boolean) => setTheme(isDark ? 'dark' : 'light');
 
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedGroup, setExpandedGroup] = useState<string | null>(() => {
-    // Default: expand the group containing the active route
-    const active = navGroups.find(g => g.items.some(i => i.path === location.pathname));
-    return active?.category ?? 'Main';
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 768);
+  const [expandedGroups, setExpandedGroups] = useState<string[]>(() => {
+    const active = NAV_GROUPS.find(g => g.items.some(i => i.path === location.pathname));
+    return active ? [active.title] : ['Main'];
   });
 
   const [badges, setBadges] = useState<{ bookings: number; inbox: number }>({ bookings: 0, inbox: 0 });
 
-  // Live badge counts
+  const sidebarGroups = useMemo(() => NAV_GROUPS.map(group => ({
+    ...group,
+    items: group.items.map(item => ({
+      ...item,
+      badge:
+        item.path === '/client/bookings' ? badges.bookings :
+        item.path === '/client/inbox' ? badges.inbox : undefined,
+    })),
+  })), [badges]);
+
   useEffect(() => {
     let cancelled = false;
     let channel: any = null;
@@ -137,8 +144,6 @@ export function ClientLayout() {
     };
   }, []);
 
-
-  // Responsive detection
   useEffect(() => {
     const handleResize = () => {
       const mobile = window.innerWidth < 768;
@@ -149,17 +154,15 @@ export function ClientLayout() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Close sidebar on route change (mobile)
   useEffect(() => {
     if (isMobile) setSidebarOpen(false);
   }, [location.pathname, isMobile]);
 
-  const toggleGroup = useCallback((category: string) => {
-    setExpandedGroup(prev => {
-      if (isMobile) return prev === category ? null : category;
-      return prev === category ? null : category;
-    });
-  }, [isMobile]);
+  const toggleGroup = useCallback((title: string) => {
+    setExpandedGroups(prev =>
+      prev.includes(title) ? prev.filter(g => g !== title) : [...prev, title]
+    );
+  }, []);
 
   useEffect(() => {
     CLIENT_MODULE_PRELOADERS[location.pathname]?.();
@@ -173,157 +176,99 @@ export function ClientLayout() {
     });
   }, [location.pathname]);
 
-  const sidebarContent = (
-    <nav className="flex-1 px-4 space-y-2 overflow-y-auto pb-4 pt-2">
-      {navGroups.map((group) => {
-        const isExpanded = expandedGroup === group.category;
-        const hasActive = group.items.some(i => i.path === location.pathname);
+  const prefetch = useCallback((path: string) => {
+    CLIENT_MODULE_PRELOADERS[path]?.();
+  }, []);
 
-        return (
-          <div key={group.category}>
-            <button
-              onClick={() => toggleGroup(group.category)}
-              className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-colors ${
-                hasActive
-                  ? 'text-primary bg-primary/5'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted'
-              }`}
-            >
-              <span>{group.category}</span>
-              {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-
-            <AnimatePresence initial={false}>
-              {isExpanded && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.2, ease: 'easeInOut' }}
-                  className="overflow-hidden"
-                >
-                  <div className="mt-1 space-y-1">
-                    {group.items.map((item) => {
-                      const isActive = location.pathname === item.path;
-                      const badgeCount =
-                        item.path === '/client/bookings' ? badges.bookings :
-                        item.path === '/client/inbox' ? badges.inbox : 0;
-                      return (
-                        <Link
-                          key={item.name}
-                          to={item.path}
-                          onMouseEnter={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
-                          onFocus={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
-                          onTouchStart={() => CLIENT_MODULE_PRELOADERS[item.path]?.()}
-                          className={`flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                            isActive
-                              ? 'bg-primary text-white shadow-lg shadow-primary/20'
-                              : 'text-muted-foreground hover:bg-muted'
-                          }`}
-                        >
-                          <span className="flex items-center gap-3 min-w-0">
-                            <item.icon size={20} />
-                            <span className="truncate">{item.name}</span>
-                          </span>
-                          {badgeCount > 0 && (
-                            <span className={`shrink-0 min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center rounded-full text-[10px] font-black ${
-                              isActive ? 'bg-white text-primary' : 'bg-error text-white'
-                            }`}>
-                              {badgeCount > 99 ? '99+' : badgeCount}
-                            </span>
-                          )}
-                        </Link>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        );
-      })}
-    </nav>
+  const sidebarNav = (
+    <PortalSidebarNav
+      groups={sidebarGroups}
+      activePath={location.pathname}
+      expandedGroups={expandedGroups}
+      onToggleGroup={toggleGroup}
+      onPrefetch={prefetch}
+      onNavigate={() => { if (isMobile) setSidebarOpen(false); }}
+    />
   );
 
   return (
-    <div className="min-h-screen bg-background flex text-foreground transition-colors duration-300">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 bg-card border-r border-border flex-col flex-shrink-0">
-        <div className="min-h-16 md:min-h-20 p-6 flex items-center">
-          <Logo size="lg" showText={false} />
-        </div>
-        {sidebarContent}
-      </aside>
-
-      {/* Mobile Sidebar Overlay */}
-      <AnimatePresence>
-        {isMobile && sidebarOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.2 }}
-              className="fixed inset-0 bg-black/60 z-40"
-              onClick={() => setSidebarOpen(false)}
-            />
-            {/* Drawer */}
-            <motion.aside
-              initial={{ x: '-100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '-100%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="fixed left-0 top-0 h-full w-72 bg-card border-r border-border z-50 flex flex-col shadow-2xl"
+    <div className="min-h-screen bg-background flex flex-col text-foreground transition-colors duration-300">
+      <PortalHeader
+        isDarkMode={isDarkMode}
+        setIsDarkMode={setIsDarkMode}
+        portalType="client"
+        leftContent={
+          <div className="flex items-center gap-2 md:gap-4">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+              aria-label="Toggle sidebar"
             >
-              <div className="p-6 flex items-center justify-between">
-                <Logo size="lg" showText={false} />
-                <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="p-2 hover:bg-muted rounded-lg text-muted-foreground"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              {sidebarContent}
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+              <Menu size={20} />
+            </button>
+            <Logo size="lg" showText={!isMobile} />
+          </div>
+        }
+      />
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile Header with Hamburger */}
-        <div className="flex items-center md:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-4 text-muted-foreground hover:text-foreground"
-            aria-label="Open sidebar"
-          >
-            <Menu size={24} />
-          </button>
+      <div className="flex flex-1 overflow-hidden relative">
+        <aside className={`hidden md:flex bg-card border-r border-border flex-col flex-shrink-0 h-full transition-all duration-300 ${
+          sidebarOpen ? 'w-64' : 'w-0 overflow-hidden opacity-0'
+        }`}>
+          {sidebarNav}
+        </aside>
+
+        <AnimatePresence>
+          {isMobile && sidebarOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="fixed inset-0 bg-black/60 z-40"
+                onClick={() => setSidebarOpen(false)}
+              />
+              <motion.aside
+                initial={{ x: '-100%' }}
+                animate={{ x: 0 }}
+                exit={{ x: '-100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="fixed left-0 top-0 h-full w-72 bg-card border-r border-border z-50 flex flex-col shadow-2xl"
+              >
+                <div className="p-6 flex items-center justify-between">
+                  <Logo size="xl" showText={false} />
+                  <button
+                    type="button"
+                    onClick={() => setSidebarOpen(false)}
+                    className="p-2 hover:bg-muted rounded-lg text-muted-foreground"
+                  >
+                    <X size={20} />
+                  </button>
+                </div>
+                {sidebarNav}
+              </motion.aside>
+            </>
+          )}
+        </AnimatePresence>
+
+        <div className="flex-1 flex flex-col min-w-0 overflow-y-auto bg-muted/20">
+          <main className="flex-1 p-4 md:p-8">
+            <Suspense fallback={<LogoLoader />}>
+              <Routes>
+                <Route index element={<Dashboard />} />
+                <Route path="browse" element={<BrowseAndBook />} />
+                <Route path="bookings" element={<MyBookings />} />
+                <Route path="profile" element={<MyProfile />} />
+                <Route path="glovebox" element={<DigitalGlovebox />} />
+                <Route path="rewards" element={<LoyaltyRewards />} />
+                <Route path="inbox" element={<MyInbox />} />
+                <Route path="settings" element={<Settings />} />
+              </Routes>
+            </Suspense>
+          </main>
         </div>
-
-        <PortalHeader
-          isDarkMode={isDarkMode}
-          setIsDarkMode={setIsDarkMode}
-          portalType="client"
-        />
-
-        <main className="flex-1 p-4 md:p-8 overflow-y-auto">
-          <Suspense fallback={<LogoLoader />}>
-            <Routes>
-              <Route index element={<Dashboard />} />
-              <Route path="browse" element={<BrowseAndBook />} />
-              <Route path="bookings" element={<MyBookings />} />
-              <Route path="profile" element={<MyProfile />} />
-              <Route path="glovebox" element={<DigitalGlovebox />} />
-              <Route path="rewards" element={<LoyaltyRewards />} />
-              <Route path="inbox" element={<MyInbox />} />
-              <Route path="settings" element={<Settings />} />
-            </Routes>
-          </Suspense>
-        </main>
       </div>
     </div>
   );

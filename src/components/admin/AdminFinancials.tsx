@@ -3,6 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { AdminPaymentApprovals } from './AdminPaymentApprovals';
 import { AdminPayoutEngine } from './AdminPayoutEngine';
+import { AdminPartnerLedger } from './AdminPartnerLedger';
+import { createEmptyPayoutBreakdown } from '../../utils/partnerFinancials';
 import { 
   DollarSign, 
   TrendingUp, 
@@ -57,11 +59,28 @@ const TransactionStatus = ({ status }: { status: Transaction['status'] }) => {
 export function AdminFinancials() {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get('tab');
-  const initialTab = tabParam === 'approvals' || tabParam === 'payouts' ? tabParam : 'overview';
-  const [data, setData] = useState<{ transactions: any[], expenses: any[], settlements: any[], totalRevenue: number, totalPayouts: number, totalExpenses: number, netRevenue: number, pendingSettlementAmount: number, chartData: any[] }>({ transactions: [], expenses: [], settlements: [], totalRevenue: 0, totalPayouts: 0, totalExpenses: 0, netRevenue: 0, pendingSettlementAmount: 0, chartData: [] });
+  const initialTab =
+    tabParam === 'approvals' || tabParam === 'payouts' || tabParam === 'partner-ledger'
+      ? tabParam
+      : 'overview';
+  const [data, setData] = useState({
+    transactions: [] as any[],
+    expenses: [] as any[],
+    settlements: [] as any[],
+    totalRevenue: 0,
+    totalPlatformCommission: 0,
+    totalPayouts: 0,
+    totalExpenses: 0,
+    netRevenue: 0,
+    pendingSettlementAmount: 0,
+    payoutBreakdown: createEmptyPayoutBreakdown(),
+    brokerReconciliation: [] as any[],
+    bookingReconciliation: [] as any[],
+    chartData: [] as any[],
+  });
   const [reservationStats, setReservationStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'overview' | 'approvals' | 'payouts'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'overview' | 'partner-ledger' | 'approvals' | 'payouts'>(initialTab);
   const [txTab, setTxTab] = useState<'all' | 'payment_in' | 'payout_out'>('all');
 
   const fetchFinancials = async () => {
@@ -91,7 +110,19 @@ export function AdminFinancials() {
     fetchFinancials();
   }, []);
 
-  const { totalRevenue, totalPayouts, totalExpenses, netRevenue, pendingSettlementAmount, chartData, settlements } = data;
+  const {
+    totalRevenue,
+    totalPlatformCommission,
+    totalPayouts,
+    totalExpenses,
+    netRevenue,
+    pendingSettlementAmount,
+    chartData,
+    settlements,
+    payoutBreakdown,
+    brokerReconciliation,
+    bookingReconciliation,
+  } = data;
 
   const pendingPayouts = pendingSettlementAmount || data.transactions
     .filter(t => t.type === 'payout_out' && t.status === 'pending')
@@ -116,8 +147,9 @@ export function AdminFinancials() {
       <div className="flex items-center gap-4 border-b border-border pb-4">
         {[
           { id: 'overview', label: 'Financial Overview' },
+          { id: 'partner-ledger', label: 'Partner Ledger' },
           { id: 'approvals', label: 'Payment Approvals' },
-          { id: 'payouts', label: 'Payout Engine' }
+          { id: 'payouts', label: 'Payout Engine' },
         ].map(tab => (
           <button
             key={tab.id}
@@ -137,6 +169,14 @@ export function AdminFinancials() {
         <AdminPaymentApprovals />
       ) : activeTab === 'payouts' ? (
         <AdminPayoutEngine />
+      ) : activeTab === 'partner-ledger' ? (
+        <AdminPartnerLedger
+          payoutBreakdown={payoutBreakdown}
+          brokerReconciliation={brokerReconciliation}
+          bookingReconciliation={bookingReconciliation}
+          chartData={chartData}
+          totalPlatformCommission={totalPlatformCommission}
+        />
       ) : (
         <>
           {/* Financial Summary Cards */}
@@ -151,7 +191,11 @@ export function AdminFinancials() {
               <div className="p-2.5 bg-blue-500/10 text-blue-500 rounded-xl w-fit mb-3"><TrendingUp size={20} /></div>
               <h3 className="text-muted-foreground text-[10px] font-bold uppercase tracking-wider mb-1">Payouts Settled</h3>
               <p className="text-xl font-black text-foreground">KSh {totalPayouts.toLocaleString()}</p>
-              <p className="text-[10px] text-muted-foreground mt-1">{settlements?.filter(s => s.status === 'paid').length || 0} settlements</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Out KSh {payoutBreakdown.supplierOutsourced.paid.toLocaleString()} ·
+                Fleet KSh {payoutBreakdown.supplierFleet.paid.toLocaleString()} ·
+                Broker KSh {payoutBreakdown.broker.paid.toLocaleString()}
+              </p>
             </div>
 
             <div className="bg-card p-5 rounded-2xl border border-border shadow-sm">
@@ -171,9 +215,26 @@ export function AdminFinancials() {
               <div className="p-2.5 bg-primary/15 text-primary rounded-xl w-fit mb-3"><Wallet size={20} /></div>
               <h3 className="text-primary text-[10px] font-black uppercase tracking-wider mb-1">Net Platform Revenue</h3>
               <p className="text-2xl font-black text-foreground">KSh {(netRevenue || 0).toLocaleString()}</p>
-              <p className="text-[10px] text-muted-foreground mt-1">After payouts & expenses</p>
+              <p className="text-[10px] text-muted-foreground mt-1">
+                Commission KSh {totalPlatformCommission.toLocaleString()} recorded
+              </p>
             </div>
           </div>
+
+          {(settlements?.length > 0 || brokerReconciliation.length > 0) && (
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-4 bg-muted/40 border border-border rounded-2xl">
+              <p className="text-sm text-muted-foreground">
+                Partner payouts are split by outsourced suppliers, fleet owners, and broker referrals.
+              </p>
+              <button
+                type="button"
+                onClick={() => setActiveTab('partner-ledger')}
+                className="px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold shrink-0"
+              >
+                Open Partner Ledger
+              </button>
+            </div>
+          )}
 
           {/* Revenue Chart */}
           <div className="bg-card p-8 rounded-2xl border border-border shadow-sm">

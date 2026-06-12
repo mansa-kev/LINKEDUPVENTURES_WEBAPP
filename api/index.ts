@@ -20,6 +20,13 @@ import {
 } from "../src/server/bookingLifecycleHandler.js";
 import { createBookingExtendHandler } from "../src/server/bookingExtendHandler.js";
 import { createDeleteReservationHandler } from "../src/server/deleteReservationHandler.js";
+import { processBookingPayoutSettlements } from "../src/server/bookingPayoutSettlements.js";
+import {
+  buildBrokerMetadata,
+  buildOutsourceMetadata,
+  computeBookingFinancials,
+  validateBookingTotalAmount,
+} from "../src/server/bookingFinancials.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
 // and this call is a no-op (the file won't exist), which is fine.
@@ -259,6 +266,8 @@ const app = express();
           transaction_code: paymentRequest.provider_transaction_id,
         });
       }
+
+      await processBookingPayoutSettlements(supabase, paymentRequest.booking_id);
 
       if (paymentRequest.client_id) {
         await supabase.from('notifications').insert({
@@ -802,6 +811,9 @@ const app = express();
         sourceReservationId,
         reservationContinuationToken,
         bookingFlowInitiatedBy,
+        brokerId,
+        brokerCommissionRate: brokerRate,
+        brokerCommissionAmount,
       } = bookingData;
 
       if (!carId || !startDate || !endDate || totalAmount == null) {
@@ -860,27 +872,46 @@ const app = express();
         return res.status(409).json({ success: false, error: 'Selected dates are not available. The car is either booked or reserved for these dates.' });
       }
 
-      let fleetOwnerId = sourceReservation?.fleet_owner_id || null;
+      const { data: carRow, error: carRowError } = await supabase
+        .from('cars')
+        .select('id, fleet_owner_id, daily_rate, is_outsourced, outsource_commission_rate, outsource_owner_name, outsource_owner_email, outsource_owner_phone')
+        .eq('id', carId)
+        .single();
+
+      if (carRowError || !carRow) {
+        return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
+      }
+
+      let fleetOwnerId = sourceReservation?.fleet_owner_id || carRow.fleet_owner_id || null;
+
       if (!fleetOwnerId) {
-        const { data: car, error: carError } = await supabase
-          .from('cars')
-          .select('fleet_owner_id')
-          .eq('id', carId)
+        const { data: adminUser } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(1)
           .single();
-
-        if (carError || !car) {
-          return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
+        if (adminUser) {
+          fleetOwnerId = adminUser.id;
+        } else {
+          return res.status(409).json({ success: false, error: 'This car is not assigned to a fleet owner and no general fleet is available.' });
         }
-
-        if (!car.fleet_owner_id) {
-          return res.status(409).json({ success: false, error: 'This car is not assigned to a fleet owner yet.' });
-        }
-
-        fleetOwnerId = car.fleet_owner_id;
       }
 
       const total = Number(totalAmount);
-      const platformCommission = Math.round(total * 0.15 * 100) / 100;
+      const amountCheck = validateBookingTotalAmount(
+        total,
+        Number(carRow.daily_rate || 0),
+        start,
+        end
+      );
+      if (amountCheck.ok === false) {
+        return res.status(400).json({ success: false, error: amountCheck.error });
+      }
+
+      const financials = await computeBookingFinancials(supabase, carRow, fleetOwnerId, total);
+      const statusToken = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
+
       const payload = {
         car_id: carId,
         client_id: clientId || sourceReservation?.client_id || null,
@@ -890,25 +921,29 @@ const app = express();
         pickup_location: pickupLocation || location,
         dropoff_location: dropoffLocation || pickupLocation || location,
         total_amount: total,
-        platform_commission: platformCommission,
+        platform_commission: financials.platformCommission,
         document_status: bookingData.documentsVerifiedPhysically ? 'approved' : 'pending',
         status: 'pending_payment_verification',
         payment_status: 'pending',
         payment_method: paymentMethod || 'ncba_stk',
         payment_provider: 'ncba',
         source_reservation_id: sourceReservationId || null,
+        broker_id: brokerId || null,
+        broker_commission_rate: brokerId ? Number(brokerRate) || 0 : 0,
+        broker_commission_amount: brokerId ? Number(brokerCommissionAmount) || 0 : 0,
         metadata: {
+          broker_info: buildBrokerMetadata(brokerId, brokerRate, brokerCommissionAmount),
           reservation_context: sourceReservationId ? {
             reservation_id: sourceReservationId,
             continuation_token: reservationContinuationToken || null,
           } : null,
-          guest_info: !clientId ? {
+          guest_info: {
             full_name: bookingData.fullName,
             email: bookingData.email,
             phone: bookingData.phone,
             license_number: bookingData.license,
             id_number: bookingData.idNumber || null,
-          } : null,
+          },
           signature_url: bookingData.signatureUrl,
           documentsVerifiedPhysically: !!bookingData.documentsVerifiedPhysically,
           documents: bookingData.documents ?? {
@@ -918,7 +953,18 @@ const app = express();
             idFrontUrl: bookingData.idFrontUrl || null,
             idBackUrl: bookingData.idBackUrl || null,
           },
+          client_status_token: statusToken,
+          commission_rate_applied: financials.commissionRate,
+          commission_source: financials.commissionSource,
+          owner_payout_amount: financials.ownerPayoutAmount,
+          outsource_info: buildOutsourceMetadata(carRow),
         },
+      };
+
+      const withStatusToken = (b: any) => {
+        if (!b) return b;
+        const token = b?.metadata?.client_status_token || statusToken;
+        return { ...b, statusToken: token };
       };
 
       if (sourceReservation?.linked_booking_id) {
@@ -930,12 +976,17 @@ const app = express();
 
         if (!existingBookingError && existingBooking) {
           if (existingBooking.payment_status === 'paid') {
-            return res.json({ success: true, booking: existingBooking });
+            return res.status(409).json({ success: false, error: 'This reservation has already been completed.' });
           }
+
+          const existingToken = existingBooking?.metadata?.client_status_token;
+          const mergedPayload = existingToken
+            ? { ...payload, metadata: { ...payload.metadata, client_status_token: existingToken } }
+            : payload;
 
           const { data: updatedBooking, error: updateBookingError } = await supabase
             .from('bookings')
-            .update(payload)
+            .update(mergedPayload)
             .eq('id', existingBooking.id)
             .select()
             .single();
@@ -944,7 +995,7 @@ const app = express();
             return res.status(500).json({ success: false, error: updateBookingError?.message || 'Failed to update booking.' });
           }
 
-          return res.json({ success: true, booking: updatedBooking });
+          return res.json({ success: true, booking: withStatusToken(updatedBooking) });
         }
       }
 
@@ -984,6 +1035,7 @@ const app = express();
             linked_booking_id: booking.id,
             booking_flow_started_at: new Date().toISOString(),
             booking_flow_initiated_by: bookingFlowInitiatedBy || 'client',
+            booking_completion_token: null,
           })
           .eq('id', sourceReservationId);
 
@@ -992,7 +1044,7 @@ const app = express();
         }
       }
 
-      return res.status(201).json({ success: true, booking });
+      return res.status(201).json({ success: true, booking: withStatusToken(booking) });
     } catch (error: any) {
       console.error('[API] Booking create error:', error);
       return res.status(500).json({ success: false, error: error.message || 'Internal server error' });

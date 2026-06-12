@@ -18,6 +18,7 @@ import {
 } from "./src/server/bookingLifecycleHandler.js";
 import { createBookingExtendHandler } from "./src/server/bookingExtendHandler.js";
 import { createDeleteReservationHandler } from "./src/server/deleteReservationHandler.js";
+import { processBookingPayoutSettlements } from "./src/server/bookingPayoutSettlements.js";
 
 dotenv.config({ path: '.env.local' });
 
@@ -255,75 +256,7 @@ async function startServer() {
         });
       }
 
-      // ── Fix #2: Auto-create payout_settlements for outsourced cars & brokers ──
-      try {
-        const { data: bookingFull } = await supabase
-          .from('bookings')
-          .select('id, car_id, total_amount, metadata, fleet_owner_id')
-          .eq('id', paymentRequest.booking_id)
-          .maybeSingle();
-
-        if (bookingFull) {
-          const meta = bookingFull.metadata || {};
-          const ownerPayout = Number(meta.owner_payout_amount) || 0;
-          const outsource = meta.outsource_info || null;
-          const broker = meta.broker_info || null;
-
-          // Supplier settlement (covers outsourced AND registered fleet owners)
-          if (ownerPayout > 0 && bookingFull.car_id) {
-            const { data: existingSupplierSettle } = await supabase
-              .from('payout_settlements')
-              .select('id')
-              .eq('booking_id', bookingFull.id)
-              .eq('type', 'supplier')
-              .maybeSingle();
-            if (!existingSupplierSettle) {
-              await supabase.from('payout_settlements').insert({
-                booking_id: bookingFull.id,
-                type: 'supplier',
-                target_id: bookingFull.car_id, // Fix #6: normalized to cars.id
-                amount: ownerPayout,
-                status: 'pending',
-              }).then(null, (err: any) => console.error('[NCBA] Supplier settlement insert error:', err));
-            }
-          }
-
-          // Broker settlement
-          if (broker?.broker_id && Number(broker.broker_commission_amount) > 0) {
-            const { data: existingBrokerSettle } = await supabase
-              .from('payout_settlements')
-              .select('id')
-              .eq('booking_id', bookingFull.id)
-              .eq('type', 'broker')
-              .maybeSingle();
-            if (!existingBrokerSettle) {
-              await supabase.from('payout_settlements').insert({
-                booking_id: bookingFull.id,
-                type: 'broker',
-                target_id: broker.broker_id,
-                amount: Number(broker.broker_commission_amount),
-                status: 'pending',
-              }).then(null, (err: any) => console.error('[NCBA] Broker settlement insert error:', err));
-            }
-          }
-
-          // Fix #4: Email outsourced owner that a booking happened on their car
-          if (outsource?.is_outsourced && outsource?.owner_email) {
-            const subject = `New Booking Confirmed — Your Vehicle`;
-            const text = `Hello ${outsource.owner_name || 'Partner'},\n\nA new booking on your vehicle has just been paid.\n\nBooking: #${bookingFull.id.slice(0,8).toUpperCase()}\nGross: KES ${Number(bookingFull.total_amount).toLocaleString()}\nCommission (${Math.round((meta.commission_rate_applied || 0) * 100)}%): KES ${(Number(bookingFull.total_amount) - ownerPayout).toLocaleString()}\nYour Payout: KES ${ownerPayout.toLocaleString()} (pending settlement)\n\n— LinkedUp Cars`;
-            await supabase.functions.invoke('send-email', {
-              body: {
-                to: outsource.owner_email,
-                subject,
-                text,
-                html: `<div style="font-family:sans-serif;line-height:1.6;white-space:pre-wrap">${text}</div>`,
-              },
-            }).then(null, (err: any) => console.error('[NCBA] Owner email error:', err));
-          }
-        }
-      } catch (err) {
-        console.error('[NCBA] Payout settlement processing error:', err);
-      }
+      await processBookingPayoutSettlements(supabase, paymentRequest.booking_id);
 
       if (paymentRequest.client_id) {
         await supabase.from('notifications').insert({
@@ -982,6 +915,9 @@ async function startServer() {
         payment_method: paymentMethod || 'ncba_stk',
         payment_provider: 'ncba',
         source_reservation_id: sourceReservationId || null,
+        broker_id: brokerId || null,
+        broker_commission_rate: brokerId ? Number(brokerRate) || 0 : 0,
+        broker_commission_amount: brokerId ? Number(brokerCommissionAmount) || 0 : 0,
         metadata: {
           broker_info: brokerId ? {
             broker_id: brokerId,

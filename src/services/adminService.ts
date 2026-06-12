@@ -7,6 +7,13 @@ import {
   PAID_REVENUE_STATUSES_DB,
   isActiveBookingStatus,
 } from '../constants/bookingStatuses';
+import {
+  buildBookingReconciliation,
+  buildBrokerReconciliation,
+  buildMonthlyPartnerChart,
+  buildPayoutBreakdown,
+  createEmptyPayoutBreakdown,
+} from '../utils/partnerFinancials';
 const handleSupabaseError = handleSupabaseErrorWrapper;
 const ADMIN_CACHE_TTL_MS = 60_000;
 
@@ -452,6 +459,49 @@ export const adminService = {
     return data;
   },
 
+  addOutsourcedCar: async (car: {
+    make: string;
+    model: string;
+    year: number;
+    license_plate: string;
+    color?: string;
+    category?: string;
+    daily_rate: number;
+    primary_image_url?: string;
+    description?: string;
+    outsource_owner_name: string;
+    outsource_owner_phone?: string | null;
+    outsource_owner_email?: string | null;
+    outsource_commission_rate?: number;
+  }) => {
+    return adminService.addCar({
+      make: car.make,
+      model: car.model,
+      year: car.year,
+      license_plate: car.license_plate.trim().toUpperCase(),
+      color: car.color || 'N/A',
+      category: car.category || 'Sedan',
+      description: car.description || 'Outsourced partner vehicle',
+      daily_rate: car.daily_rate,
+      overtime_rate: 0,
+      security_deposit: 0,
+      status: 'available',
+      transmission: 'Automatic',
+      fuel_type: 'Petrol',
+      seats: 5,
+      features: [],
+      photos: [],
+      primary_image_url: car.primary_image_url || '',
+      fleet_owner: null,
+      is_outsourced: true,
+      is_approved: true,
+      outsource_owner_name: car.outsource_owner_name,
+      outsource_owner_phone: car.outsource_owner_phone || null,
+      outsource_owner_email: car.outsource_owner_email || null,
+      outsource_commission_rate: car.outsource_commission_rate ?? 15,
+    });
+  },
+
   updateCar: async (id: string, updates: any) => {
     // Extract fleet_owner (frontend field) and remap to fleet_owner_id (DB column)
     const { fleet_owner, fleet_owner_details, ...cleanUpdates } = updates;
@@ -884,59 +934,97 @@ export const adminService = {
         logger.warn('Expenses query failed (non-fatal):', eError);
       }
 
-      // Fetch payout_settlements (outsourced + broker) — table may not exist yet
+      // Fetch payout_settlements with booking + car context for partner ledger
       const { data: settlements, error: settlementsError } = await supabase
         .from('payout_settlements')
-        .select('id, booking_id, type, target_id, amount, status, settled_at, created_at')
+        .select(`
+          id, booking_id, type, target_id, amount, status, payment_reference, settled_at, created_at,
+          booking:bookings(
+            id, total_amount, platform_commission, created_at, payment_status, status, car_id,
+            cars(id, make, model, is_outsourced, outsource_owner_name, fleet_owner_id)
+          )
+        `)
         .order('created_at', { ascending: false });
       if (settlementsError) {
         logger.warn('payout_settlements query failed (non-fatal):', settlementsError);
       }
 
+      const { data: brokers } = await supabase
+        .from('brokers')
+        .select('id, name')
+        .order('name', { ascending: true });
+
+      const { data: outsourcedCars } = await supabase
+        .from('cars')
+        .select('id')
+        .eq('is_outsourced', true);
+
+      const outsourcedCarIds = new Set((outsourcedCars || []).map((c: any) => c.id));
+      const settlementRows = settlements || [];
+      const brokerRows = brokers || [];
+
       // Calculate revenue from confirmed bookings only
       const totalRevenue = confirmedBookings?.reduce((sum, booking) => sum + Number(booking.total_amount), 0) || 0;
+      const totalPlatformCommission = confirmedBookings?.reduce(
+        (sum, booking) => sum + Number(booking.platform_commission || 0),
+        0
+      ) || 0;
 
-      // Total payouts: sum settled supplier+broker payouts (Fix #3 — replaces flat 15% guess)
-      const settledPayouts = (settlements || []).filter((s: any) => s.status === 'paid');
+      const settledPayouts = settlementRows.filter((s: any) => s.status === 'paid');
       const totalPayouts = settledPayouts.reduce((sum: number, s: any) => sum + Number(s.amount || 0), 0);
 
-      const pendingSettlementAmount = (settlements || [])
+      const pendingSettlementAmount = settlementRows
         .filter((s: any) => s.status === 'pending')
         .reduce((sum: number, s: any) => sum + Number(s.amount || 0), 0);
+
+      const payoutBreakdown = settlementsError
+        ? createEmptyPayoutBreakdown()
+        : buildPayoutBreakdown(settlementRows, outsourcedCarIds);
+
+      const bookingsById = new Map(
+        (confirmedBookings || []).map((b: any) => [b.id, b])
+      );
+
+      const brokerReconciliation = settlementsError
+        ? []
+        : buildBrokerReconciliation(settlementRows, brokerRows, bookingsById);
+
+      const bookingReconciliation = settlementsError
+        ? []
+        : buildBookingReconciliation(settlementRows, brokerRows);
+
+      const chartData = settlementsError
+        ? []
+        : buildMonthlyPartnerChart(confirmedBookings || [], settlementRows, outsourcedCarIds);
 
       const totalExpenses = expenses?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
 
       // Net platform revenue = gross - settled supplier/broker payouts - expenses
       const netRevenue = totalRevenue - totalPayouts - totalExpenses;
 
-      // Group by month for chart — pull actual payouts from settled settlements per booking date
-      const monthlyData: Record<string, { revenue: number, payouts: number }> = {};
-      confirmedBookings?.forEach(booking => {
-        const month = new Date(booking.created_at).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-        if (!monthlyData[month]) monthlyData[month] = { revenue: 0, payouts: 0 };
-        monthlyData[month].revenue += Number(booking.total_amount);
-      });
-      settledPayouts.forEach((s: any) => {
-        const dt = s.settled_at || s.created_at;
-        const month = new Date(dt).toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-        if (!monthlyData[month]) monthlyData[month] = { revenue: 0, payouts: 0 };
-        monthlyData[month].payouts += Number(s.amount || 0);
-      });
-
-      const chartData = Object.entries(monthlyData).map(([name, data]) => ({ name, ...data })).reverse();
-
-      logger.log('Financials calculated:', { totalRevenue, totalPayouts, totalExpenses, netRevenue, pendingSettlementAmount });
-
-      return {
-        transactions: transactions || [],
-        expenses: expenses || [],
-        settlements: settlements || [],
+      logger.log('Financials calculated:', {
         totalRevenue,
         totalPayouts,
         totalExpenses,
         netRevenue,
         pendingSettlementAmount,
-        chartData
+        totalPlatformCommission,
+      });
+
+      return {
+        transactions: transactions || [],
+        expenses: expenses || [],
+        settlements: settlementRows,
+        totalRevenue,
+        totalPlatformCommission,
+        totalPayouts,
+        totalExpenses,
+        netRevenue,
+        pendingSettlementAmount,
+        payoutBreakdown,
+        brokerReconciliation,
+        bookingReconciliation,
+        chartData,
       };
     } catch (error) {
       logger.error('getFinancials error:', error);

@@ -40,6 +40,7 @@ import {
   Legend
 } from 'recharts';
 import { logger } from '../../utils/logger';
+import { adminService } from '../../services/adminService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,6 +106,7 @@ export function AdminOutsourcedCars() {
   
   // Modals state
   const [showBrokerModal, setShowBrokerModal] = useState(false);
+  const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
   const [showSettleModal, setShowSettleModal] = useState<PayoutSettlement | null>(null);
   const [showSupplierEditModal, setShowSupplierEditModal] = useState<Car | null>(null);
 
@@ -124,6 +126,37 @@ export function AdminOutsourcedCars() {
   const [ownerEmail, setOwnerEmail] = useState('');
   const [commissionRate, setCommissionRate] = useState('15');
   const [updatingSupplier, setUpdatingSupplier] = useState(false);
+
+  // Add supplier car form state
+  const [carMake, setCarMake] = useState('');
+  const [carModel, setCarModel] = useState('');
+  const [carYear, setCarYear] = useState(String(new Date().getFullYear()));
+  const [carPlate, setCarPlate] = useState('');
+  const [carColor, setCarColor] = useState('');
+  const [carCategory, setCarCategory] = useState('Sedan');
+  const [carDailyRate, setCarDailyRate] = useState('');
+  const [carImageFile, setCarImageFile] = useState<File | null>(null);
+  const [addingSupplierCar, setAddingSupplierCar] = useState(false);
+
+  const resetAddSupplierForm = () => {
+    setCarMake('');
+    setCarModel('');
+    setCarYear(String(new Date().getFullYear()));
+    setCarPlate('');
+    setCarColor('');
+    setCarCategory('Sedan');
+    setCarDailyRate('');
+    setCarImageFile(null);
+    setOwnerName('');
+    setOwnerPhone('');
+    setOwnerEmail('');
+    setCommissionRate('15');
+  };
+
+  const openAddSupplierModal = () => {
+    resetAddSupplierForm();
+    setShowAddSupplierModal(true);
+  };
 
   // ── Fetch data ─────────────────────────────────────────────────────────────
 
@@ -186,6 +219,62 @@ export function AdminOutsourcedCars() {
   }, [fetchLedgers]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
+
+  // Add outsourced supplier car
+  const handleAddSupplierCar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!carMake || !carModel || !carPlate || !carDailyRate || !ownerName) {
+      toast.error('Please fill in vehicle details and supplier owner name');
+      return;
+    }
+    const dailyRate = Number(carDailyRate);
+    if (!Number.isFinite(dailyRate) || dailyRate <= 0) {
+      toast.error('Daily rate must be a positive number');
+      return;
+    }
+
+    setAddingSupplierCar(true);
+    try {
+      let primaryImageUrl = '';
+      if (carImageFile) {
+        primaryImageUrl = await adminService.uploadCarImage(carImageFile);
+      }
+
+      const result = await adminService.addOutsourcedCar({
+        make: carMake.trim(),
+        model: carModel.trim(),
+        year: Number(carYear) || new Date().getFullYear(),
+        license_plate: carPlate.trim(),
+        color: carColor.trim() || undefined,
+        category: carCategory,
+        daily_rate: dailyRate,
+        primary_image_url: primaryImageUrl || undefined,
+        outsource_owner_name: ownerName.trim(),
+        outsource_owner_phone: ownerPhone.trim() || null,
+        outsource_owner_email: ownerEmail.trim() || null,
+        outsource_commission_rate: Number(commissionRate) || 15,
+      });
+
+      if (!result || (Array.isArray(result) && result.length === 0)) {
+        throw new Error('Insert returned no data');
+      }
+
+      toast.success('Supplier car registered successfully');
+      setShowAddSupplierModal(false);
+      resetAddSupplierForm();
+      await fetchLedgers();
+    } catch (err: any) {
+      logger.error('Failed to add supplier car:', err);
+      const msg = err?.message || '';
+      if (msg.includes('duplicate') || msg.includes('unique')) {
+        toast.error('A car with this license plate already exists');
+      } else {
+        toast.error('Failed to register supplier car');
+      }
+    } finally {
+      setAddingSupplierCar(false);
+    }
+  };
 
   // Add Broker
   const handleAddBroker = async (e: React.FormEvent) => {
@@ -399,15 +488,28 @@ export function AdminOutsourcedCars() {
           </p>
         </div>
 
-        {activeTab === 'brokers' && (
-          <button
-            onClick={() => setShowBrokerModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20"
-          >
-            <Plus size={16} />
-            Register Broker
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {activeTab === 'supplier_cars' && (
+            <button
+              type="button"
+              onClick={openAddSupplierModal}
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20"
+            >
+              <Plus size={16} />
+              Add Supplier Car
+            </button>
+          )}
+          {activeTab === 'brokers' && (
+            <button
+              type="button"
+              onClick={() => setShowBrokerModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-primary hover:bg-primary/95 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary/20"
+            >
+              <Plus size={16} />
+              Register Broker
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Tabs */}
@@ -600,8 +702,19 @@ export function AdminOutsourcedCars() {
                     <tbody className="divide-y divide-border">
                       {filteredCars.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-5 py-10 text-center text-sm text-muted-foreground">
-                            No supplier cars found matching criteria.
+                          <td colSpan={6} className="px-5 py-10 text-center">
+                            <p className="text-sm text-muted-foreground mb-4">
+                              {searchQuery ? 'No supplier cars found matching criteria.' : 'No supplier cars registered yet.'}
+                            </p>
+                            {!searchQuery && (
+                              <button
+                                type="button"
+                                onClick={openAddSupplierModal}
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold"
+                              >
+                                <Plus size={14} /> Add your first supplier car
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ) : (
@@ -835,6 +948,17 @@ export function AdminOutsourcedCars() {
           {/* FINANCIAL LEDGER ANALYTICS */}
           {activeTab === 'financials' && (
             <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-primary/5 border border-primary/20 rounded-2xl">
+                <p className="text-sm text-muted-foreground">
+                  For separated outsourced vs fleet vs broker breakdown and booking-level reconciliation, use Financials → Partner Ledger.
+                </p>
+                <a
+                  href="/admin/financials?tab=partner-ledger"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-white rounded-xl text-xs font-bold shrink-0"
+                >
+                  Open Partner Ledger <ArrowRight size={14} />
+                </a>
+              </div>
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-300">
                 
                 {/* Owed Breakdown pie chart */}
@@ -915,6 +1039,184 @@ export function AdminOutsourcedCars() {
             </div>
           )}
         </>
+      )}
+
+      {/* ADD SUPPLIER CAR MODAL */}
+      {showAddSupplierModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-card rounded-2xl border border-border p-8 max-w-lg w-full shadow-2xl relative my-8">
+            <button
+              type="button"
+              onClick={() => setShowAddSupplierModal(false)}
+              className="absolute top-4 right-4 p-2 text-muted-foreground hover:bg-muted rounded-lg"
+            >
+              <X size={16} />
+            </button>
+
+            <h3 className="text-xl font-bold mb-1">Add Supplier Car</h3>
+            <p className="text-xs text-muted-foreground mb-6">
+              Register a partner-owned vehicle for the outsourced fleet. It will be bookable without a platform fleet owner.
+            </p>
+
+            <form onSubmit={handleAddSupplierCar} className="space-y-6">
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Vehicle</h4>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1 col-span-2 sm:col-span-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Make</label>
+                    <input
+                      type="text"
+                      required
+                      value={carMake}
+                      onChange={(e) => setCarMake(e.target.value)}
+                      placeholder="e.g. Toyota"
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2 sm:col-span-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Model</label>
+                    <input
+                      type="text"
+                      required
+                      value={carModel}
+                      onChange={(e) => setCarModel(e.target.value)}
+                      placeholder="e.g. Axio"
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Year</label>
+                    <input
+                      type="number"
+                      required
+                      min={1990}
+                      max={new Date().getFullYear() + 1}
+                      value={carYear}
+                      onChange={(e) => setCarYear(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">License Plate</label>
+                    <input
+                      type="text"
+                      required
+                      value={carPlate}
+                      onChange={(e) => setCarPlate(e.target.value)}
+                      placeholder="e.g. KDA 123A"
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm uppercase"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Color</label>
+                    <input
+                      type="text"
+                      value={carColor}
+                      onChange={(e) => setCarColor(e.target.value)}
+                      placeholder="e.g. White"
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Category</label>
+                    <select
+                      value={carCategory}
+                      onChange={(e) => setCarCategory(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    >
+                      <option value="Sedan">Sedan</option>
+                      <option value="SUV">SUV</option>
+                      <option value="Van">Van</option>
+                      <option value="Pickup">Pickup</option>
+                      <option value="Luxury">Luxury</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Daily Rate (KSh)</label>
+                    <input
+                      type="number"
+                      required
+                      min={1}
+                      value={carDailyRate}
+                      onChange={(e) => setCarDailyRate(e.target.value)}
+                      placeholder="e.g. 5000"
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Photo (optional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => setCarImageFile(e.target.files?.[0] || null)}
+                      className="w-full text-sm text-muted-foreground file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:bg-primary/10 file:text-primary file:font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-border">
+                <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Supplier / Owner</h4>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Owner Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={ownerName}
+                    onChange={(e) => setOwnerName(e.target.value)}
+                    placeholder="e.g. Samuel Gachiri"
+                    className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Phone</label>
+                    <input
+                      type="text"
+                      value={ownerPhone}
+                      onChange={(e) => setOwnerPhone(e.target.value)}
+                      placeholder="+254 7..."
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-muted-foreground uppercase">Email</label>
+                    <input
+                      type="email"
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
+                      placeholder="owner@email.com"
+                      className="w-full px-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-muted-foreground uppercase">Platform Commission (%)</label>
+                  <div className="relative">
+                    <Percent className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" size={15} />
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={commissionRate}
+                      onChange={(e) => setCommissionRate(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2.5 bg-muted border border-border rounded-xl focus:outline-none focus:border-primary text-sm"
+                    />
+                  </div>
+                  <p className="text-[10px] text-muted-foreground">Supplier receives daily rate minus this commission on completed bookings.</p>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={addingSupplierCar}
+                className="w-full py-3 bg-primary hover:bg-primary/95 text-white rounded-xl font-bold transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
+              >
+                {addingSupplierCar ? <><Loader2 size={16} className="animate-spin" /> Saving...</> : 'Register Supplier Car'}
+              </button>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* REGISTER BROKER MODAL */}
