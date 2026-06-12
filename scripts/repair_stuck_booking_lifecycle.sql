@@ -1,18 +1,42 @@
 -- Repair bookings where inspections exist but lifecycle status/timestamps are stale.
--- 1) Run the preview SELECT
--- 2) Run the UPDATE block
--- 3) Re-run preview — should return zero rows
+--
+-- Optional: run once if pickup/return status updates fail in the app
+--   ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'on_trip';
+--   ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'pending_collection';
+--   ALTER TYPE booking_status ADD VALUE IF NOT EXISTS 'returned';
+--
+-- Step 1: Run the PREVIEW query — review rows.
+-- Step 2: Run the REPAIR query — applies fixes.
+-- Step 3: Run PREVIEW again — should return zero rows.
+--
+-- Note: status checks use ::text so this works even when 'returned' is not
+-- in your booking_status enum yet.
 
--- ── Preview ──────────────────────────────────────────────────────────────────
-WITH inspection_summary AS (
-  SELECT
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- PREVIEW — run this first
+-- ═══════════════════════════════════════════════════════════════════════════════
+WITH latest_inspections AS (
+  SELECT DISTINCT ON (booking_id, type)
     booking_id,
-    MAX(created_at) FILTER (WHERE type = 'pre_handover') AS pre_at,
-    MAX(conducted_by) FILTER (WHERE type = 'pre_handover') AS pre_by,
-    MAX(created_at) FILTER (WHERE type = 'post_return') AS post_at,
-    MAX(conducted_by) FILTER (WHERE type = 'post_return') AS post_by
+    type,
+    created_at,
+    conducted_by
   FROM booking_inspections
-  GROUP BY booking_id
+  ORDER BY booking_id, type, created_at DESC
+),
+inspection_summary AS (
+  SELECT
+    l.booking_id,
+    pre.created_at AS pre_at,
+    pre.conducted_by AS pre_by,
+    post.created_at AS post_at,
+    post.conducted_by AS post_by
+  FROM (SELECT DISTINCT booking_id FROM booking_inspections) l
+  LEFT JOIN latest_inspections pre
+    ON pre.booking_id = l.booking_id AND pre.type = 'pre_handover'
+  LEFT JOIN latest_inspections post
+    ON post.booking_id = l.booking_id AND post.type = 'post_return'
+  WHERE pre.created_at IS NOT NULL OR post.created_at IS NOT NULL
 )
 SELECT
   b.id,
@@ -27,19 +51,34 @@ JOIN inspection_summary i ON i.booking_id = b.id
 WHERE
   (i.pre_at IS NOT NULL AND b.pickup_confirmed_at IS NULL)
   OR (i.post_at IS NOT NULL AND b.return_confirmed_at IS NULL)
-  OR (i.post_at IS NOT NULL AND b.status NOT IN ('completed', 'returned'))
-  OR (i.pre_at IS NOT NULL AND i.post_at IS NULL AND b.status NOT IN ('on_trip', 'returned', 'completed'));
+  OR (i.post_at IS NOT NULL AND b.status::text <> 'completed')
+  OR (i.pre_at IS NOT NULL AND i.post_at IS NULL AND b.status::text NOT IN ('on_trip', 'completed'));
 
--- ── Repair ───────────────────────────────────────────────────────────────────
-WITH inspection_summary AS (
-  SELECT
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- REPAIR — run after preview looks correct (highlight & run this block only)
+-- ═══════════════════════════════════════════════════════════════════════════════
+WITH latest_inspections AS (
+  SELECT DISTINCT ON (booking_id, type)
     booking_id,
-    MAX(created_at) FILTER (WHERE type = 'pre_handover') AS pre_at,
-    MAX(conducted_by) FILTER (WHERE type = 'pre_handover') AS pre_by,
-    MAX(created_at) FILTER (WHERE type = 'post_return') AS post_at,
-    MAX(conducted_by) FILTER (WHERE type = 'post_return') AS post_by
+    type,
+    created_at,
+    conducted_by
   FROM booking_inspections
-  GROUP BY booking_id
+  ORDER BY booking_id, type, created_at DESC
+),
+inspection_summary AS (
+  SELECT
+    l.booking_id,
+    pre.created_at AS pre_at,
+    pre.conducted_by AS pre_by,
+    post.created_at AS post_at,
+    post.conducted_by AS post_by
+  FROM (SELECT DISTINCT booking_id FROM booking_inspections) l
+  LEFT JOIN latest_inspections pre
+    ON pre.booking_id = l.booking_id AND pre.type = 'pre_handover'
+  LEFT JOIN latest_inspections post
+    ON post.booking_id = l.booking_id AND post.type = 'post_return'
+  WHERE pre.created_at IS NOT NULL OR post.created_at IS NOT NULL
 )
 UPDATE bookings b
 SET
@@ -62,6 +101,6 @@ WHERE b.id = i.booking_id
   AND (
     (i.pre_at IS NOT NULL AND b.pickup_confirmed_at IS NULL)
     OR (i.post_at IS NOT NULL AND b.return_confirmed_at IS NULL)
-    OR (i.post_at IS NOT NULL AND b.status NOT IN ('completed', 'returned'))
-    OR (i.pre_at IS NOT NULL AND i.post_at IS NULL AND b.status NOT IN ('on_trip', 'returned', 'completed'))
+    OR (i.post_at IS NOT NULL AND b.status::text <> 'completed')
+    OR (i.pre_at IS NOT NULL AND i.post_at IS NULL AND b.status::text NOT IN ('on_trip', 'completed'))
   );
