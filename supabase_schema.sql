@@ -425,6 +425,16 @@ WITH CHECK (
 );
 DROP POLICY IF EXISTS "Admins can update any profile" ON user_profiles;
 CREATE POLICY "Admins can update any profile" ON user_profiles FOR UPDATE USING (is_admin());
+DROP POLICY IF EXISTS "Drivers can view client profiles of assigned bookings" ON user_profiles;
+CREATE POLICY "Drivers can view client profiles of assigned bookings" ON user_profiles
+  FOR SELECT TO authenticated
+  USING (
+    EXISTS (
+      SELECT 1 FROM bookings
+      WHERE bookings.client_id = user_profiles.id
+      AND bookings.driver_id = auth.uid()
+    )
+  );
 
 -- Cars Policies
 DROP POLICY IF EXISTS "Anyone can view available cars" ON cars;
@@ -433,6 +443,10 @@ DROP POLICY IF EXISTS "Admins can manage cars" ON cars;
 CREATE POLICY "Admins can manage cars" ON cars FOR ALL USING (is_admin());
 DROP POLICY IF EXISTS "Owners can manage their own cars" ON cars;
 CREATE POLICY "Owners can manage their own cars" ON cars FOR ALL USING (fleet_owner_id = auth.uid());
+DROP POLICY IF EXISTS "Drivers can view all cars" ON cars;
+CREATE POLICY "Drivers can view all cars" ON cars
+  FOR SELECT TO authenticated
+  USING (true);
 
 -- Bookings Policies
 DROP POLICY IF EXISTS "Admins can view all bookings" ON bookings;
@@ -441,6 +455,10 @@ DROP POLICY IF EXISTS "Owners can view their car bookings" ON bookings;
 CREATE POLICY "Owners can view their car bookings" ON bookings FOR SELECT USING (fleet_owner_id = auth.uid());
 DROP POLICY IF EXISTS "Clients can view their own bookings" ON bookings;
 CREATE POLICY "Clients can view their own bookings" ON bookings FOR SELECT USING (client_id = auth.uid());
+DROP POLICY IF EXISTS "Drivers can view their assigned bookings" ON bookings;
+CREATE POLICY "Drivers can view their assigned bookings" ON bookings
+  FOR SELECT TO authenticated
+  USING (driver_id = auth.uid());
 DROP POLICY IF EXISTS "Admins can update bookings" ON bookings;
 CREATE POLICY "Admins can update bookings" ON bookings FOR UPDATE USING (is_admin());
 
@@ -449,6 +467,10 @@ DROP POLICY IF EXISTS "Admins can view all transactions" ON transactions;
 CREATE POLICY "Admins can view all transactions" ON transactions FOR SELECT USING (is_admin());
 DROP POLICY IF EXISTS "Users can view their own transactions" ON transactions;
 CREATE POLICY "Users can view their own transactions" ON transactions FOR SELECT USING (user_id = auth.uid());
+DROP POLICY IF EXISTS "Admins can insert transactions" ON transactions;
+CREATE POLICY "Admins can insert transactions" ON transactions
+  FOR INSERT TO authenticated
+  WITH CHECK (is_admin());
 
 -- Messages Policies
 DROP POLICY IF EXISTS "Users can view their own messages" ON messages;

@@ -2,6 +2,11 @@ import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../
 import { logger } from '../utils/logger';
 import { Car } from '../types';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
+import {
+  CALENDAR_BLOCKING_STATUSES,
+  isActiveBookingStatus,
+  isPaidRevenueStatus,
+} from '../constants/bookingStatuses';
 
 const FLEET_CACHE_TTL_MS = 60_000;
 
@@ -33,7 +38,7 @@ export const fleetService = {
       .from('bookings')
       .select('car_id')
       .or(`start_date.lte.${dropoffDate},end_date.gte.${pickupDate}`)
-      .in('status', ['confirmed', 'in_progress', 'on_trip']);
+      .in('status', [...CALENDAR_BLOCKING_STATUSES]);
 
     if (bookingsError) return handleSupabaseError(bookingsError, 'getAvailableCars - bookings');
 
@@ -85,14 +90,14 @@ export const fleetService = {
         }
 
         const totalCars = cars.length;
-        const activeBookings = bookings.filter(b => b.status === 'confirmed' || b.status === 'in_progress').length;
+        const activeBookings = bookings.filter(b => isActiveBookingStatus(b.status)).length;
         const maintenanceCars = cars.filter(c => c.status === 'maintenance').length;
       
       // Utilization Rate (simplified: active bookings / total cars)
       const utilizationRate = totalCars > 0 ? Math.round((activeBookings / totalCars) * 100) : 0;
 
       const totalEarnings = bookings
-        .filter(b => b.status === 'completed' || b.status === 'confirmed' || b.status === 'in_progress')
+        .filter(b => isPaidRevenueStatus(b.status))
         .reduce((sum, b) => sum + Number(b.total_amount), 0);
 
       const netPayouts = payouts
@@ -165,7 +170,7 @@ export const fleetService = {
       const carRevenueMap: Record<string, number> = {};
       cars.forEach(c => carRevenueMap[c.id] = 0);
       
-      bookings.filter(b => b.status === 'completed' || b.status === 'confirmed' || b.status === 'in_progress').forEach(b => {
+      bookings.filter(b => isPaidRevenueStatus(b.status)).forEach(b => {
         if (b.car_id && carRevenueMap[b.car_id] !== undefined) {
           carRevenueMap[b.car_id] += Number(b.total_amount);
         }

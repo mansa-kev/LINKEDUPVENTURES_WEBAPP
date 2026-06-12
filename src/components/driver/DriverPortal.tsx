@@ -25,6 +25,7 @@ import {
 import { toast } from 'sonner';
 import { DriverInspectionForm } from './DriverInspectionForm';
 import { DriverFieldBooking } from './DriverFieldBooking';
+import { DRIVER_ACTIVE_JOB_STATUSES, bookingStatusIn } from '../../constants/bookingStatuses';
 
 type TaskType = 'all' | 'delivery' | 'chauffeur';
 
@@ -206,7 +207,7 @@ export function DriverPortal() {
               <div className="bg-card border border-border p-4 rounded-2xl flex flex-col justify-between">
                 <p className="text-[9px] font-black uppercase text-muted-foreground tracking-widest">Active Jobs</p>
                 <div className="flex items-end justify-between mt-2">
-                  <span className="text-2xl font-black">{bookings.filter(b => b.status === 'confirmed' || b.status === 'on_trip').length}</span>
+                  <span className="text-2xl font-black">{bookings.filter(b => bookingStatusIn(b.status, DRIVER_ACTIVE_JOB_STATUSES)).length}</span>
                   <Award size={16} className="text-primary mb-1" />
                 </div>
               </div>

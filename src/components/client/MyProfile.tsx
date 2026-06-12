@@ -278,13 +278,13 @@ export function MyProfile() {
                 <div key={booking.id} className="relative pl-8">
                   <div className={`absolute left-0 top-1.5 w-4 h-4 rounded-full border-2 border-background ${
                     booking.status === 'completed' ? 'bg-green-500' :
-                    booking.status === 'in_progress' ? 'bg-primary' : 'bg-blue-500'
+                    (booking.status === 'on_trip' || booking.status === 'in_progress') ? 'bg-primary' : 'bg-blue-500'
                   }`} />
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                     <div>
                       <p className="text-sm font-bold">
                         {booking.status === 'completed' ? 'Completed rental of' :
-                         booking.status === 'in_progress' ? 'Currently driving' : 'Booked'} {booking.cars.make} {booking.cars.model}
+                         (booking.status === 'on_trip' || booking.status === 'in_progress') ? 'Currently driving' : 'Booked'} {booking.cars.make} {booking.cars.model}
                       </p>
                       <p className="text-xs text-muted-foreground">{new Date(booking.start_date).toLocaleDateString()} - {new Date(booking.end_date).toLocaleDateString()}</p>
                     </div>

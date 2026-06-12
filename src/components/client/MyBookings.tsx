@@ -5,6 +5,7 @@ import { bookingService } from '../../services/bookingService';
 import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2, MapPin, DollarSign } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
+import { isOnTripStatus } from '../../constants/bookingStatuses';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -204,7 +205,10 @@ export function MyBookings() {
 
   const filteredBookings = bookings.filter(b => {
     if (!b.cars) return false;
-    const matchesFilter = filter === 'all' || b.status === filter;
+    const matchesFilter =
+      filter === 'all' ||
+      b.status === filter ||
+      (filter === 'on_trip' && isOnTripStatus(b.status));
     const carLabel = `${b.cars.make || ''} ${b.cars.model || ''}`.toLowerCase();
     const matchesSearch = !searchTerm || carLabel.includes(searchTerm.toLowerCase());
     return matchesFilter && matchesSearch;
@@ -214,8 +218,11 @@ export function MyBookings() {
     switch (status) {
       case 'confirmed':
         return <span className="px-3 py-1 bg-blue-100 text-blue-600 rounded-full text-xs font-bold">Confirmed</span>;
+      case 'on_trip':
       case 'in_progress':
         return <span className="px-3 py-1 bg-green-100 text-green-600 rounded-full text-xs font-bold">On Trip</span>;
+      case 'pending_collection':
+        return <span className="px-3 py-1 bg-orange-100 text-orange-600 rounded-full text-xs font-bold">Pending Collection</span>;
       case 'completed':
         return <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold">Completed</span>;
       case 'cancelled':
@@ -249,7 +256,8 @@ export function MyBookings() {
           >
             <option value="all">All Status</option>
             <option value="confirmed">Confirmed</option>
-            <option value="in_progress">On Trip</option>
+            <option value="on_trip">On Trip</option>
+            <option value="pending_collection">Pending Collection</option>
             <option value="completed">Completed</option>
             <option value="cancelled">Cancelled</option>
           </select>
@@ -369,7 +377,7 @@ export function MyBookings() {
                       )
                     )}
 
-                    {booking.status === 'in_progress' && (
+                    {isOnTripStatus(booking.status) && (
                       <>
                         <button
                           onClick={() => navigate(`/client/inbox?action=extension&bookingId=${booking.id}`)}
@@ -566,7 +574,7 @@ export function MyBookings() {
               <button onClick={() => openReceipt(detailsBooking)} className="px-4 py-2 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold flex items-center gap-1.5">
                 <CreditCard size={14} /> Receipt
               </button>
-              {detailsBooking.status === 'in_progress' && (
+              {isOnTripStatus(detailsBooking.status) && (
                 <button
                   onClick={() => { navigate(`/client/inbox?action=extension&bookingId=${detailsBooking.id}`); setDetailsBooking(null); }}
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold flex items-center gap-1.5"

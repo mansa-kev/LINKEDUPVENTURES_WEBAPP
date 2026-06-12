@@ -40,6 +40,9 @@ interface InspectionPayload {
   photos_exterior?: string[];
   photos_interior?: string[];
   photo_fuel_mileage?: string | null;
+  gps_lat?: number | null;
+  gps_lon?: number | null;
+  client_signature_url?: string | null;
 }
 
 function parseInspectionBody(body: Record<string, unknown> | undefined): InspectionPayload {
@@ -57,6 +60,10 @@ function parseInspectionBody(body: Record<string, unknown> | undefined): Inspect
         : b.photo_fuel_mileage == null
           ? null
           : String(b.photo_fuel_mileage),
+    gps_lat: b.gps_lat != null ? Number(b.gps_lat) : null,
+    gps_lon: b.gps_lon != null ? Number(b.gps_lon) : null,
+    client_signature_url:
+      typeof b.client_signature_url === 'string' ? b.client_signature_url : null,
   };
 }
 
@@ -79,6 +86,9 @@ async function insertInspection(
       photos_exterior: payload.photos_exterior || [],
       photos_interior: payload.photos_interior || [],
       photo_fuel_mileage: payload.photo_fuel_mileage || null,
+      gps_lat: payload.gps_lat ?? null,
+      gps_lon: payload.gps_lon ?? null,
+      client_signature_url: payload.client_signature_url ?? null,
       conducted_by: conductedBy,
     })
     .select()
@@ -122,7 +132,7 @@ export function createBookingPickupHandler(supabase: SupabaseClient) {
 
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id, status, pickup_confirmed_at')
+        .select('id, status, pickup_confirmed_at, car_id')
         .eq('id', bookingId)
         .maybeSingle();
 
@@ -179,6 +189,10 @@ export function createBookingPickupHandler(supabase: SupabaseClient) {
         });
       }
 
+      if (booking.car_id) {
+        await supabase.from('cars').update({ status: 'rented' }).eq('id', booking.car_id);
+      }
+
       return res.json({
         success: true,
         booking: updated,
@@ -219,7 +233,7 @@ export function createBookingReturnHandler(supabase: SupabaseClient) {
 
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id, status, return_confirmed_at, pickup_confirmed_at')
+        .select('id, status, return_confirmed_at, pickup_confirmed_at, car_id')
         .eq('id', bookingId)
         .maybeSingle();
 
@@ -282,6 +296,10 @@ export function createBookingReturnHandler(supabase: SupabaseClient) {
           success: false,
           error: updateError?.message || 'Return inspection saved but booking status could not be updated.',
         });
+      }
+
+      if (booking.car_id) {
+        await supabase.from('cars').update({ status: 'available' }).eq('id', booking.car_id);
       }
 
       return res.json({

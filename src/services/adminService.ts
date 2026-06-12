@@ -3,6 +3,10 @@ import { supabase, handleSupabaseErrorWrapper } from '../lib/supabase';
 import { logger } from '../utils/logger';
 import { Car } from '../types';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
+import {
+  PAID_REVENUE_STATUSES,
+  isActiveBookingStatus,
+} from '../constants/bookingStatuses';
 const handleSupabaseError = handleSupabaseErrorWrapper;
 const ADMIN_CACHE_TTL_MS = 60_000;
 
@@ -42,7 +46,7 @@ export const adminService = {
         .from('bookings')
         .select('total_amount, platform_commission, status, payment_status, created_at, car_id, client_id, cars(make, model, year)')
         .gte('created_at', previousStartDate.toISOString())
-        .in('status', ['confirmed', 'completed'])
+        .in('status', [...PAID_REVENUE_STATUSES])
         .eq('payment_status', 'paid');
       if (bError) throw bError;
 
@@ -63,12 +67,12 @@ export const adminService = {
       // Current Period Stats
       const totalRevenue = currentBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
       const netCommission = currentBookings.reduce((sum, b) => sum + (b.platform_commission || 0), 0);
-      const activeBookings = currentBookings.filter(b => b.status === 'confirmed').length;
+      const activeBookings = currentBookings.filter(b => isActiveBookingStatus(b.status)).length;
 
       // Previous Period Stats
       const prevTotalRevenue = previousBookings.reduce((sum, b) => sum + (b.total_amount || 0), 0);
       const prevNetCommission = previousBookings.reduce((sum, b) => sum + (b.platform_commission || 0), 0);
-      const prevActiveBookings = previousBookings.filter(b => b.status === 'confirmed').length;
+      const prevActiveBookings = previousBookings.filter(b => isActiveBookingStatus(b.status)).length;
 
       // Calculate Trend Percentages
       const calculateTrend = (current: number, previous: number) => {
@@ -864,7 +868,7 @@ export const adminService = {
           )
         `)
         .eq('payment_status', 'paid')
-        .in('status', ['confirmed', 'completed'])
+        .in('status', [...PAID_REVENUE_STATUSES])
         .order('created_at', { ascending: false });
       
       if (bookingsError) {
@@ -1301,7 +1305,7 @@ export const adminService = {
       const { data: bookings, error: bError } = await supabase
         .from('bookings')
         .select('*')
-        .in('status', ['confirmed', 'completed'])
+        .in('status', [...PAID_REVENUE_STATUSES])
         .eq('payment_status', 'paid');
       if (bError) throw bError;
 
@@ -1347,12 +1351,13 @@ export const adminService = {
       const { data: cars } = await supabase.from('cars').select('id, make, model, daily_rate');
       const { data: bookings } = await supabase.from('bookings')
         .select('car_id, total_amount, start_date, end_date')
-        .in('status', ['confirmed', 'completed'])
+        .in('status', [...PAID_REVENUE_STATUSES])
         .eq('payment_status', 'paid');
 
       if (!cars || !bookings) return { highestEarner: 'N/A', highestEarnings: 0, avgUtilization: 0, avgDailyEarning: 0 };
 
       const carEarningsMap: Record<string, number> = {};
+      const carBookingDaysMap: Record<string, number> = {};
       let totalBookingDays = 0;
       
       bookings.forEach(b => {
@@ -1361,6 +1366,7 @@ export const adminService = {
         const end = new Date(b.end_date);
         const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
         totalBookingDays += days;
+        carBookingDaysMap[b.car_id] = (carBookingDaysMap[b.car_id] || 0) + days;
       });
 
       let highestEarnerId = '';
@@ -1373,7 +1379,18 @@ export const adminService = {
       });
 
       const highestEarnerCar = cars.find(c => (c as any).id === highestEarnerId);
-      const avgDailyEarning = cars.reduce((acc, car) => acc + Number(car.daily_rate), 0) / (cars.length || 1);
+
+      // Average daily earning per car (from actual paid bookings, not list daily_rate)
+      let sumCarAvgDaily = 0;
+      let carsWithTrips = 0;
+      cars.forEach(car => {
+        const days = carBookingDaysMap[(car as any).id] || 0;
+        if (days > 0) {
+          sumCarAvgDaily += (carEarningsMap[(car as any).id] || 0) / days;
+          carsWithTrips++;
+        }
+      });
+      const avgDailyEarning = carsWithTrips > 0 ? sumCarAvgDaily / carsWithTrips : 0;
       
       // Calculate utilization: total booking days / (total cars * 30 days) for a rough monthly estimate
       const avgUtilization = cars.length > 0 ? (totalBookingDays / (cars.length * 30)) * 100 : 0;

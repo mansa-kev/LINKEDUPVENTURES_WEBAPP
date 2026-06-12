@@ -82,7 +82,7 @@ export function MyInbox() {
 
         setConversations(sortedGroups);
         setExtensionRequests(exts || []);
-        setActiveBookings(bks?.filter((b: any) => b.status === 'in_progress') || []);
+        setActiveBookings(bks?.filter((b: any) => b.status === 'on_trip' || b.status === 'in_progress') || []);
 
         if (selectedConversation && sortedGroups.length > 0) {
            const updatedThread = sortedGroups.find((g: any) => 

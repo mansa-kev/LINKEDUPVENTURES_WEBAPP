@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../../lib/supabase';
 import {
   Camera,
   Upload,
@@ -15,6 +14,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadInspectionPhoto } from '../../services/inspectionUploadService';
+import {
+  submitBookingPickup,
+  submitBookingReturn,
+} from '../../services/bookingLifecycleClientService';
 
 interface DriverInspectionFormProps {
   booking: any;
@@ -208,58 +211,24 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
         clientSignatureStorageUrl = await uploadInspectionPhoto(booking.id, signatureFile, 'photos');
       }
 
-      // Get authenticated user ID
-      const { data: { user } } = await supabase.auth.getUser();
+      const payload = {
+        fuel_level: fuelLevel,
+        mileage: parseInt(mileage, 10),
+        location: booking.pickup_location || 'Field Delivery',
+        scratches_notes: scratchesNotes,
+        photos_exterior: photosExterior,
+        photos_interior: photosInterior,
+        photo_fuel_mileage: photoFuelMileage,
+        gps_lat: gpsCoords?.lat ?? null,
+        gps_lon: gpsCoords?.lon ?? null,
+        client_signature_url: clientSignatureStorageUrl || null,
+      };
 
-      // 2. Insert record in booking_inspections table
-      const { error: inspectionError } = await supabase
-        .from('booking_inspections')
-        .insert({
-          booking_id: booking.id,
-          type: type,
-          fuel_level: fuelLevel,
-          mileage: parseInt(mileage),
-          location: booking.pickup_location || 'Field Delivery',
-          scratches_notes: scratchesNotes,
-          photos_exterior: photosExterior,
-          photos_interior: photosInterior,
-          photo_fuel_mileage: photoFuelMileage,
-          gps_lat: gpsCoords?.lat || null,
-          gps_lon: gpsCoords?.lon || null,
-          client_signature_url: clientSignatureStorageUrl || null,
-          conducted_by: user?.id || null
-        });
-
-      if (inspectionError) {
-        if (inspectionError.code === '23505') {
-          throw new Error('An inspection of this type already exists for this booking.');
-        }
-        throw inspectionError;
+      if (type === 'pre_handover') {
+        await submitBookingPickup(booking.id, payload);
+      } else {
+        await submitBookingReturn(booking.id, payload);
       }
-
-      // 3. Update booking status
-      const nextBookingStatus = type === 'pre_handover' ? 'on_trip' : 'completed';
-      const nextCarStatus = type === 'pre_handover' ? 'rented' : 'available';
-
-      const { error: bookingUpdateError } = await supabase
-        .from('bookings')
-        .update({
-          status: nextBookingStatus,
-          payment_status: 'paid' // Force payment marked as paid on handover completion
-        })
-        .eq('id', booking.id);
-
-      if (bookingUpdateError) throw bookingUpdateError;
-
-      // 4. Update car status
-      const { error: carUpdateError } = await supabase
-        .from('cars')
-        .update({
-          status: nextCarStatus
-        })
-        .eq('id', booking.car_id);
-
-      if (carUpdateError) throw carUpdateError;
 
       toast.success(`${type === 'pre_handover' ? 'Handover completed successfully!' : 'Car returned successfully!'}`);
       onBack();

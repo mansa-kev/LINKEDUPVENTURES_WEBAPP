@@ -13,6 +13,7 @@ import { adminService } from '../../services/adminService';
 import { enhancedContractService } from '../../services/enhancedContractService';
 import { buildBookingSummaryForContract, generateAndSaveContract } from '../../services/contractPdfService';
 import { sendAdminEmail } from '../../services/adminEmailService';
+import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';
 import { AdminBookingLifecycle } from './AdminBookingLifecycle';
 type ModalType = 'pickup' | 'return' | 'extend' | 'flag' | null;
 type CommunicateMode = 'approval' | 'payment_rejected' | 'docs_rejected';
@@ -449,16 +450,12 @@ export function AdminBookingCommandCenter() {
         }).eq('id', booking.id);
         if (bookingErr) throw bookingErr;
 
-        if (booking.client_id) {
-          await supabase.from('transactions').insert({
-            booking_id: booking.id,
-            user_id: booking.client_id,
-            amount: booking.total_amount,
-            type: 'payment_in',
-            status: 'completed',
-            transaction_code: transactionCode || booking.id,
-          }).then(null, (e: any) => logger.warn('Transaction record error:', e));
-        }
+        await recordPaymentTransaction(
+          booking.id,
+          booking.client_id,
+          Number(booking.total_amount),
+          transactionCode || booking.payment_reference || booking.id
+        );
         toast.success('Payment verified ✓');
         fetchBooking(true);
         setActiveTab('documents');
@@ -504,6 +501,13 @@ export function AdminBookingCommandCenter() {
 
       setBooking((prev: any) =>
         prev ? { ...prev, document_status: 'approved', status: 'confirmed', payment_status: 'paid' } : prev
+      );
+
+      await recordPaymentTransaction(
+        booking.id,
+        booking.client_id,
+        Number(booking.total_amount),
+        booking.payment_reference || booking.transaction_code || booking.id
       );
 
       const emailResult = await sendClientEmail('Booking Confirmed — LinkedUp Cars', approvalMsg);
@@ -593,6 +597,12 @@ export function AdminBookingCommandCenter() {
         }).eq('id', booking.id);
         if (confirmError) throw confirmError;
         setBooking((prev: any) => prev ? { ...prev, status: 'confirmed', payment_status: 'paid', document_status: 'approved' } : prev);
+        await recordPaymentTransaction(
+          booking.id,
+          booking.client_id,
+          Number(booking.total_amount),
+          booking.payment_reference || booking.transaction_code || booking.id
+        );
         fetchBooking(true);
       }
 

@@ -1,5 +1,10 @@
 import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../lib/supabase';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
+import {
+  CLIENT_ACTIVE_STATUSES,
+  CLIENT_UPCOMING_STATUSES,
+  CLIENT_VISIBLE_STATUSES,
+} from '../constants/bookingStatuses';
 
 const CLIENT_CACHE_TTL_MS = 60_000;
 
@@ -16,20 +21,22 @@ export const clientService = {
   getDashboardData: async (clientId: string) => {
     return getOrSetCache(`client:dashboard:${clientId}`, CLIENT_CACHE_TTL_MS, async () => {
     try {
-      // Fetch active rental
-      const { data: activeBooking, error: aError } = await supabase
+      // Fetch active rental (on_trip or legacy in_progress)
+      const { data: activeRows, error: aError } = await supabase
         .from('bookings')
         .select('*, cars(*)')
         .eq('client_id', clientId)
-        .eq('status', 'in_progress')
-        .single();
+        .in('status', [...CLIENT_ACTIVE_STATUSES])
+        .order('start_date', { ascending: false })
+        .limit(1);
+      const activeBooking = activeRows?.[0] ?? null;
       
-      // Fetch upcoming bookings
+      // Fetch upcoming bookings (paid/confirmed, awaiting pickup)
       const { data: upcomingBookings, error: uError } = await supabase
         .from('bookings')
         .select('*, cars(*)')
         .eq('client_id', clientId)
-        .eq('status', 'confirmed')
+        .in('status', [...CLIENT_UPCOMING_STATUSES])
         .order('start_date', { ascending: true });
 
       // Fetch profile for completion status
@@ -419,7 +426,7 @@ export const clientService = {
         .from('bookings')
         .select('id, status, document_status, payment_status', { count: 'exact', head: false })
         .eq('client_id', clientId)
-        .in('status', ['pending', 'confirmed', 'in_progress']),
+        .in('status', [...CLIENT_VISIBLE_STATUSES]),
       supabase
         .from('notifications')
         .select('id', { count: 'exact', head: true })
