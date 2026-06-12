@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '../../lib/utils';
-import { supabase } from '../../lib/supabase';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -9,140 +8,116 @@ interface LogoProps {
   fallbackToDefault?: boolean;
 }
 
+const DEFAULT_LOGO = '/favicon.svg';
+const STORAGE_KEY = 'linkedup_logo_url';
+
+async function fetchSiteLogoUrl(): Promise<string | null> {
+  try {
+    const response = await fetch('/api/public-app-settings?keys=site_logo');
+    if (!response.ok) return null;
+    const body = await response.json();
+    const row = (body?.settings || []).find((s: { key: string }) => s.key === 'site_logo');
+    if (!row) return null;
+    return row.logo_url || row.value || null;
+  } catch {
+    return null;
+  }
+}
+
+function syncFavicon(url: string) {
+  const href = url || DEFAULT_LOGO;
+  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) {
+    link = document.createElement('link');
+    link.rel = 'icon';
+    document.head.appendChild(link);
+  }
+  if (link.href !== href && !link.href.endsWith(href)) {
+    link.href = href;
+  }
+}
+
 // Function to clear logo cache (call this after logo update)
 export function clearLogoCache() {
-  localStorage.removeItem('linkedup_logo_url');
+  localStorage.removeItem(STORAGE_KEY);
 }
 
 export function Logo({ size = 'md', showText = true, className, fallbackToDefault = true }: LogoProps) {
   const [logoUrl, setLogoUrl] = useState<string | null>(() => {
-    // Initialize from localStorage immediately - no flash
-    const storedLogo = localStorage.getItem('linkedup_logo_url');
-    if (storedLogo) {
-      // Sync favicon immediately from cache (synchronous, before Supabase fetch)
-      const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-      if (link) link.href = storedLogo;
-    }
-    return storedLogo || null;
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) syncFavicon(stored);
+    return stored || null;
   });
-  const [error, setError] = useState(false);
+  const [imgFailed, setImgFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchLogo = async () => {
+    let cancelled = false;
+
+    const load = async () => {
       try {
-        setError(false);
+        const remoteUrl = await fetchSiteLogoUrl();
+        if (cancelled) return;
 
-        // Check if user is authenticated before deciding to clear cache
-        const { data: { session } } = await supabase.auth.getSession();
-        const isAuthenticated = !!session;
-
-        // Try to fetch custom logo from settings
-        const { data, error: fetchError } = await supabase
-          .from('app_settings')
-          .select('logo_url')
-          .eq('key', 'site_logo')
-          .maybeSingle();
-
-        if (data?.logo_url) {
-          // Update UI and localStorage if value changed
-          if (data.logo_url !== logoUrl) {
-            setLogoUrl(data.logo_url);
-            localStorage.setItem('linkedup_logo_url', data.logo_url);
-          }
-          // Sync browser tab favicon to the stored logo
-          const existingFavicon = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-          if (existingFavicon) {
-            existingFavicon.href = data.logo_url;
-          } else {
-            const link = document.createElement('link');
-            link.rel = 'icon';
-            link.href = data.logo_url;
-            document.head.appendChild(link);
-          }
-        } else if (fetchError || !isAuthenticated) {
-          // Query failed (RLS blocked anon) or user is not authenticated
-          // Keep existing cache — do NOT clear it
-          // Cache will only be cleared when an authenticated user confirms no logo exists
-        } else {
-          // Authenticated user confirmed no logo exists — safe to clear
-          setLogoUrl(null);
-          localStorage.removeItem('linkedup_logo_url');
+        if (remoteUrl) {
+          setLogoUrl(remoteUrl);
+          setImgFailed(false);
+          localStorage.setItem(STORAGE_KEY, remoteUrl);
+          syncFavicon(remoteUrl);
         }
+        // If API returns nothing, keep existing cache — never wipe on empty/error
       } catch (err) {
         console.error('Error fetching logo:', err);
-        setError(true);
-        // On any error, keep existing cached value — do not clear
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     };
 
-    fetchLogo();
+    load();
+    return () => { cancelled = true; };
   }, []);
 
-  // Responsive sizing classes
   const sizeClasses = {
     sm: 'h-10 w-auto object-contain object-left',
-    md: 'h-14 w-auto object-contain object-left md:h-16 w-auto object-contain object-left',
-    lg: 'h-14 w-auto object-contain object-left md:h-16 w-auto object-contain object-left',
-    xl: 'h-14 w-auto object-contain object-left md:h-16 w-auto object-contain object-left'
+    md: 'h-14 w-auto object-contain object-left md:h-16',
+    lg: 'h-14 w-auto object-contain object-left md:h-16',
+    xl: 'h-14 w-auto object-contain object-left md:h-16',
   };
 
   const textSizes = {
     sm: 'text-sm',
     md: 'text-base',
     lg: 'text-xl',
-    xl: 'text-2xl'
+    xl: 'text-2xl',
   };
 
-  // Show placeholder only if no cached logo and fallback is enabled
-  const showPlaceholder = !logoUrl && fallbackToDefault;
-  const showLoading = loading && !logoUrl;
+  const displayUrl = !imgFailed && logoUrl ? logoUrl : (fallbackToDefault ? DEFAULT_LOGO : null);
+  const showLoading = loading && !displayUrl;
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      {/* Logo Container */}
       <div className="relative flex items-center justify-center overflow-hidden">
         {showLoading ? (
-          // Loading skeleton
           <div className="h-14 w-14 animate-pulse bg-muted rounded-lg" />
-        ) : showPlaceholder ? (
-          // Placeholder/Default Logo - only shown if no cached logo
-          <svg
-            width="40"
-            height="40"
-            viewBox="0 0 40 40"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-14 w-auto object-contain object-left md:h-16 w-auto object-contain object-left"
-          >
-            {/* LinkedUp Logo - L and U combined */}
-            <path d="M8 8 L8 32 L14 32 L14 18 L20 26 L26 18 L26 32 L32 32 L32 8 L26 8 L20 16 L14 8 L8 8 Z" fill="#FF6B00"/>
-            {/* Small accent */}
-            <circle cx="20" cy="20" r="2" fill="#FF8C00"/>
-          </svg>
-        ) : (
-          // Custom Logo Image - loaded immediately from cache
-          logoUrl && (
-            <img
-              src={logoUrl}
-              alt="LinkedUp Logo"
-              className={sizeClasses[size]}
-              loading="eager"
-              fetchPriority="high"
-              onError={() => setError(true)}
-            />
-          )
-        )}
+        ) : displayUrl ? (
+          <img
+            src={displayUrl}
+            alt="LinkedUp Cars Rentals"
+            className={sizeClasses[size]}
+            loading="eager"
+            fetchPriority="high"
+            onError={() => {
+              if (logoUrl && displayUrl === logoUrl) {
+                setImgFailed(true);
+                syncFavicon(DEFAULT_LOGO);
+              }
+            }}
+          />
+        ) : null}
       </div>
-      
-      {/* Text below logo if showText is true */}
+
       {showText && (
-        <span className={cn(
-          'font-black tracking-tighter text-primary italic',
-          textSizes[size]
-        )}>
+        <span className={cn('font-black tracking-tighter text-primary italic', textSizes[size])}>
           LINKEDUP
         </span>
       )}

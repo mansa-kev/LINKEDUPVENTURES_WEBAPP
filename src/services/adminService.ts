@@ -854,19 +854,7 @@ export const adminService = {
       // Fetch only paid bookings with active statuses
       const { data: confirmedBookings, error: bookingsError } = await supabase
         .from('bookings')
-        .select(`
-          *,
-          cars(
-            make,
-            model,
-            daily_rate,
-            fleet_owner_id
-          ),
-          client:user_profiles(
-            full_name,
-            email
-          )
-        `)
+        .select('id, total_amount, platform_commission, status, payment_status, created_at, car_id, client_id')
         .eq('payment_status', 'paid')
         .in('status', [...PAID_REVENUE_STATUSES_DB])
         .order('created_at', { ascending: false });

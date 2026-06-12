@@ -24,6 +24,25 @@ USING (
   )
 );
 
+DROP POLICY IF EXISTS "Allow authenticated read public settings" ON app_settings;
+CREATE POLICY "Allow authenticated read public settings"
+ON app_settings
+FOR SELECT
+TO authenticated
+USING (
+  key IN (
+    'site_logo',
+    'homepage_cta_image',
+    'about_hero_image',
+    'about_team_image',
+    'about_mission_image',
+    'company_po_box',
+    'company_signature_url',
+    'contract_logo',
+    'logo_url'
+  )
+);
+
 -- ── 2. Create public_image_settings view (if it doesn't exist) ──
 CREATE OR REPLACE VIEW public_image_settings AS
 SELECT key, value
