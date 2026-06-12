@@ -30,6 +30,7 @@ import {
   Legend
 } from 'recharts';
 import { logger } from '../../utils/logger';
+import { PAID_REVENUE_STATUSES_DB } from '../../constants/bookingStatuses';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -137,8 +138,8 @@ export function AdminTaxes() {
         .from('tax_ledger')
         .select(`
           *,
-          booking:bookings(id, status),
-          client:user_profiles(full_name, email)
+          booking:bookings!tax_ledger_booking_id_fkey(id, status),
+          client:user_profiles!tax_ledger_client_id_fkey(full_name, email)
         `)
         .order('created_at', { ascending: false });
 
@@ -165,8 +166,9 @@ export function AdminTaxes() {
 
       const { data: bookings, error } = await supabase
         .from('bookings')
-        .select('id, total_amount, user_id')
-        .in('status', ['confirmed', 'completed', 'active'])
+        .select('id, total_amount, client_id')
+        .eq('payment_status', 'paid')
+        .in('status', [...PAID_REVENUE_STATUSES_DB])
         .order('created_at', { ascending: false })
         .limit(50);
 
@@ -174,7 +176,7 @@ export function AdminTaxes() {
 
       const newBookings = (bookings || []).filter(b => !existingBookingIds.has(b.id));
       if (newBookings.length === 0) {
-        toast.info('All bookings are already in the tax ledger');
+        toast.info('All paid bookings are already in the tax ledger');
         setShowSeedModal(false);
         setSeeding(false);
         return;
@@ -186,7 +188,7 @@ export function AdminTaxes() {
         const vat = Math.round((gross - taxable) * 100) / 100;
         return {
           booking_id: b.id,
-          client_id: b.user_id,
+          client_id: b.client_id,
           invoice_number: generateKRAInvoiceNumber(),
           gross_amount: gross,
           taxable_value: taxable,
@@ -202,9 +204,9 @@ export function AdminTaxes() {
       toast.success(`✅ ${rows.length} booking(s) added to tax ledger`);
       setShowSeedModal(false);
       await fetchTaxLedger();
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Seed error:', err);
-      toast.error('Failed to seed tax records');
+      toast.error(err?.message || 'Failed to seed tax records');
     } finally {
       setSeeding(false);
     }
@@ -682,7 +684,7 @@ export function AdminTaxes() {
             </div>
             <h3 className="text-xl font-bold mb-2">Sync Bookings to Tax Ledger</h3>
             <p className="text-sm text-muted-foreground mb-6">
-              This will import all confirmed/completed bookings that don't yet have a tax record. VAT (16%) will be automatically calculated for each. This action is safe and idempotent — duplicates will be skipped.
+              This will import all paid bookings (confirmed, on trip, or completed) that don't yet have a tax record. VAT (16%) will be automatically calculated for each. This action is safe and idempotent — duplicates will be skipped.
             </p>
             <div className="flex items-center gap-3">
               <button

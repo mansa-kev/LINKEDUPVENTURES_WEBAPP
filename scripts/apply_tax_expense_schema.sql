@@ -1,9 +1,6 @@
--- ============================================================
--- Tax Compliance (KRA eTIMS) & Extended Expenses Schema Extensions
--- Run in Supabase SQL Editor
--- ============================================================
+-- Tax ledger + extended expenses columns (safe to re-run in Supabase SQL Editor)
 
--- 1. Create tax_ledger table
+-- 1. tax_ledger
 CREATE TABLE IF NOT EXISTS tax_ledger (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id UUID REFERENCES bookings(id) ON DELETE CASCADE,
@@ -20,17 +17,15 @@ CREATE TABLE IF NOT EXISTS tax_ledger (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Enable RLS for tax_ledger
 ALTER TABLE tax_ledger ENABLE ROW LEVEL SECURITY;
 
--- Only Admins can manage tax_ledger
 DROP POLICY IF EXISTS "Admins can manage tax_ledger" ON tax_ledger;
 CREATE POLICY "Admins can manage tax_ledger" ON tax_ledger
   FOR ALL TO authenticated
   USING (is_admin())
   WITH CHECK (is_admin());
 
--- 2. Extend expenses table
+-- 2. Extend expenses for car-linked ledger
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'expenses' AND column_name = 'car_id') THEN
     ALTER TABLE expenses ADD COLUMN car_id UUID REFERENCES cars(id) ON DELETE SET NULL;
@@ -43,7 +38,9 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- 3. Extend cars table for tracking tracker & insurance expiries
+ALTER TABLE expenses ALTER COLUMN category SET DEFAULT 'other';
+
+-- 3. Car insurance / tracker fields
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'cars' AND column_name = 'insurance_expiry') THEN
     ALTER TABLE cars ADD COLUMN insurance_expiry DATE;

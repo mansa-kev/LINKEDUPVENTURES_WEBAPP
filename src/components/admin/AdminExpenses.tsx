@@ -156,6 +156,8 @@ export function AdminExpenses() {
     setSubmitting(true);
 
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+
       // Build metadata based on expense type
       const meta: any = {};
       if (type === 'insurance') {
@@ -169,16 +171,18 @@ export function AdminExpenses() {
         meta.insurance_claimed_amount = Number(insuranceClaimed) || 0;
       }
 
-      // 1. Insert expense record
+      // 1. Insert expense record (category = legacy NOT NULL column; type = extended column)
       const { error: insertError } = await supabase
         .from('expenses')
         .insert({
           car_id: linkedCarId,
           amount: Number(amount),
           type,
-          description,
+          category: type,
+          description: description.trim() || type.replace(/_/g, ' '),
           date,
-          metadata: meta
+          metadata: meta,
+          user_id: user?.id ?? null,
         });
 
       if (insertError) throw insertError;
@@ -217,9 +221,9 @@ export function AdminExpenses() {
       setInsuranceClaimed('');
 
       await fetchData();
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Add expense error:', err);
-      toast.error('Failed to log expense');
+      toast.error(err?.message || 'Failed to log expense');
     } finally {
       setSubmitting(false);
     }
