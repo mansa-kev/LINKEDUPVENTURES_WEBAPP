@@ -25,6 +25,7 @@ import {
   ResponsiveContainer 
 } from 'recharts';
 import { logger } from '../../utils/logger';
+import { toast } from 'sonner';
 
 // --- Types ---
 
@@ -78,8 +79,9 @@ export function AdminFinancials() {
       } catch (resError) {
         logger.error('Failed to fetch reservation stats:', resError);
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Failed to fetch financials:', error);
+      toast.error(error?.message || 'Failed to load financials. Check console for details.');
     } finally {
       setLoading(false);
     }

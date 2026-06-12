@@ -4,7 +4,7 @@ import { logger } from '../utils/logger';
 import { Car } from '../types';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
 import {
-  PAID_REVENUE_STATUSES,
+  PAID_REVENUE_STATUSES_DB,
   isActiveBookingStatus,
 } from '../constants/bookingStatuses';
 const handleSupabaseError = handleSupabaseErrorWrapper;
@@ -46,7 +46,7 @@ export const adminService = {
         .from('bookings')
         .select('total_amount, platform_commission, status, payment_status, created_at, car_id, client_id, cars(make, model, year)')
         .gte('created_at', previousStartDate.toISOString())
-        .in('status', [...PAID_REVENUE_STATUSES])
+        .in('status', [...PAID_REVENUE_STATUSES_DB])
         .eq('payment_status', 'paid');
       if (bError) throw bError;
 
@@ -868,7 +868,7 @@ export const adminService = {
           )
         `)
         .eq('payment_status', 'paid')
-        .in('status', [...PAID_REVENUE_STATUSES])
+        .in('status', [...PAID_REVENUE_STATUSES_DB])
         .order('created_at', { ascending: false });
       
       if (bookingsError) {
@@ -883,20 +883,27 @@ export const adminService = {
         .from('transactions')
         .select('*')
         .order('created_at', { ascending: false });
-      if (tError) throw tError;
+      if (tError) {
+        logger.warn('Transactions query failed (non-fatal):', tError);
+      }
 
       // Fetch expenses
       const { data: expenses, error: eError } = await supabase
         .from('expenses')
         .select('*')
         .order('date', { ascending: false });
-      if (eError) throw eError;
+      if (eError) {
+        logger.warn('Expenses query failed (non-fatal):', eError);
+      }
 
-      // Fix #3: Fetch payout_settlements (outsourced + broker)
-      const { data: settlements } = await supabase
+      // Fetch payout_settlements (outsourced + broker) — table may not exist yet
+      const { data: settlements, error: settlementsError } = await supabase
         .from('payout_settlements')
         .select('id, booking_id, type, target_id, amount, status, settled_at, created_at')
         .order('created_at', { ascending: false });
+      if (settlementsError) {
+        logger.warn('payout_settlements query failed (non-fatal):', settlementsError);
+      }
 
       // Calculate revenue from confirmed bookings only
       const totalRevenue = confirmedBookings?.reduce((sum, booking) => sum + Number(booking.total_amount), 0) || 0;
@@ -1305,7 +1312,7 @@ export const adminService = {
       const { data: bookings, error: bError } = await supabase
         .from('bookings')
         .select('*')
-        .in('status', [...PAID_REVENUE_STATUSES])
+        .in('status', [...PAID_REVENUE_STATUSES_DB])
         .eq('payment_status', 'paid');
       if (bError) throw bError;
 
@@ -1351,7 +1358,7 @@ export const adminService = {
       const { data: cars } = await supabase.from('cars').select('id, make, model, daily_rate');
       const { data: bookings } = await supabase.from('bookings')
         .select('car_id, total_amount, start_date, end_date')
-        .in('status', [...PAID_REVENUE_STATUSES])
+        .in('status', [...PAID_REVENUE_STATUSES_DB])
         .eq('payment_status', 'paid');
 
       if (!cars || !bookings) return { highestEarner: 'N/A', highestEarnings: 0, avgUtilization: 0, avgDailyEarning: 0 };

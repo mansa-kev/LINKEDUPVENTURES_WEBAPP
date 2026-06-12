@@ -42,7 +42,7 @@ export function Logo({ size = 'md', showText = true, className, fallbackToDefaul
           .from('app_settings')
           .select('logo_url')
           .eq('key', 'site_logo')
-          .single();
+          .maybeSingle();
 
         if (data?.logo_url) {
           // Update UI and localStorage if value changed

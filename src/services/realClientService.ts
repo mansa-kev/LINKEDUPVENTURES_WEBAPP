@@ -1,9 +1,9 @@
 import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../lib/supabase';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
 import {
-  CLIENT_ACTIVE_STATUSES,
-  CLIENT_UPCOMING_STATUSES,
-  CLIENT_VISIBLE_STATUSES,
+  CLIENT_ACTIVE_STATUSES_DB,
+  CLIENT_UPCOMING_STATUSES_DB,
+  CLIENT_VISIBLE_STATUSES_DB,
 } from '../constants/bookingStatuses';
 
 const CLIENT_CACHE_TTL_MS = 60_000;
@@ -26,7 +26,7 @@ export const clientService = {
         .from('bookings')
         .select('*, cars(*)')
         .eq('client_id', clientId)
-        .in('status', [...CLIENT_ACTIVE_STATUSES])
+        .in('status', [...CLIENT_ACTIVE_STATUSES_DB])
         .order('start_date', { ascending: false })
         .limit(1);
       const activeBooking = activeRows?.[0] ?? null;
@@ -36,7 +36,7 @@ export const clientService = {
         .from('bookings')
         .select('*, cars(*)')
         .eq('client_id', clientId)
-        .in('status', [...CLIENT_UPCOMING_STATUSES])
+        .in('status', [...CLIENT_UPCOMING_STATUSES_DB])
         .order('start_date', { ascending: true });
 
       // Fetch profile for completion status
@@ -426,7 +426,7 @@ export const clientService = {
         .from('bookings')
         .select('id, status, document_status, payment_status', { count: 'exact', head: false })
         .eq('client_id', clientId)
-        .in('status', [...CLIENT_VISIBLE_STATUSES]),
+        .in('status', [...CLIENT_VISIBLE_STATUSES_DB]),
       supabase
         .from('notifications')
         .select('id', { count: 'exact', head: true })

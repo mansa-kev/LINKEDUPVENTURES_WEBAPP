@@ -3,7 +3,8 @@ import { logger } from '../utils/logger';
 import { Car } from '../types';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
 import {
-  CALENDAR_BLOCKING_STATUSES,
+  CALENDAR_BLOCKING_STATUSES_DB,
+  PAID_REVENUE_STATUSES_DB,
   isActiveBookingStatus,
   isPaidRevenueStatus,
 } from '../constants/bookingStatuses';
@@ -38,7 +39,7 @@ export const fleetService = {
       .from('bookings')
       .select('car_id')
       .or(`start_date.lte.${dropoffDate},end_date.gte.${pickupDate}`)
-      .in('status', [...CALENDAR_BLOCKING_STATUSES]);
+      .in('status', [...CALENDAR_BLOCKING_STATUSES_DB]);
 
     if (bookingsError) return handleSupabaseError(bookingsError, 'getAvailableCars - bookings');
 
@@ -374,9 +375,10 @@ export const fleetService = {
   getBookingsForEarnings: async (fleetOwnerId: string) => {
     const { data, error } = await supabase
       .from('bookings')
-      .select('id, start_date, end_date, total_amount, cars(make, model)')
+      .select('id, start_date, end_date, total_amount, status, cars(make, model)')
       .eq('fleet_owner_id', fleetOwnerId)
-      .eq('status', 'completed');
+      .eq('payment_status', 'paid')
+      .in('status', [...PAID_REVENUE_STATUSES_DB]);
     if (error) return handleSupabaseError(error, 'getBookingsForEarnings');
     return data;
   },

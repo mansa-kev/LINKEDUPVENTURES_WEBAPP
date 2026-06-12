@@ -195,20 +195,19 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
     }
 
     const canvas = signatureRef.current;
-    let signatureUrl = '';
-    if (canvas) {
-      signatureUrl = canvas.toDataURL('image/png');
-    }
 
     setLoading(true);
     try {
-      // 1. Upload client signature URL to storage bucket
+      // Upload signature via canvas.toBlob (fetch(data:...) is blocked by CSP connect-src)
       let clientSignatureStorageUrl = '';
-      if (signatureUrl) {
-        const response = await fetch(signatureUrl);
-        const blob = await response.blob();
-        const signatureFile = new File([blob], 'signature.png', { type: 'image/png' });
-        clientSignatureStorageUrl = await uploadInspectionPhoto(booking.id, signatureFile, 'photos');
+      if (canvas) {
+        const signatureBlob = await new Promise<Blob | null>((resolve) => {
+          canvas.toBlob((blob) => resolve(blob), 'image/png');
+        });
+        if (signatureBlob) {
+          const signatureFile = new File([signatureBlob], 'signature.png', { type: 'image/png' });
+          clientSignatureStorageUrl = await uploadInspectionPhoto(booking.id, signatureFile, 'photos');
+        }
       }
 
       const payload = {
