@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { ScrollToTop } from './components/shared/ScrollToTop';
 import { HelmetProvider } from 'react-helmet-async';
 import { Toaster } from 'sonner';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -43,6 +44,7 @@ export default function App() {
     <HelmetProvider>
     <ErrorBoundary>
       <BrowserRouter>
+        <ScrollToTop />
         <ThemeProvider>
           <AuthProvider>
             <div className="relative min-h-screen">

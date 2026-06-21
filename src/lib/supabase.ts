@@ -46,7 +46,13 @@ const createDisabledSupabaseClient = () => ({
 });
 
 export const supabase = supabaseUrl && supabaseAnonKey
-  ? createClient(supabaseUrl, supabaseAnonKey)
+  ? createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        // Login.tsx handles ?code= / token_hash explicitly via exchangeCodeForSession
+        detectSessionInUrl: false,
+        flowType: 'pkce',
+      },
+    })
   : (createDisabledSupabaseClient() as unknown as ReturnType<typeof createClient>);
 
 export const handleSupabaseErrorWrapper = (error: any, operation: string) => {

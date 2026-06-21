@@ -6,6 +6,7 @@ import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
 import { Logo } from '../shared/Logo';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSubdomain } from '../../contexts/SubdomainContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { sendTemplatedEmail } from '../../services/emailProvider';
 
@@ -42,6 +43,57 @@ const PORTAL_CONFIG: Record<PortalType, { title: string; subtitle: string; allow
   www: { title: 'LinkedUp Cars', subtitle: 'Premium car rentals', allowSignUp: true, roleLabel: 'Client' },
 };
 
+async function ensureUserProfile(user: { id: string; email?: string; user_metadata?: Record<string, unknown> }) {
+  const { data: existing, error: readError } = await supabase
+    .from('user_profiles')
+    .select('role, status, full_name')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (readError) {
+    throw new Error(readError.message || 'Could not load your profile');
+  }
+
+  if (existing) {
+    return existing;
+  }
+
+  const meta = user.user_metadata || {};
+  const { error: upsertError } = await supabase.from('user_profiles').upsert({
+    id: user.id,
+    email: user.email,
+    full_name: (meta.full_name as string) || '',
+    phone_number: (meta.phone_number as string) || '',
+    license_number: (meta.license_number as string) || '',
+    role: (meta.role as string) || 'client',
+    status: 'active',
+  }, { onConflict: 'id' });
+
+  if (upsertError) {
+    throw new Error(upsertError.message || 'Could not create your profile. Please contact support.');
+  }
+
+  if (meta.pending_booking_id) {
+    await supabase
+      .from('bookings')
+      .update({ client_id: user.id })
+      .eq('id', meta.pending_booking_id as string);
+    await supabase.auth.updateUser({ data: { pending_booking_id: null } });
+  }
+
+  const { data: created, error: reloadError } = await supabase
+    .from('user_profiles')
+    .select('role, status, full_name')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (reloadError || !created) {
+    throw new Error('Profile was created but could not be loaded. Please refresh and try again.');
+  }
+
+  return created;
+}
+
 // ---------------------------------------------------------------------------
 // Main Login Component
 // ---------------------------------------------------------------------------
@@ -49,6 +101,7 @@ export function Login() {
   const navigate = useNavigate();
   const location = useLocation();
   const { subdomain, setPreviewSubdomain } = useSubdomain();
+  const { refreshProfile } = useAuth();
   const portal = detectPortal(subdomain, location.pathname);
   const config = PORTAL_CONFIG[portal];
 
@@ -152,6 +205,75 @@ export function Login() {
     }
   };
 
+  // Email confirmation links land on /login with ?code= (PKCE) or ?token_hash=&type=
+  useEffect(() => {
+    let cancelled = false;
+
+    const finishConfirmedLogin = async (user: { id: string; email?: string; user_metadata?: Record<string, unknown> }) => {
+      const profile = await ensureUserProfile(user);
+      if (cancelled) return;
+      await refreshProfile();
+      const role = profile?.role || (user.user_metadata?.role as string) || 'client';
+      redirectAfterLogin(role);
+    };
+
+    const clearAuthParams = () => {
+      window.history.replaceState({}, '', window.location.pathname);
+    };
+
+    (async () => {
+      const params = new URLSearchParams(location.search);
+      const authError = params.get('error_description') || params.get('error');
+      if (authError) {
+        setError(decodeURIComponent(authError.replace(/\+/g, ' ')));
+        clearAuthParams();
+        return;
+      }
+
+      const code = params.get('code');
+      const tokenHash = params.get('token_hash');
+      const otpType = params.get('type');
+
+      if (!code && !(tokenHash && otpType)) return;
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        if (code) {
+          const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) throw error;
+          clearAuthParams();
+          if (!data.session?.user) {
+            throw new Error('Email confirmed but no session was created. Please log in.');
+          }
+          setSuccessMsg('Email confirmed! Signing you in...');
+          await finishConfirmedLogin(data.session.user);
+          return;
+        }
+
+        const { data, error } = await supabase.auth.verifyOtp({
+          token_hash: tokenHash!,
+          type: otpType as 'signup' | 'email' | 'recovery' | 'invite' | 'magiclink' | 'email_change',
+        });
+        if (error) throw error;
+        clearAuthParams();
+        if (!data.user) {
+          throw new Error('Email confirmed but no session was created. Please log in.');
+        }
+        setSuccessMsg('Email confirmed! Signing you in...');
+        await finishConfirmedLogin(data.user);
+      } catch (err: any) {
+        clearAuthParams();
+        setError(err?.message || 'Confirmation link expired or invalid. Log in or enter the code from your email.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [location.search, refreshProfile]);
+
   // ---------------------------------------------------------------------------
   // Login
   // ---------------------------------------------------------------------------
@@ -193,34 +315,8 @@ export function Login() {
       if (data.user) {
         resetRateLimit();
 
-        const { data: profile } = await supabase
-          .from('user_profiles')
-          .select('role, status, full_name')
-          .eq('id', data.user.id)
-          .single();
-
-        // First login after email confirmation: profile row doesn't exist yet.
-        // Create it now — user has a valid session so RLS passes.
-        if (!profile) {
-          const meta = data.user.user_metadata || {};
-          await supabase.from('user_profiles').upsert({
-            id: data.user.id,
-            email: data.user.email,
-            full_name: meta.full_name || '',
-            phone_number: meta.phone_number || '',
-            license_number: meta.license_number || '',
-            role: meta.role || 'client',
-          }, { onConflict: 'id' });
-
-          // Link a pending booking created as guest (stored in metadata at account creation)
-          if (meta.pending_booking_id) {
-            await supabase
-              .from('bookings')
-              .update({ client_id: data.user.id })
-              .eq('id', meta.pending_booking_id);
-            await supabase.auth.updateUser({ data: { pending_booking_id: null } });
-          }
-        }
+        const profile = await ensureUserProfile(data.user);
+        await refreshProfile();
 
         const userRole = profile?.role || data.user.user_metadata?.role || 'client';
         const userName = profile?.full_name || data.user.user_metadata?.full_name || 'Valued Customer';
@@ -269,9 +365,8 @@ export function Login() {
 
         redirectAfterLogin(userRole);
       }
-    } catch {
-      incrementAttempts();
-      setError('An unexpected error occurred. Please try again.');
+    } catch (err: any) {
+      setError(err?.message || 'An unexpected error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -365,16 +460,10 @@ export function Login() {
 
       const user = data.user;
       if (user) {
+        await ensureUserProfile(user);
+        await refreshProfile();
         const meta = user.user_metadata || {};
-        await supabase.from('user_profiles').upsert({
-          id: user.id,
-          email: user.email,
-          full_name: meta.full_name || '',
-          phone_number: meta.phone_number || '',
-          role: meta.role || 'client',
-          status: 'active',
-        }, { onConflict: 'id' });
-        redirectAfterLogin(meta.role || 'client');
+        redirectAfterLogin((meta.role as string) || 'client');
       }
     } catch (err: any) {
       setError(err.message || 'Invalid or expired code. Please try again.');
