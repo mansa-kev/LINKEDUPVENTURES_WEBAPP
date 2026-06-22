@@ -196,6 +196,14 @@ export const clientService = {
 
       return {
         docBooking,
+        profile: {
+          full_name: profile.full_name || null,
+          email: profile.email || null,
+          phone_number: profile.phone_number || null,
+          address: profile.address || null,
+          id_number: profile.id_number || null,
+          license_number: profile.license_number || null,
+        },
         documents: {
           facePhotoUrl: profile.face_photo_url || docs.facePhotoUrl || null,
           licenseFrontUrl: profile.license_front_url || docs.licenseFrontUrl || null,
@@ -378,6 +386,46 @@ export const clientService = {
       .eq('status', 'active');
     if (error) return handleSupabaseError(error, 'getExclusiveOffers');
     return data;
+  },
+
+  syncGuestBookingToProfile: async (clientId: string, booking: any) => {
+    if (!clientId || !booking) return;
+
+    const guest = booking?.metadata?.guest_info || {};
+    const docs = booking?.metadata?.documents || {};
+    const updates: Record<string, string> = {};
+
+    if (guest.full_name) updates.full_name = guest.full_name;
+    if (guest.phone) updates.phone_number = guest.phone;
+    if (guest.license_number) updates.license_number = guest.license_number;
+    if (guest.id_number) updates.id_number = guest.id_number;
+
+    for (const [docKey, column] of Object.entries(GLOVEBOX_COLUMN_MAP)) {
+      const url = docs[docKey];
+      if (url) updates[column] = url;
+    }
+
+    if (Object.keys(updates).length === 0) return;
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .update(updates)
+      .eq('id', clientId);
+    if (error) throw error;
+
+    invalidateCachePrefix(`client:glovebox:${clientId}`);
+    invalidateCachePrefix(`client:dashboard:${clientId}`);
+  },
+
+  getReviewsForBookings: async (clientId: string, bookingIds: string[]) => {
+    if (!bookingIds.length) return [];
+    const { data, error } = await supabase
+      .from('car_reviews')
+      .select('id, booking_id, status, rating')
+      .eq('user_id', clientId)
+      .in('booking_id', bookingIds);
+    if (error) return [];
+    return data || [];
   },
 
   // -------- Glovebox document upload / removal --------

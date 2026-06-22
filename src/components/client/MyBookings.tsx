@@ -2,11 +2,12 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { clientService } from '../../services/clientService';
 import { supabase } from '../../lib/supabase';
 import { bookingService } from '../../services/bookingService';
-import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2, MapPin, DollarSign } from 'lucide-react';
+import { Search, Calendar, Car, Clock, CheckCircle, XCircle, RefreshCw, FileText, CreditCard, Phone, AlertTriangle, Upload, X, Loader2, CheckCircle2, MapPin, DollarSign, Star, MessageSquare, Send } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { isOnTripStatus } from '../../constants/bookingStatuses';
 import { openBookingReceiptPdf } from '../../services/receiptPdfService';
+import { fleetService } from '../../services/fleetService';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -36,6 +37,12 @@ export function MyBookings() {
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [receiptLoadingId, setReceiptLoadingId] = useState<string | null>(null);
+  const [reviewByBookingId, setReviewByBookingId] = useState<Record<string, { status: string; rating: number }>>({});
+  const [reviewBooking, setReviewBooking] = useState<any | null>(null);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewHover, setReviewHover] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
     fetchBookings();
@@ -65,11 +72,56 @@ export function MyBookings() {
       if (user) {
         const data = await clientService.getAllBookings(user.id);
         setBookings(data || []);
+        const completedIds = (data || []).filter((b: any) => b.status === 'completed').map((b: any) => b.id);
+        const reviews = await clientService.getReviewsForBookings(user.id, completedIds);
+        const map: Record<string, { status: string; rating: number }> = {};
+        reviews.forEach((r: any) => {
+          if (r.booking_id) map[r.booking_id] = { status: r.status, rating: r.rating };
+        });
+        setReviewByBookingId(map);
       }
     } catch (err) {
       console.error("Error fetching bookings:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openReviewModal = (booking: any) => {
+    setReviewBooking(booking);
+    setReviewRating(0);
+    setReviewHover(0);
+    setReviewComment('');
+  };
+
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewRating) return toast.error('Please select a rating');
+    if (!reviewComment.trim()) return toast.error('Please write a comment');
+    if (!reviewBooking) return;
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    setSubmittingReview(true);
+    try {
+      await fleetService.submitReview({
+        booking_id: reviewBooking.id,
+        car_id: reviewBooking.car_id,
+        user_id: user.id,
+        rating: reviewRating,
+        comment: reviewComment.trim(),
+      });
+      setReviewByBookingId(prev => ({
+        ...prev,
+        [reviewBooking.id]: { status: 'pending', rating: reviewRating },
+      }));
+      setReviewBooking(null);
+      toast.success('Review submitted! It will appear on the website after admin approval.');
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to submit review');
+    } finally {
+      setSubmittingReview(false);
     }
   };
 
@@ -418,12 +470,27 @@ export function MyBookings() {
                     )}
 
                     {booking.status === 'completed' && (
-                      <button
-                        onClick={() => navigate(`/cars/${booking.car_id}`)}
-                        className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
-                      >
-                        <RefreshCw size={16} /> Re-book
-                      </button>
+                      <>
+                        {!reviewByBookingId[booking.id] ? (
+                          <button
+                            onClick={() => openReviewModal(booking)}
+                            className="flex-1 sm:flex-none px-4 py-2 bg-amber-500/10 text-amber-500 border border-amber-500/20 hover:bg-amber-500/20 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                          >
+                            <Star size={16} /> Leave Review
+                          </button>
+                        ) : (
+                          <span className="flex-1 sm:flex-none px-4 py-2 bg-muted rounded-xl text-xs font-bold text-muted-foreground flex items-center justify-center gap-2">
+                            <Star size={14} className="text-amber-400 fill-amber-400" />
+                            Review {reviewByBookingId[booking.id].status === 'approved' ? 'published' : 'pending approval'}
+                          </span>
+                        )}
+                        <button
+                          onClick={() => navigate(`/cars/${booking.car_id}`)}
+                          className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                        >
+                          <RefreshCw size={16} /> Re-book
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -619,6 +686,72 @@ export function MyBookings() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review Modal */}
+      {reviewBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between p-5 border-b border-border">
+              <div className="flex items-center gap-3">
+                <MessageSquare size={20} className="text-amber-400" />
+                <div>
+                  <h3 className="font-bold text-lg">Leave a Review</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {reviewBooking.cars?.make} {reviewBooking.cars?.model}
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setReviewBooking(null)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                <X size={16} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmitReview} className="p-5 space-y-5">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">Your Rating</p>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      onMouseEnter={() => setReviewHover(star)}
+                      onMouseLeave={() => setReviewHover(0)}
+                      className="transition-transform hover:scale-110"
+                    >
+                      <Star
+                        size={32}
+                        className={star <= (reviewHover || reviewRating) ? 'text-amber-400 fill-amber-400' : 'text-border'}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-2">Your Comment</p>
+                <textarea
+                  value={reviewComment}
+                  onChange={(e) => setReviewComment(e.target.value)}
+                  rows={4}
+                  placeholder="Tell others about your experience..."
+                  className="w-full px-4 py-3 bg-muted rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 resize-none"
+                  required
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                Your review is sent to admin for approval before it appears on the website.
+              </p>
+              <button
+                type="submit"
+                disabled={submittingReview || !reviewRating}
+                className="w-full py-3 bg-primary text-primary-foreground rounded-xl text-sm font-bold flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                {submittingReview ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                Submit Review
+              </button>
+            </form>
           </div>
         </div>
       )}

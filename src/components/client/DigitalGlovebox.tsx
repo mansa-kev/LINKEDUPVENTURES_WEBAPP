@@ -8,8 +8,16 @@ import { validateFile } from '../../utils/fileValidation';
 import {
   FileText, Download, Eye, CreditCard, ShieldCheck, AlertTriangle,
   Clock, CheckCircle2, User, IdCard, Loader2, FolderOpen, Receipt,
-  Upload, X, RefreshCw,
+  Upload, X, RefreshCw, ArrowRight,
 } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+
+const PROFILE_PROMPT_KEY = 'glovebox_profile_prompt_dismissed';
+
+function isProfileDetailsIncomplete(profile: any) {
+  if (!profile) return true;
+  return !profile.phone_number || !profile.address || !profile.id_number || !profile.license_number;
+}
 
 const DOC_SLOTS = [
   { key: 'facePhotoUrl',    label: 'Face / Passport Photo', icon: User },
@@ -127,10 +135,12 @@ function DocSlotRow({ slotKey, label, Icon, url, isBusy, onUpload, onRemove }: D
 }
 
 export function DigitalGlovebox() {
+  const navigate = useNavigate();
   const [gloveboxData, setGloveboxData] = useState<any>(null);
   const [clientId, setClientId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [busySlot, setBusySlot] = useState<string | null>(null);
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false);
 
   const fetchData = useCallback(async (uid?: string) => {
     try {
@@ -171,11 +181,18 @@ export function DigitalGlovebox() {
         final = await compressImage(file, 1200, 1200, 0.7);
       }
       const url = await clientService.uploadGloveboxDocument(clientId, slotKey, final);
-      // optimistic
+      const nextDocs = { ...(gloveboxData?.documents || {}), [slotKey]: url };
       setGloveboxData((prev: any) => ({
         ...prev,
-        documents: { ...(prev?.documents || {}), [slotKey]: url },
+        documents: nextDocs,
       }));
+
+      const allDocsDone = DOC_SLOTS.every(s => nextDocs[s.key]);
+      const profileIncomplete = isProfileDetailsIncomplete(gloveboxData?.profile);
+      if (allDocsDone && profileIncomplete && !sessionStorage.getItem(PROFILE_PROMPT_KEY)) {
+        setShowProfilePrompt(true);
+      }
+
       toast.success('Document uploaded');
     } catch (err: any) {
       console.error(err);
@@ -211,13 +228,57 @@ export function DigitalGlovebox() {
     );
   }
 
-  const { documents = {}, contracts = [], payments = [] } = gloveboxData || {};
+  const { documents = {}, contracts = [], payments = [], profile = null } = gloveboxData || {};
   const docStatus = documents.status;
   const completed = DOC_SLOTS.filter(s => documents[s.key]).length;
   const completion = Math.round((completed / DOC_SLOTS.length) * 100);
+  const profileIncomplete = isProfileDetailsIncomplete(profile);
+
+  const goToProfile = () => {
+    sessionStorage.setItem(PROFILE_PROMPT_KEY, '1');
+    setShowProfilePrompt(false);
+    navigate('/client/profile');
+  };
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {showProfilePrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="flex items-start gap-3">
+              <div className="p-3 bg-primary/10 rounded-xl text-primary shrink-0">
+                <User size={22} />
+              </div>
+              <div>
+                <h3 className="font-bold text-lg">Documents saved!</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Complete your profile with phone, address, ID and licence details so future bookings are faster.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem(PROFILE_PROMPT_KEY, '1');
+                  setShowProfilePrompt(false);
+                }}
+                className="flex-1 py-3 rounded-xl border border-border text-sm font-bold hover:bg-muted transition-colors"
+              >
+                Later
+              </button>
+              <button
+                type="button"
+                onClick={goToProfile}
+                className="flex-1 py-3 rounded-xl bg-primary text-primary-foreground text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+              >
+                Go to My Profile <ArrowRight size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
         <h2 className="text-2xl font-bold">Digital Glovebox</h2>
         <p className="text-muted-foreground text-sm mt-1">Your documents, contracts and payment history — all in one place.</p>
@@ -287,6 +348,23 @@ export function DigitalGlovebox() {
           )}
         </div>
       </div>
+
+      {profileIncomplete && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 rounded-2xl bg-primary/5 border border-primary/20">
+          <div>
+            <p className="text-sm font-bold text-foreground">Finish your profile details</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Add phone, address, ID number and licence number for 1-click bookings.
+            </p>
+          </div>
+          <Link
+            to="/client/profile"
+            className="shrink-0 px-5 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold hover:bg-primary/90 transition-colors flex items-center justify-center gap-2"
+          >
+            Complete Profile <ArrowRight size={16} />
+          </Link>
+        </div>
+      )}
 
       {/* Contracts Vault */}
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">

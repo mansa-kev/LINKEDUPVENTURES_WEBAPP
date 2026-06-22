@@ -6,6 +6,7 @@ import { LogoLoader } from '../shared/LogoLoader';
 import { ContractModal } from './ContractModal';
 import { bookingService } from '../../services/bookingService';
 import { fleetService } from '../../services/fleetService';
+import { clientService } from '../../services/clientService';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { paymentService } from '../../services/paymentService';
@@ -29,7 +30,10 @@ export function BookingConfirmation() {
     booking?.status === 'pending'
   );
   const isConfirmed = booking?.status === 'confirmed' && booking?.payment_status === 'paid';
+  const isTripCompleted = booking?.status === 'completed';
   const isFailed = !isCancelled && booking?.payment_status === 'failed';
+  const guestInfo = booking?.metadata?.guest_info;
+  const showGuestSignup = isGuest && (isConfirmed || booking?.payment_status === 'paid');
 
   const [reviewRating, setReviewRating] = useState(0);
   const [reviewHover, setReviewHover] = useState(0);
@@ -190,6 +194,7 @@ export function BookingConfirmation() {
             full_name: guestInfo?.full_name || '',
             phone_number: guestInfo?.phone || '',
             license_number: guestInfo?.license_number || '',
+            id_number: guestInfo?.id_number || '',
             role: 'client',
             pending_booking_id: bookingId || null,
           },
@@ -213,13 +218,18 @@ export function BookingConfirmation() {
             },
             body: JSON.stringify({ statusToken: cachedToken }),
           });
+          await clientService.syncGuestBookingToProfile(authData.user!.id, booking);
         } catch (claimErr) {
           console.error('Booking claim failed:', claimErr);
         }
       }
 
       if (authData.user) {
-        toast.success('Account created! Check your email to confirm, then log in to manage your booking.');
+        toast.success(
+          authData.session
+            ? 'Account created! Your booking and documents are now in your portal.'
+            : 'Account created! Confirm your email, then log in — your booking details will be waiting for you.'
+        );
       }
     } catch (error: any) {
       console.error('Signup error:', error);
@@ -449,8 +459,8 @@ export function BookingConfirmation() {
             </div>
           </motion.div>
 
-          {/* Account Creation — only for guest (non-logged-in) users */}
-          {isGuest ? (
+          {/* Account Creation — guests after payment */}
+          {showGuestSignup ? (
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -464,6 +474,11 @@ export function BookingConfirmation() {
                 <h2 className="text-2xl font-serif font-black italic text-foreground">Unlock VIP Access</h2>
                 <p className="text-muted-foreground text-sm leading-relaxed">
                   Create an account to track your rentals, manage documents, and unlock exclusive loyalty rewards.
+                  {guestInfo?.full_name ? (
+                    <span className="block mt-2 text-foreground font-medium">
+                      We&apos;ll pre-fill your name, contact and documents from this booking.
+                    </span>
+                  ) : null}
                 </p>
               </div>
               
@@ -502,7 +517,7 @@ export function BookingConfirmation() {
                 Already have an account? <Link to="/login" className="text-primary hover:underline">Sign In</Link>
               </p>
             </motion.div>
-          ) : (
+          ) : !isGuest ? (
             <motion.div 
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -523,12 +538,39 @@ export function BookingConfirmation() {
                 Go to My Dashboard <ArrowRight size={16} />
               </Link>
             </motion.div>
-          )}
+          ) : isGuest && isPendingPayment ? (
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 }}
+              className="p-10 rounded-[40px] bg-card border border-border space-y-4 text-center"
+            >
+              <Hourglass className="mx-auto text-amber-500" size={32} />
+              <h2 className="text-xl font-bold">Account setup unlocks after payment</h2>
+              <p className="text-sm text-muted-foreground">
+                Once your payment is verified, you can create a portal account here and we&apos;ll import your booking details automatically.
+              </p>
+            </motion.div>
+          ) : null}
         </div>
 
-        {/* Review Prompt — shown only for confirmed bookings to logged-in users */}
+        {isTripCompleted && isGuest && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="p-6 rounded-[24px] bg-amber-400/5 border border-amber-400/20 text-center space-y-2"
+          >
+            <Star className="mx-auto text-amber-400" size={24} />
+            <p className="text-sm font-bold">Want to leave a review?</p>
+            <p className="text-xs text-muted-foreground">
+              Create your account above, then submit a review from My Bookings after your trip is completed.
+            </p>
+          </motion.div>
+        )}
+
+        {/* Review Prompt — only after trip completion */}
         <AnimatePresence>
-          {isConfirmed && user && !reviewSubmitted && (
+          {isTripCompleted && user && !reviewSubmitted && (
             <motion.div
               initial={{ opacity: 0, y: 24 }}
               animate={{ opacity: 1, y: 0 }}
@@ -610,7 +652,7 @@ export function BookingConfirmation() {
             </motion.div>
           )}
 
-          {isConfirmed && user && reviewSubmitted && (
+          {isTripCompleted && user && reviewSubmitted && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
