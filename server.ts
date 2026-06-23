@@ -1787,10 +1787,52 @@ async function startServer() {
     try {
       const { data: car } = await supabase
         .from('cars')
-        .select('id, make, model, year, daily_rate, seats, transmission, primary_image_url, photos, description')
+        .select('id, make, model, year, daily_rate, seats, transmission, primary_image_url, photos, description, vehicle_model_id')
         .eq('id', req.params.id)
         .single();
       if (!car) return next();
+
+      if (car.vehicle_model_id) {
+        const { data: model } = await supabase
+          .from('vehicle_models')
+          .select('id, make, model, year, display_name, base_daily_rate, seats, transmission, primary_image_url, gallery_urls, description')
+          .eq('id', car.vehicle_model_id)
+          .single();
+        if (model) {
+          const modelImage = model.primary_image_url ||
+            (Array.isArray(model.gallery_urls) && model.gallery_urls[0]) ||
+            car.primary_image_url ||
+            (Array.isArray(car.photos) && car.photos[0]) ||
+            'https://linkedupcarsrentals.com/logo.png';
+          const modelTitle = `${model.display_name || `${model.make} ${model.model}`} | Hire in Nairobi — LinkedUp Cars`;
+          const modelDesc = `Hire the ${model.display_name || `${model.make} ${model.model}`} in Nairobi from KES ${Number(model.base_daily_rate || car.daily_rate).toLocaleString()}/day. ${model.seats || car.seats} seats · ${model.transmission || car.transmission}. Tap to book instantly.`;
+          const modelUrl = `https://linkedupcarsrentals.com/models/${model.id}?booking=true`;
+          res.setHeader('Content-Type', 'text/html; charset=utf-8');
+          res.send(`<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <title>${modelTitle}</title>
+  <meta name="description" content="${modelDesc}">
+  <meta property="og:title"       content="${modelTitle}">
+  <meta property="og:description" content="${modelDesc}">
+  <meta property="og:image"       content="${modelImage}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url"         content="${modelUrl}">
+  <meta property="og:type"        content="product">
+  <meta property="og:site_name"   content="LinkedUp Cars">
+  <meta name="twitter:card"       content="summary_large_image">
+  <meta name="twitter:title"      content="${modelTitle}">
+  <meta name="twitter:description" content="${modelDesc}">
+  <meta name="twitter:image"      content="${modelImage}">
+  <meta http-equiv="refresh" content="0; url=${modelUrl}">
+  <script>window.location.replace("${modelUrl}");</script>
+</head><body>
+  <p>Redirecting&#8230; <a href="${modelUrl}">${modelTitle}</a></p>
+</body></html>`);
+          return;
+        }
+      }
 
       const carImage = car.primary_image_url ||
         (Array.isArray(car.photos) && car.photos[0]) ||
@@ -1821,6 +1863,54 @@ async function startServer() {
   <script>window.location.replace("${carUrl}");</script>
 </head><body>
   <p>Redirecting&#8230; <a href="${carUrl}">${carTitle}</a></p>
+</body></html>`);
+    } catch (_) {
+      next();
+    }
+  });
+
+  app.get('/models/:id', async (req: any, res: any, next: any) => {
+    const ua = req.headers['user-agent'] || '';
+    const isCrawler = /facebookexternalhit|facebot|twitterbot|linkedinbot|whatsapp|telegram|slackbot|discordbot|googlebot|bingbot|applebot|pinterest|snapchat|skype|yahoo|bot|crawl|spider/i.test(ua);
+    if (!isCrawler) return next();
+
+    try {
+      const { data: model } = await supabase
+        .from('vehicle_models')
+        .select('id, make, model, year, display_name, base_daily_rate, seats, transmission, primary_image_url, gallery_urls, description')
+        .eq('id', req.params.id)
+        .single();
+      if (!model) return next();
+
+      const modelImage = model.primary_image_url ||
+        (Array.isArray(model.gallery_urls) && model.gallery_urls[0]) ||
+        'https://linkedupcarsrentals.com/logo.png';
+      const modelTitle = `${model.display_name || `${model.make} ${model.model}`} | Hire in Nairobi — LinkedUp Cars`;
+      const modelDesc = `Hire the ${model.display_name || `${model.make} ${model.model}`} in Nairobi from KES ${Number(model.base_daily_rate).toLocaleString()}/day. ${model.seats} seats · ${model.transmission}. Tap to book instantly.`;
+      const modelUrl = `https://linkedupcarsrentals.com/models/${model.id}?booking=true`;
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(`<!DOCTYPE html>
+<html lang="en"><head>
+  <meta charset="utf-8">
+  <title>${modelTitle}</title>
+  <meta name="description" content="${modelDesc}">
+  <meta property="og:title"       content="${modelTitle}">
+  <meta property="og:description" content="${modelDesc}">
+  <meta property="og:image"       content="${modelImage}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url"         content="${modelUrl}">
+  <meta property="og:type"        content="product">
+  <meta property="og:site_name"   content="LinkedUp Cars">
+  <meta name="twitter:card"       content="summary_large_image">
+  <meta name="twitter:title"      content="${modelTitle}">
+  <meta name="twitter:description" content="${modelDesc}">
+  <meta name="twitter:image"      content="${modelImage}">
+  <meta http-equiv="refresh" content="0; url=${modelUrl}">
+  <script>window.location.replace("${modelUrl}");</script>
+</head><body>
+  <p>Redirecting&#8230; <a href="${modelUrl}">${modelTitle}</a></p>
 </body></html>`);
     } catch (_) {
       next();

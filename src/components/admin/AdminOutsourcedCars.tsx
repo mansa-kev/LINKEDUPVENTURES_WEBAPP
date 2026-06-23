@@ -173,16 +173,12 @@ export function AdminOutsourcedCars() {
       setCars(carsData || []);
 
       // 2. Fetch Brokers
-      const { data: brokersData, error: brokersError } = await supabase
-        .from('brokers')
-        .select('*')
-        .order('name', { ascending: true });
-      if (brokersError) {
-        // Fallback for broker table not existing yet or empty
-        logger.warn('Brokers table fetch failed, using fallback empty list');
+      try {
+        const brokersData = await adminService.getBrokers();
+        setBrokers(brokersData);
+      } catch (brokersError) {
+        logger.warn('Brokers table fetch failed, using fallback empty list', brokersError);
         setBrokers([]);
-      } else {
-        setBrokers(brokersData || []);
       }
 
       // 3. Fetch Payout Settlements with joined booking & car details
@@ -285,16 +281,12 @@ export function AdminOutsourcedCars() {
     }
     setSubmittingBroker(true);
     try {
-      const { error } = await supabase
-        .from('brokers')
-        .insert({
-          name: brokerName,
-          phone: brokerPhone || null,
-          email: brokerEmail || null,
-          default_commission_rate: Number(brokerRate) || 10
-        });
-
-      if (error) throw error;
+      await adminService.addBroker({
+        name: brokerName,
+        phone: brokerPhone || null,
+        email: brokerEmail || null,
+        default_commission_rate: Number(brokerRate) || 10,
+      });
       toast.success('Broker registered successfully!');
       
       // Reset form
@@ -304,9 +296,14 @@ export function AdminOutsourcedCars() {
       setBrokerRate('10');
       setShowBrokerModal(false);
       await fetchLedgers();
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Failed to add broker:', err);
-      toast.error('Failed to register broker');
+      const message = err?.message || '';
+      if (message.includes('brokers') || message.includes('schema cache') || message.includes('relation')) {
+        toast.error('Brokers table missing. Run scripts/apply_outsourced_module_extension.sql in Supabase.');
+      } else {
+        toast.error('Failed to register broker');
+      }
     } finally {
       setSubmittingBroker(false);
     }

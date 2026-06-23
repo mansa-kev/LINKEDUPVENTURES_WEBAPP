@@ -62,6 +62,11 @@ export function CarDetails() {
         setCar(carData);
         setReviews(reviewsData || []);
 
+        if (carData?.vehicle_model_id) {
+          navigate(`/models/${carData.vehicle_model_id}${location.search}`, { replace: true });
+          return;
+        }
+
         // Check availability based on car status
         if (carData.status === 'rented') {
           setAvailabilityStatus('booked');

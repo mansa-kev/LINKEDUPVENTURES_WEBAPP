@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { MessageCircle, X, Send, Loader2 } from 'lucide-react';
+import { MessageCircle, X, Send, Loader2, Phone } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
 import { toast } from 'sonner';
@@ -11,6 +11,7 @@ interface FloatingSupportWidgetProps {
 
 export function FloatingSupportWidget({ context = 'General Website Inquiry' }: FloatingSupportWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [mode, setMode] = useState<'support' | 'callback'>('support');
   const [showTooltip, setShowTooltip] = useState(true);
   const [loading, setLoading] = useState(false);
   
@@ -56,20 +57,30 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
 
     setLoading(true);
     try {
-      // 1. Auto-save to contact_messages
+      const subject =
+        mode === 'callback'
+          ? `Callback Request: ${context}`
+          : `Support Request: ${context}`;
+
       const { error } = await supabase
         .from('contact_messages')
         .insert([{
           name: formData.name,
           phone: formData.phone,
-          email: 'support-widget@linkedup.com', // Placeholder since email isn't asked
-          subject: `Support Request: ${context}`,
+          email: 'support-widget@linkedup.com',
+          subject,
           message: formData.message,
         }]);
 
       if (error) throw error;
 
-      // 2. Redirect to WhatsApp
+      if (mode === 'callback') {
+        setIsOpen(false);
+        toast.success('Callback request received. Our team will call you shortly.');
+        setFormData((prev) => ({ ...prev, message: '' }));
+        return;
+      }
+
       const waNumber = '254714764162';
       const waText = `Hello LinkedUp Cars!%0A%0AMy name is ${formData.name}.%0AI need help regarding: *${context}*.%0A%0A${formData.message}`;
       const waUrl = `https://wa.me/${waNumber}?text=${waText}`;
@@ -111,6 +122,27 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
                 <X size={18} />
               </button>
             </div>
+
+            <div className="grid grid-cols-2 gap-2 p-3 border-b border-white/5">
+              <button
+                type="button"
+                onClick={() => setMode('support')}
+                className={`py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  mode === 'support' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-white/5'
+                }`}
+              >
+                WhatsApp Chat
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('callback')}
+                className={`py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-colors ${
+                  mode === 'callback' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:bg-white/5'
+                }`}
+              >
+                Request Callback
+              </button>
+            </div>
             
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               <div>
@@ -134,13 +166,15 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
               </div>
               
               <div>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-2">How can we help?</label>
+                <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground ml-2">
+                  {mode === 'callback' ? 'Preferred time / notes' : 'How can we help?'}
+                </label>
                 <textarea
                   required
                   rows={3}
                   value={formData.message}
                   onChange={e => setFormData({ ...formData, message: e.target.value })}
-                  placeholder="Describe your issue..."
+                  placeholder={mode === 'callback' ? 'e.g. Call me today after 4pm' : 'Describe your issue...'}
                   className="w-full bg-background border border-white/5 rounded-xl px-4 py-2.5 text-sm focus:border-primary outline-none resize-none"
                 />
               </div>
@@ -148,10 +182,18 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
               <button
                 type="submit"
                 disabled={loading || !formData.phone}
-                className="w-full py-3 bg-emerald-500 text-white rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-emerald-600 transition-all disabled:opacity-50 text-sm mt-2"
+                className={`w-full py-3 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all disabled:opacity-50 text-sm mt-2 ${
+                  mode === 'callback' ? 'bg-primary text-black hover:bg-primary/90' : 'bg-emerald-500 hover:bg-emerald-600'
+                }`}
               >
-                {loading ? <Loader2 size={16} className="animate-spin" /> : <MessageCircle size={16} />}
-                Start WhatsApp Chat
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : mode === 'callback' ? (
+                  <Phone size={16} />
+                ) : (
+                  <MessageCircle size={16} />
+                )}
+                {mode === 'callback' ? 'Request Callback' : 'Start WhatsApp Chat'}
               </button>
             </form>
           </motion.div>

@@ -27,13 +27,15 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
+import { getReservationVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 
 type ReservationStatus = 'pending_payment' | 'reserved' | 'confirmed' | 'cancelled' | 'expired';
 type JourneyTab = 'all' | 'pending_payment' | 'reserved' | 'confirmed' | 'converted' | 'cancelled' | 'expired';
 
 interface Reservation {
   id: string;
-  car_id: string;
+  car_id?: string | null;
+  vehicle_model_id?: string | null;
   client_id: string;
   start_date: string;
   end_date: string;
@@ -50,6 +52,7 @@ interface Reservation {
   linked_booking_id?: string | null;
   latest_payment_request?: any;
   cars?: any;
+  vehicle_model?: any;
   client?: any;
 }
 
@@ -75,8 +78,15 @@ const ReservationCard: React.FC<{
 }> = ({ reservation, onViewDetails, onDelete, onUpdateStatus, onSyncPayment, onConvertToBooking, syncingId, preparingId }) => {
   const clientName = reservation.contact_name || reservation.client?.full_name || 'Unknown';
   const clientInitials = clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-  const carLine = `${reservation.cars?.make || ''} ${reservation.cars?.model || ''}`.trim() || 'N/A';
-  const carImage = reservation.cars?.photos?.[0] || reservation.cars?.primary_image_url;
+  const vehicleDisplay = getReservationVehicleDisplay(reservation, 'admin');
+  const carLine = vehicleDisplay.modelLabel;
+  const carSubline = vehicleDisplay.unitLabel ? `Unit: ${vehicleDisplay.unitLabel}` : null;
+  const carImage =
+    vehicleDisplay.imageUrl ||
+    reservation.cars?.photos?.[0] ||
+    reservation.cars?.primary_image_url ||
+    reservation.vehicle_model?.primary_image_url ||
+    (Array.isArray(reservation.vehicle_model?.gallery_urls) ? reservation.vehicle_model.gallery_urls[0] : undefined);
 
   const isConverted = !!reservation.linked_booking_id;
   const isPaid = reservation.payment_status === 'paid';
@@ -127,6 +137,9 @@ const ReservationCard: React.FC<{
            )}
            <div>
              <p className="text-sm font-bold">{carLine}</p>
+             {carSubline && (
+               <p className="text-[10px] text-muted-foreground font-mono">{carSubline}</p>
+             )}
              <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
                <Calendar size={12} />
                {new Date(reservation.start_date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })} - 
@@ -242,7 +255,8 @@ export function AdminReservations() {
       if (!searchQuery) return true;
       const q = searchQuery.toLowerCase();
       const clientName = r.client?.full_name || r.contact_name || '';
-      const carModel = `${r.cars?.make} ${r.cars?.model}`;
+      const vehicleDisplay = getReservationVehicleDisplay(r, 'admin');
+      const carModel = `${vehicleDisplay.modelLabel} ${vehicleDisplay.unitLabel || ''}`;
       return r.id.toLowerCase().includes(q) || clientName.toLowerCase().includes(q) || carModel.toLowerCase().includes(q);
     });
 
@@ -274,10 +288,12 @@ export function AdminReservations() {
       if (error) throw error;
 
       if (status === 'cancelled' || status === 'expired') {
-        await supabase
-          .from('cars')
-          .update({ status: 'available', updated_at: new Date().toISOString() })
-          .eq('id', reservation.car_id);
+        if (reservation?.car_id) {
+          await supabase
+            .from('cars')
+            .update({ status: 'available', updated_at: new Date().toISOString() })
+            .eq('id', reservation.car_id);
+        }
       }
 
       toast.success(`Reservation ${status} successfully`);
@@ -433,7 +449,9 @@ export function AdminReservations() {
       )}
 
       {/* Detail Modal */}
-      {selectedReservation && (
+      {selectedReservation && (() => {
+        const vehicle = getReservationVehicleDisplay(selectedReservation, 'admin');
+        return (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between p-6 border-b border-border bg-muted/10">
@@ -462,7 +480,12 @@ export function AdminReservations() {
                  <div className="bg-muted/30 p-4 rounded-xl border border-border grid grid-cols-2 gap-4">
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Vehicle</p>
-                      <p className="text-sm font-bold">{selectedReservation.cars?.make} {selectedReservation.cars?.model} ({selectedReservation.cars?.year})</p>
+                      <p className="text-sm font-bold">{vehicle.modelLabel}</p>
+                      {vehicle.unitLabel && (
+                        <p className="text-xs text-muted-foreground font-mono mt-0.5">
+                          Unit: {vehicle.unitLabel}
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1">Total Value</p>
@@ -509,7 +532,8 @@ export function AdminReservations() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Delete Confirmation Modal */}
       {deleteConfirm && (
@@ -519,7 +543,7 @@ export function AdminReservations() {
                <AlertCircle size={24} />
              </div>
              <h3 className="text-lg font-black mb-2">Delete Reservation?</h3>
-             <p className="text-sm text-muted-foreground mb-6">This will permanently remove the reservation and unfreeze the car. This action cannot be undone.</p>
+             <p className="text-sm text-muted-foreground mb-6">This will permanently remove the reservation{deleteConfirm.car_id ? ' and release the assigned unit' : ''}. This action cannot be undone.</p>
              <div className="flex gap-3">
                <button onClick={() => setDeleteConfirm(null)} className="flex-1 py-2.5 rounded-xl font-bold bg-muted hover:bg-muted/80 transition-colors">Cancel</button>
                <button onClick={() => handleDeleteReservation(deleteConfirm)} className="flex-1 py-2.5 rounded-xl font-bold bg-red-600 text-white hover:bg-red-700 transition-colors">Delete</button>

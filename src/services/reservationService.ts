@@ -83,8 +83,9 @@ export const reservationService = {
         .from('car_reservations')
         .select(`
           *,
-          cars!inner(*),
-          user_profiles!inner(full_name, email)
+          cars(*),
+          vehicle_model:vehicle_models(*),
+          client:user_profiles!client_id(full_name, email)
         `)
         .eq('client_id', userId)
         .order('created_at', { ascending: false });
@@ -128,7 +129,8 @@ export const reservationService = {
         .from('car_reservations')
         .select(`
           *,
-          cars!inner(*),
+          cars(*),
+          vehicle_model:vehicle_models(*),
           client:user_profiles!client_id(full_name, email, phone_number),
           fleet_owner:user_profiles!fleet_owner_id(full_name, email)
         `, { count: 'exact' })

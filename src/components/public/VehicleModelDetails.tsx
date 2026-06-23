@@ -1,15 +1,17 @@
 // @ts-nocheck
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowRight, CheckCircle, Clock, Fuel, Settings, Users, X } from 'lucide-react';
+import { ArrowRight, CheckCircle, Clock, Fuel, Settings, Star, Users, X } from 'lucide-react';
 import { fleetService } from '../../services/fleetService';
-import { VehicleModel, Car } from '../../types';
+import { VehicleModel } from '../../types';
+import { VehicleModelGroup, getVehicleModelIdsForGroup } from '../../utils/vehicleModelGrouping';
 import { BookingFlow } from './BookingFlow/BookingFlow';
 import { ReservationFlow } from './BookingFlow/ReservationFlow';
 import { LogoLoader } from '../shared/LogoLoader';
 import { FloatingSupportWidget } from './FloatingSupportWidget';
+import { vehicleModelToCarLike } from '../../utils/vehicleModelAdapter';
 
 export function VehicleModelDetails() {
   const { id } = useParams<{ id: string }>();
@@ -23,6 +25,9 @@ export function VehicleModelDetails() {
   const [activeImage, setActiveImage] = useState(0);
   const [showBooking, setShowBooking] = useState(false);
   const [showReservation, setShowReservation] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [fleetUnits, setFleetUnits] = useState<any[]>([]);
+  const [relatedModels, setRelatedModels] = useState<VehicleModelGroup[]>([]);
 
   useEffect(() => {
     async function fetchModel() {
@@ -45,6 +50,37 @@ export function VehicleModelDetails() {
     }
     fetchModel();
   }, [id]);
+
+  useEffect(() => {
+    async function fetchReviews() {
+      if (!modelFamily?.variants?.length) return;
+      const variantIds = modelFamily.variants.map((variant: VehicleModel) => variant.id);
+      const reviewsData = await fleetService.getReviewsForVehicleModel(id || variantIds[0], variantIds);
+      setReviews(reviewsData || []);
+    }
+    fetchReviews();
+  }, [modelFamily, id]);
+
+  useEffect(() => {
+    async function fetchFleetAndRelated() {
+      if (!modelFamily) {
+        setFleetUnits([]);
+        setRelatedModels([]);
+        return;
+      }
+
+      const variantIds = getVehicleModelIdsForGroup(modelFamily);
+      const [units, related] = await Promise.all([
+        fleetService.getPublicUnitsForModelIds(variantIds),
+        modelFamily.category
+          ? fleetService.getRelatedVehicleModelGroups(modelFamily.category, modelFamily.groupKey)
+          : Promise.resolve([]),
+      ]);
+      setFleetUnits(units || []);
+      setRelatedModels(related || []);
+    }
+    fetchFleetAndRelated();
+  }, [modelFamily]);
 
   useEffect(() => {
     if (searchParams.get('booking') === 'true' && selectedVariant) {
@@ -81,7 +117,17 @@ export function VehicleModelDetails() {
     navigate(`?${searchParams.toString()}`, { replace: true });
   };
 
-  if (loading || !selectedVariant || !modelFamily) return <LogoLoader fullScreen message="Loading vehicle model..." />;
+  if (loading) return <LogoLoader fullScreen message="Loading vehicle model..." />;
+  if (!selectedVariant || !modelFamily) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+        <p className="text-xl font-bold text-white">Vehicle model not found</p>
+        <button onClick={() => navigate('/cars')} className="text-primary font-bold hover:underline">
+          Browse all vehicles
+        </button>
+      </div>
+    );
+  }
 
   const model = selectedVariant;
 
@@ -99,35 +145,7 @@ export function VehicleModelDetails() {
   const title = `${model.display_name || `${model.make} ${model.model}`} | Hire in Nairobi — LinkedUp Cars`;
   const desc = `Hire the ${model.display_name || `${model.make} ${model.model}`} in Nairobi from KES ${Number(model.base_daily_rate || 0).toLocaleString()}/day. ${model.seats || ''} seats, ${model.transmission || ''}.`;
   const image = model.primary_image_url || (images[0] as string);
-
-  // Adapter: BookingFlow still expects a Car-like object for display fields.
-  // We keep the booking target separate via vehicleModelId so the backend can allocate a unit.
-  const carLike: Car = {
-    id: model.id,
-    vehicle_model_id: model.id,
-    make: model.make,
-    model: model.model,
-    year: model.year || new Date().getFullYear(),
-    color: 'N/A',
-    license_plate: 'MODEL',
-    category: model.category || 'N/A',
-    description: model.description || '',
-    primary_image_url: model.primary_image_url || '',
-    photos: (model.gallery_urls || []) as any,
-    video_url: model.video_url || '',
-    transmission: model.transmission || '',
-    fuel_type: model.fuel_type || '',
-    seats: model.seats || 0,
-    luggage: model.luggage || 0,
-    features: (model.features || []) as any,
-    daily_rate: Number(model.base_daily_rate || 0),
-    overtime_rate: Number(model.overtime_rate || 0),
-    security_deposit: Number(model.security_deposit || 0),
-    status: 'available',
-    maintenance_status: 'ok',
-    created_at: model.created_at || new Date().toISOString(),
-    vehicle_model: model,
-  } as any;
+  const carLike = vehicleModelToCarLike(model);
 
   return (
     <>
@@ -214,7 +232,10 @@ export function VehicleModelDetails() {
                         <button
                           key={variant.id}
                           type="button"
-                          onClick={() => setSelectedVariant(variant)}
+                          onClick={() => {
+                            setSelectedVariant(variant);
+                            navigate(`/models/${variant.id}${location.search}`, { replace: true });
+                          }}
                           className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                             selectedVariant.id === variant.id
                               ? 'bg-primary text-black border-primary'
@@ -293,6 +314,177 @@ export function VehicleModelDetails() {
               </motion.div>
             </div>
 
+            {fleetUnits.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="mt-12 md:mt-20"
+              >
+                <h2 className="text-2xl md:text-3xl font-serif font-black italic text-white mb-2">
+                  Available Fleet Units
+                </h2>
+                <p className="text-sm text-muted-foreground mb-6">
+                  Physical vehicles in our fleet for this model. A specific unit is assigned prior to handover.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {fleetUnits.map((unit) => {
+                    const image =
+                      unit.primary_image_url ||
+                      (Array.isArray(unit.photos) ? unit.photos[0] : null) ||
+                      model.primary_image_url;
+                    return (
+                      <div
+                        key={unit.id}
+                        className="p-4 bg-card/50 backdrop-blur-xl rounded-2xl border border-white/10 flex gap-4"
+                      >
+                        {image && (
+                          <img
+                            src={image}
+                            alt=""
+                            className="w-20 h-16 rounded-xl object-cover border border-white/10 shrink-0"
+                            referrerPolicy="no-referrer"
+                          />
+                        )}
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold text-white">
+                            {unit.year || '—'} · {unit.color || 'N/A'}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {unit.transmission || '—'} · {unit.fuel_type || '—'}
+                          </p>
+                          {Number(unit.seats || 0) > 0 && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{unit.seats} seats</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {relatedModels.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="mt-12 md:mt-20"
+              >
+                <div className="flex items-center justify-between gap-4 mb-6">
+                  <h2 className="text-2xl md:text-3xl font-serif font-black italic text-white">
+                    More {modelFamily.category} Vehicles
+                  </h2>
+                  <Link
+                    to={`/cars?category=${encodeURIComponent((modelFamily.category || '').toLowerCase())}`}
+                    className="text-xs font-bold uppercase tracking-wider text-primary hover:underline shrink-0"
+                  >
+                    View all
+                  </Link>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+                  {relatedModels.map((group) => {
+                    const related = group.representative;
+                    return (
+                      <Link
+                        key={group.groupKey}
+                        to={`/models/${group.representativeId}`}
+                        className="bg-card rounded-2xl overflow-hidden border border-white/10 hover:border-primary/40 transition-colors group"
+                      >
+                        <div className="h-32 md:h-36 overflow-hidden">
+                          <img
+                            src={
+                              group.primary_image_url ||
+                              related.primary_image_url ||
+                              `https://picsum.photos/seed/${related.id}/800/500`
+                            }
+                            alt={group.displayName}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div className="p-3">
+                          <p className="text-sm font-bold line-clamp-2 group-hover:text-primary transition-colors">
+                            {group.displayName}
+                          </p>
+                          <p className="text-sm font-black text-primary mt-1">
+                            KES {Number(group.base_daily_rate || 0).toLocaleString()}
+                            <span className="text-[10px] text-muted-foreground font-normal">/day</span>
+                          </p>
+                        </div>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
+            {reviews.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="mt-12 md:mt-20"
+              >
+                <div className="flex flex-col md:flex-row md:items-center gap-8 mb-10 p-6 md:p-8 bg-card/50 rounded-3xl border border-white/10">
+                  <div className="text-center">
+                    <p className="text-5xl md:text-7xl font-black text-white leading-none">
+                      {(reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviews.length).toFixed(1)}
+                    </p>
+                    <div className="flex items-center justify-center gap-1 my-2">
+                      {[...Array(5)].map((_, index) => {
+                        const avg = reviews.reduce((sum: number, review: any) => sum + review.rating, 0) / reviews.length;
+                        return (
+                          <Star
+                            key={index}
+                            size={18}
+                            className={index < Math.round(avg) ? 'text-amber-400 fill-amber-400' : 'text-white/20'}
+                          />
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground font-bold">
+                      {reviews.length} verified review{reviews.length === 1 ? '' : 's'}
+                    </p>
+                  </div>
+                </div>
+
+                <h2 className="text-2xl md:text-3xl font-serif font-black italic text-white mb-6">What Customers Say</h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {reviews.slice(0, 6).map((review: any, index: number) => {
+                    const firstName = (review.user_profiles?.full_name || 'Customer').split(' ')[0];
+                    return (
+                      <motion.div
+                        key={review.id}
+                        initial={{ opacity: 0, y: 16 }}
+                        whileInView={{ opacity: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: index * 0.05 }}
+                        className="p-6 bg-card/50 backdrop-blur-xl rounded-2xl border border-white/5 flex flex-col gap-4"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1">
+                            {[...Array(5)].map((_, starIndex) => (
+                              <Star
+                                key={starIndex}
+                                size={14}
+                                className={starIndex < review.rating ? 'text-amber-400 fill-amber-400' : 'text-white/10'}
+                              />
+                            ))}
+                          </div>
+                          <span className="flex items-center gap-1 text-[10px] font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                            <CheckCircle size={10} /> Verified
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground leading-relaxed flex-1">"{review.comment}"</p>
+                        <p className="text-xs font-bold text-white">{firstName}</p>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
+
             <AnimatePresence>
               {showBooking && (
                 <motion.div
@@ -310,8 +502,7 @@ export function VehicleModelDetails() {
                       <X size={24} className="text-white" />
                     </button>
                     <BookingFlow
-                      car={carLike}
-                      vehicleModelId={model.id}
+                      vehicleModel={model}
                       uploadContextId={`model:${model.id}`}
                       reservationToken={reservationToken}
                     />

@@ -94,12 +94,13 @@ export function AdminConciergeBooking() {
       setLoading(true);
       const result = await adminService.getVehicleModels(1, 500);
       if (result?.data) setVehicleModels(result.data);
-      // Fetch brokers
-      const { data: brokerData } = await supabase
-        .from('brokers')
-        .select('*')
-        .order('name', { ascending: true });
-      setBrokers(brokerData || []);
+      try {
+        const brokerData = await adminService.getBrokers();
+        setBrokers(brokerData);
+      } catch (brokerError) {
+        console.error('Failed to load brokers:', brokerError);
+        toast.error('Broker registry unavailable. Run scripts/apply_outsourced_module_extension.sql on production.');
+      }
       setLoading(false);
     };
     fetchData();

@@ -2057,4 +2057,33 @@ export const adminService = {
       return handleSupabaseErrorWrapper(error, 'deleteBooking');
     }
   },
+
+  getBrokers: async () => {
+    const { data, error } = await supabase
+      .from('brokers')
+      .select('*')
+      .order('name', { ascending: true });
+    if (error) throw error;
+    return data || [];
+  },
+
+  addBroker: async (broker: {
+    name: string;
+    phone?: string | null;
+    email?: string | null;
+    default_commission_rate?: number;
+  }) => {
+    const { data, error } = await supabase
+      .from('brokers')
+      .insert({
+        name: broker.name,
+        phone: broker.phone || null,
+        email: broker.email || null,
+        default_commission_rate: broker.default_commission_rate ?? 10,
+      })
+      .select()
+      .single();
+    if (error) throw error;
+    return data;
+  },
 };

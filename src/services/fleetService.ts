@@ -81,6 +81,34 @@ export const fleetService = {
     return groups[0] || null;
   },
 
+  getRelatedVehicleModelGroups: async (
+    category: string,
+    excludeGroupKey: string,
+    limit = 4
+  ): Promise<VehicleModelGroup[]> => {
+    if (!category) return [];
+    const groups = await fleetService.getGroupedPublicVehicleModels();
+    return groups
+      .filter(
+        (group) =>
+          group.groupKey !== excludeGroupKey &&
+          (group.category || '').toLowerCase() === category.toLowerCase()
+      )
+      .slice(0, limit);
+  },
+
+  getPublicUnitsForModelIds: async (modelIds: string[]) => {
+    if (!modelIds?.length) return [];
+    const { data, error } = await supabase
+      .from('cars')
+      .select('id, year, color, transmission, fuel_type, seats, status, vehicle_model_id, primary_image_url, photos')
+      .in('vehicle_model_id', modelIds)
+      .eq('status', 'available')
+      .order('year', { ascending: false });
+    if (error) return [];
+    return data || [];
+  },
+
   getAvailableVehicleModels: async (pickupDate: string, dropoffDate: string) => {
     // Pick models that have at least one available unit not blocked by booking.
     // This is intentionally simple for phase 1: it preserves the existing unit-level availability logic.
@@ -485,6 +513,27 @@ export const fleetService = {
       .from('car_reviews')
       .select('*')
       .eq('car_id', carId)
+      .eq('status', 'approved')
+      .order('created_at', { ascending: false });
+    if (error) return [];
+    return data;
+  },
+
+  getReviewsForVehicleModel: async (modelId: string, variantIds?: string[]) => {
+    const modelIds = variantIds?.length ? variantIds : [modelId];
+    const { data: units, error: unitsError } = await supabase
+      .from('cars')
+      .select('id')
+      .in('vehicle_model_id', modelIds);
+    if (unitsError) return [];
+
+    const carIds = (units || []).map((unit) => unit.id);
+    if (!carIds.length) return [];
+
+    const { data, error } = await supabase
+      .from('car_reviews')
+      .select('*')
+      .in('car_id', carIds)
       .eq('status', 'approved')
       .order('created_at', { ascending: false });
     if (error) return [];

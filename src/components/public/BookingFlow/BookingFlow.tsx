@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Car } from '../../../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Car, VehicleModel } from '../../../types';
 import { Step1 } from './Step1';
 import { Step2 } from './Step2';
 import { Step3 } from './Step3';
@@ -9,9 +9,11 @@ import { useBookingSession } from '../../../hooks/useBookingSession';
 import { reservationService } from '../../../services/reservationService';
 import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { vehicleModelToCarLike } from '../../../utils/vehicleModelAdapter';
 
 interface BookingFlowProps {
-  car: Car;
+  car?: Car;
+  vehicleModel?: VehicleModel;
   reservationToken?: string | null;
   vehicleModelId?: string | null;
   uploadContextId?: string;
@@ -24,13 +26,18 @@ const calculateDays = (startDate?: string, endDate?: string) => {
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 };
 
-export function BookingFlow({ car, reservationToken, vehicleModelId, uploadContextId }: BookingFlowProps) {
+export function BookingFlow({ car: carProp, vehicleModel, reservationToken, vehicleModelId, uploadContextId }: BookingFlowProps) {
+  const car = useMemo(
+    () => carProp || (vehicleModel ? vehicleModelToCarLike(vehicleModel) : null),
+    [carProp, vehicleModel]
+  );
+  const resolvedVehicleModelId = vehicleModelId || vehicleModel?.id || car?.vehicle_model_id || null;
   const [step, setStep] = useState(1);
   const [bookingData, setBookingData] = useState<any>({});
   const [loadingContinuation, setLoadingContinuation] = useState(false);
   const [continuationError, setContinuationError] = useState<string | null>(null);
   const { session, saveSession, clearSession, isSessionValid } = useBookingSession();
-  const contextId = uploadContextId || (vehicleModelId ? `model:${vehicleModelId}` : `car:${car.id}`);
+  const contextId = uploadContextId || (resolvedVehicleModelId ? `model:${resolvedVehicleModelId}` : car ? `car:${car.id}` : 'booking');
 
   // Restore session if valid
   useEffect(() => {
@@ -109,11 +116,19 @@ export function BookingFlow({ car, reservationToken, vehicleModelId, uploadConte
     switch (step) {
       case 1: return <Step1 car={car} onNext={nextStep} initialData={bookingData} />;
       case 2: return <Step2 car={car} onNext={nextStep} onPrev={prevStep} initialData={bookingData} uploadContextId={contextId} />;
-      case 3: return <Step3 car={car} bookingData={bookingData} onNext={nextStep} onPrev={prevStep} vehicleModelId={vehicleModelId || null} />;
-      case 4: return <Step4 car={car} bookingData={bookingData} onPrev={prevStep} onComplete={completeBooking} vehicleModelId={vehicleModelId || null} uploadContextId={contextId} />;
+      case 3: return <Step3 car={car} bookingData={bookingData} onNext={nextStep} onPrev={prevStep} vehicleModelId={resolvedVehicleModelId} />;
+      case 4: return <Step4 car={car} bookingData={bookingData} onPrev={prevStep} onComplete={completeBooking} vehicleModelId={resolvedVehicleModelId} uploadContextId={contextId} />;
       default: return null;
     }
   };
+
+  if (!car) {
+    return (
+      <div className="p-8 rounded-[12px] sm:rounded-[24px] md:rounded-[40px] bg-card border border-border min-h-[280px] flex items-center justify-center">
+        <p className="text-sm text-muted-foreground">Vehicle details are unavailable.</p>
+      </div>
+    );
+  }
 
   if (loadingContinuation) {
     return (
