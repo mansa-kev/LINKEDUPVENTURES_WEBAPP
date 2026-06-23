@@ -5,6 +5,7 @@ import { ArrowLeft, ShieldCheck, CheckCircle2, Loader2, AlertCircle, Lock, Smart
 import { useNavigate } from 'react-router-dom';
 import { bookingService } from '../../../services/bookingService';
 import { enhancedContractService } from '../../../services/enhancedContractService';
+import { buildContractData } from '../../../services/contractPdfService';
 import { paymentService } from '../../../services/paymentService';
 import { supabase } from '../../../lib/supabase';
 import { sendTemplatedEmail } from '../../../services/emailProvider';
@@ -103,23 +104,7 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
         await enhancedContractService.saveSignedContract(
           booking.id,
           bookingData.signatureData,
-          {
-            booking_id: booking.id,
-            client_name: bookingData.fullName,
-            client_email: bookingData.email,
-            client_phone: bookingData.phone,
-            car_make: car.make,
-            car_model: car.model,
-            license_plate: car.license_plate,
-            pickup_date: bookingData.startDate,
-            dropoff_date: bookingData.endDate,
-            daily_rate: car.daily_rate,
-            total_amount: bookingData.totalAmount,
-            security_deposit: car.security_deposit || 0,
-            po_box: bookingData.poBox,
-            id_number: bookingData.idNumber,
-            color: car.color
-          },
+          buildContractData(booking.id, bookingData, car, vehicleModelId),
           bookingData.contractPdfBase64,
           booking.statusToken || statusToken
         );

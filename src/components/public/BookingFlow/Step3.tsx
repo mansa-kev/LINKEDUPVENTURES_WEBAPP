@@ -8,21 +8,25 @@ import { toast } from 'sonner';
 import { enhancedContractService } from '../../../services/enhancedContractService';
 import { generateContractPdfBase64 } from '../../../services/contractPdfService';
 import { DirectContractDisplay } from './DirectContractDisplay';
+import { resolveContractVehicle } from '../../../utils/contractTemplate';
 
 interface Step3Props {
   car: Car;
   bookingData: any;
   onNext: (data: any) => void;
   onPrev: () => void;
+  vehicleModelId?: string | null;
 }
 
-export function Step3({ car, bookingData, onNext, onPrev }: Step3Props) {
+export function Step3({ car, bookingData, onNext, onPrev, vehicleModelId }: Step3Props) {
   const sigPad = useRef<any>(null);
   const [agreed, setAgreed] = useState(false);
   const [contract, setContract] = useState<any>(null);
   const [loadingContract, setLoadingContract] = useState(true);
   const [signingContract, setSigningContract] = useState(false);
   const [liveSignatureData, setLiveSignatureData] = useState('');
+
+  const vehicle = resolveContractVehicle(car, vehicleModelId);
 
   useEffect(() => {
     const fetchContract = async () => {
@@ -83,6 +87,7 @@ export function Step3({ car, bookingData, onNext, onPrev }: Step3Props) {
             bookingData,
             car,
             signatureData,
+            vehicleModelId,
           });
         } catch (err) {
           console.error('Failed to generate contract PDF', err);
@@ -126,7 +131,7 @@ export function Step3({ car, bookingData, onNext, onPrev }: Step3Props) {
         <div className="p-3 sm:p-4 md:p-6 bg-card/50 border border-border rounded-[16px] sm:rounded-[24px] md:rounded-[32px] grid grid-cols-2 gap-3 sm:gap-4 md:gap-6">
           <div className="space-y-0.5">
             <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-primary/60">Vehicle</p>
-            <p className="text-xs sm:text-sm font-bold text-foreground">{car.make} {car.model}</p>
+            <p className="text-xs sm:text-sm font-bold text-foreground">{vehicle.displayName}</p>
           </div>
           <div className="space-y-0.5 text-right">
             <p className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-primary/60">Duration</p>
@@ -161,6 +166,7 @@ export function Step3({ car, bookingData, onNext, onPrev }: Step3Props) {
               bookingData={bookingData}
               car={car}
               signatureData={liveSignatureData}
+              vehicleModelId={vehicleModelId}
             />
           </motion.div>
         ) : (

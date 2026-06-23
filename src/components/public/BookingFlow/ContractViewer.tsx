@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Download, ZoomIn, ZoomOut, RotateCw, AlertCircle, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { toProxiedAssetUrl } from '../../../utils/assetUrl';
+import { resolveContractVehicle } from '../../../utils/contractTemplate';
 
 interface ContractViewerProps {
   contract: {
@@ -17,9 +18,10 @@ interface ContractViewerProps {
   bookingData: any;
   car: any;
   onContractLoaded?: () => void;
+  vehicleModelId?: string | null;
 }
 
-export function ContractViewer({ contract, bookingData, car, onContractLoaded }: ContractViewerProps) {
+export function ContractViewer({ contract, bookingData, car, onContractLoaded, vehicleModelId }: ContractViewerProps) {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -30,6 +32,8 @@ export function ContractViewer({ contract, bookingData, car, onContractLoaded }:
 
   // Get the correct URL - support both pdf_url and contract_url
   const contractUrl = contract?.pdf_url || contract?.contract_url || '';
+
+  const vehicle = resolveContractVehicle(car, vehicleModelId);
 
   useEffect(() => {
     if (!contractUrl) {
@@ -85,7 +89,7 @@ export function ContractViewer({ contract, bookingData, car, onContractLoaded }:
           '',
           'PARTIES:',
           `Renter: ${bookingData?.firstName || 'N/A'} ${bookingData?.lastName || 'N/A'}`,
-          `Vehicle: ${car?.make || 'N/A'} ${car?.model || 'N/A'}`,
+          `Vehicle: ${vehicle.displayName}`,
           `Rental Period: ${bookingData?.startDate || 'N/A'} to ${bookingData?.endDate || 'N/A'}`,
           '',
           'TERMS AND CONDITIONS:',
@@ -270,7 +274,7 @@ export function ContractViewer({ contract, bookingData, car, onContractLoaded }:
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
           <div><span className="text-muted-foreground">Client:</span> <span className="text-foreground font-bold">{bookingData?.firstName || 'N/A'} {bookingData?.lastName || 'N/A'}</span></div>
-          <div><span className="text-muted-foreground">Vehicle:</span> <span className="text-foreground font-bold">{car?.make || 'N/A'} {car?.model || 'N/A'}</span></div>
+          <div><span className="text-muted-foreground">Vehicle:</span> <span className="text-foreground font-bold">{vehicle.displayName}</span></div>
           <div><span className="text-muted-foreground">Period:</span> <span className="text-foreground font-bold">{bookingData?.startDate || 'N/A'} to {bookingData?.endDate || 'N/A'}</span></div>
           <div><span className="text-muted-foreground">Total:</span> <span className="text-foreground font-bold">KES {bookingData?.totalCost?.toLocaleString() || '0'}</span></div>
         </div>

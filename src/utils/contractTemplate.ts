@@ -1,6 +1,102 @@
 export type ContractBookingData = Record<string, any>;
 export type ContractCar = Record<string, any>;
 
+export const MODEL_BOOKING_PLATE_LABEL = 'To be assigned prior to handover';
+export const MODEL_BOOKING_COLOR_LABEL = 'As confirmed during pickup';
+
+export type ContractVehicleInfo = {
+  isModelBooking: boolean;
+  displayName: string;
+  make: string;
+  model: string;
+  licensePlate: string;
+  color: string;
+  dailyRate: number;
+  securityDeposit: number;
+};
+
+export function isModelBookingCar(car: ContractCar | null | undefined): boolean {
+  if (!car) return false;
+  if (car.vehicle_model) return true;
+  const plate = String(car.license_plate || '').trim().toUpperCase();
+  if (plate === 'MODEL') return true;
+  if (car.vehicle_model_id && car.vehicle_model_id === car.id) return true;
+  return false;
+}
+
+/** Normalize car vs vehicle-model fields for contracts and booking summaries. */
+export function resolveContractVehicle(
+  car: ContractCar | null | undefined,
+  vehicleModelId?: string | null
+): ContractVehicleInfo {
+  const isModelBooking = !!vehicleModelId || isModelBookingCar(car);
+  const vehicleModel = car?.vehicle_model;
+
+  const make = isModelBooking
+    ? String(vehicleModel?.make || car?.make || '')
+    : String(car?.make || '');
+  const model = isModelBooking
+    ? String(vehicleModel?.model || car?.model || '')
+    : String(car?.model || '');
+  const displayName = isModelBooking
+    ? String(
+        vehicleModel?.display_name ||
+          `${make} ${model}`.trim() ||
+          'Selected vehicle model'
+      )
+    : `${make} ${model}`.trim();
+
+  const licensePlate = isModelBooking
+    ? MODEL_BOOKING_PLATE_LABEL
+    : String(car?.license_plate || '');
+  const color = isModelBooking
+    ? MODEL_BOOKING_COLOR_LABEL
+    : String(car?.color || '');
+
+  const dailyRate = Number(
+    isModelBooking
+      ? vehicleModel?.base_daily_rate ?? car?.daily_rate
+      : car?.daily_rate
+  ) || 0;
+  const securityDeposit = Number(
+    isModelBooking
+      ? vehicleModel?.security_deposit ?? car?.security_deposit
+      : car?.security_deposit
+  ) || 0;
+
+  return {
+    isModelBooking,
+    displayName,
+    make,
+    model,
+    licensePlate,
+    color,
+    dailyRate,
+    securityDeposit,
+  };
+}
+
+export function contractVehicleToCarShape(
+  car: ContractCar | null | undefined,
+  vehicleModelId?: string | null
+): ContractCar {
+  const resolved = resolveContractVehicle(car, vehicleModelId);
+  return {
+    ...(car || {}),
+    make: resolved.isModelBooking ? resolved.displayName : resolved.make,
+    model: resolved.isModelBooking ? '(or equivalent)' : resolved.model,
+    license_plate: resolved.licensePlate,
+    color: resolved.color,
+    daily_rate: resolved.dailyRate,
+    security_deposit: resolved.securityDeposit,
+    vehicle_display_name: resolved.displayName,
+    vehicle_equivalent_clause: resolved.isModelBooking
+      ? ' (or an equivalent vehicle of the same model class)'
+      : '',
+    is_model_booking: resolved.isModelBooking,
+  };
+}
+
 const BLANK_SIGNATURE =
   'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
@@ -66,8 +162,10 @@ export function applyTemplateReplacements(
   bookingData: ContractBookingData,
   car: ContractCar,
   settings: Record<string, string>,
-  signatureData = ''
+  signatureData = '',
+  vehicleModelId?: string | null
 ): string {
+  const resolvedCar = contractVehicleToCarShape(car, vehicleModelId);
   const clientName = getClientNameFromBooking(bookingData);
   const clientSignature = signatureData || bookingData?.signatureData || bookingData?.signatureUrl || '';
   const companySig = settings.company_signature_url || BLANK_SIGNATURE;
@@ -81,14 +179,16 @@ export function applyTemplateReplacements(
   replaced = replaced.replace(/\{\{idNumber\}\}/g, bookingData?.idNumber || bookingData?.id_number || '_____________');
   replaced = replaced.replace(/\{\{clientPhone\}\}/g, bookingData?.phone || bookingData?.phone_number || '_____________');
   replaced = replaced.replace(/\{\{clientPoBox\}\}/g, bookingData?.poBox || bookingData?.po_box || '_____________');
-  replaced = replaced.replace(/\{\{carMake\}\}/g, car?.make || '');
-  replaced = replaced.replace(/\{\{carModel\}\}/g, car?.model || '');
-  replaced = replaced.replace(/\{\{licensePlate\}\}/g, car?.license_plate || '');
-  replaced = replaced.replace(/\{\{color\}\}/g, car?.color || '_____________');
+  replaced = replaced.replace(/\{\{carMake\}\}/g, resolvedCar?.make || '');
+  replaced = replaced.replace(/\{\{carModel\}\}/g, resolvedCar?.model || '');
+  replaced = replaced.replace(/\{\{vehicleDisplayName\}\}/g, resolvedCar?.vehicle_display_name || `${resolvedCar?.make || ''} ${resolvedCar?.model || ''}`.trim());
+  replaced = replaced.replace(/\{\{vehicleEquivalentClause\}\}/g, resolvedCar?.vehicle_equivalent_clause || '');
+  replaced = replaced.replace(/\{\{licensePlate\}\}/g, resolvedCar?.license_plate || '');
+  replaced = replaced.replace(/\{\{color\}\}/g, resolvedCar?.color || '_____________');
   replaced = replaced.replace(/\{\{startDate\}\}/g, formatContractDate(bookingData?.startDate || bookingData?.start_date));
   replaced = replaced.replace(/\{\{endDate\}\}/g, formatContractDate(bookingData?.endDate || bookingData?.end_date));
   replaced = replaced.replace(/\{\{totalAmount\}\}/g, getTotalCostFromBooking(bookingData).toLocaleString());
-  replaced = replaced.replace(/\{\{dailyRate\}\}/g, car?.daily_rate?.toLocaleString?.() || String(car?.daily_rate || ''));
+  replaced = replaced.replace(/\{\{dailyRate\}\}/g, resolvedCar?.daily_rate?.toLocaleString?.() || String(resolvedCar?.daily_rate || ''));
   replaced = replaced.replace(/\{\{companyPoBox\}\}/g, settings.company_po_box || '2345');
   replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings.site_logo || companySig);
   replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings.site_logo || companySig);
@@ -129,7 +229,8 @@ export async function loadFilledContractHtml(
   contract: any,
   bookingData: ContractBookingData,
   car: ContractCar,
-  signatureData = ''
+  signatureData = '',
+  vehicleModelId?: string | null
 ): Promise<string | null> {
   if (!isHtmlContract(contract)) return null;
 
@@ -144,7 +245,7 @@ export async function loadFilledContractHtml(
     fetchCompanySettings(),
   ]);
 
-  return applyTemplateReplacements(templateHtml, bookingData, car, settings, signatureData);
+  return applyTemplateReplacements(templateHtml, bookingData, car, settings, signatureData, vehicleModelId);
 }
 
 export function wrapContractHtmlForPdf(html: string): string {

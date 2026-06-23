@@ -109,7 +109,7 @@ export function BookingFlow({ car, reservationToken, vehicleModelId, uploadConte
     switch (step) {
       case 1: return <Step1 car={car} onNext={nextStep} initialData={bookingData} />;
       case 2: return <Step2 car={car} onNext={nextStep} onPrev={prevStep} initialData={bookingData} uploadContextId={contextId} />;
-      case 3: return <Step3 car={car} bookingData={bookingData} onNext={nextStep} onPrev={prevStep} />;
+      case 3: return <Step3 car={car} bookingData={bookingData} onNext={nextStep} onPrev={prevStep} vehicleModelId={vehicleModelId || null} />;
       case 4: return <Step4 car={car} bookingData={bookingData} onPrev={prevStep} onComplete={completeBooking} vehicleModelId={vehicleModelId || null} uploadContextId={contextId} />;
       default: return null;
     }

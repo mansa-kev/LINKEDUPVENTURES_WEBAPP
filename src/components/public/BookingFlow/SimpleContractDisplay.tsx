@@ -1,12 +1,14 @@
 import React from 'react';
+import { resolveContractVehicle } from '../../../utils/contractTemplate';
 
 interface SimpleContractDisplayProps {
   contract: any;
   bookingData: any;
   car: any;
+  vehicleModelId?: string | null;
 }
 
-export function SimpleContractDisplay({ contract, bookingData, car }: SimpleContractDisplayProps) {
+export function SimpleContractDisplay({ contract, bookingData, car, vehicleModelId }: SimpleContractDisplayProps) {
   if (!contract) {
     return (
       <div className="p-8 bg-yellow-100 border border-yellow-300 rounded-lg text-center">
@@ -15,6 +17,8 @@ export function SimpleContractDisplay({ contract, bookingData, car }: SimpleCont
       </div>
     );
   }
+
+  const vehicle = resolveContractVehicle(car, vehicleModelId);
 
   return (
     <div className="bg-card border-2 border-border rounded-lg p-8">
@@ -32,8 +36,8 @@ export function SimpleContractDisplay({ contract, bookingData, car }: SimpleCont
         <div className="border-b pb-4">
           <h2 className="font-bold text-lg mb-2">Rental Information</h2>
           <p><strong>Client:</strong> {bookingData?.firstName || 'N/A'} {bookingData?.lastName || 'N/A'}</p>
-          <p><strong>Vehicle:</strong> {car?.make || 'N/A'} {car?.model || 'N/A'}</p>
-          <p><strong>License Plate:</strong> {car?.license_plate || 'N/A'}</p>
+          <p><strong>Vehicle:</strong> {vehicle.displayName}</p>
+          <p><strong>Registration:</strong> {vehicle.licensePlate}</p>
           <p><strong>Rental Period:</strong> {bookingData?.startDate || 'N/A'} to {bookingData?.endDate || 'N/A'}</p>
           <p><strong>Total Cost:</strong> KES {bookingData?.totalCost?.toLocaleString() || '0'}</p>
         </div>
@@ -50,8 +54,8 @@ export function SimpleContractDisplay({ contract, bookingData, car }: SimpleCont
 
         <div className="border-b pb-4">
           <h2 className="font-bold text-lg mb-2">Payment Terms</h2>
-          <p><strong>Daily Rate:</strong> KES {car?.daily_rate?.toLocaleString() || '0'}</p>
-          <p><strong>Security Deposit:</strong> KES {car?.security_deposit?.toLocaleString() || '0'}</p>
+          <p><strong>Daily Rate:</strong> KES {vehicle.dailyRate.toLocaleString()}</p>
+          <p><strong>Security Deposit:</strong> KES {vehicle.securityDeposit.toLocaleString()}</p>
           <p><strong>Payment Method:</strong> {bookingData?.paymentMethod || 'Not specified'}</p>
         </div>
 

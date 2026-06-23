@@ -6,6 +6,7 @@ import {
   getTotalCostFromBooking,
   isHtmlContract,
   loadFilledContractHtml,
+  resolveContractVehicle,
 } from '../../../utils/contractTemplate';
 
 interface DirectContractDisplayProps {
@@ -13,9 +14,10 @@ interface DirectContractDisplayProps {
   bookingData: any;
   car: any;
   signatureData?: string;
+  vehicleModelId?: string | null;
 }
 
-export function DirectContractDisplay({ contract, bookingData, car, signatureData }: DirectContractDisplayProps) {
+export function DirectContractDisplay({ contract, bookingData, car, signatureData, vehicleModelId }: DirectContractDisplayProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const [iframeHeight, setIframeHeight] = useState<number>(800);
   if (!contract) {
@@ -28,6 +30,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   }
 
   const isHtmlTemplate = isHtmlContract(contract);
+  const vehicle = resolveContractVehicle(car, vehicleModelId);
   const getClientName = () => getClientNameFromBooking(bookingData);
   const getTotalCost = () => getTotalCostFromBooking(bookingData);
   const formatDate = formatContractDate;
@@ -39,11 +42,11 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
     if (!isHtmlTemplate) return;
 
     setLoadingHtml(true);
-    loadFilledContractHtml(contract, bookingData, car, signatureData)
+    loadFilledContractHtml(contract, bookingData, car, signatureData, vehicleModelId)
       .then((html) => setHtmlTemplate(html))
       .catch((err) => console.error('Failed to load HTML contract', err))
       .finally(() => setLoadingHtml(false));
-  }, [isHtmlTemplate, contract, bookingData, car, signatureData]);
+  }, [isHtmlTemplate, contract, bookingData, car, signatureData, vehicleModelId]);
 
   // Build a full-document srcDoc for the iframe so the template's CSS is
   // completely isolated from the app and cannot collapse the layout.
@@ -213,16 +216,16 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
             <h3 className="font-semibold text-foreground mb-2 sm:mb-3 text-xs sm:text-sm uppercase tracking-wide">Vehicle Information</h3>
             <div className="space-y-1 sm:space-y-2 text-xs sm:text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">Make/Model:</span>
-                <span className="font-medium text-foreground text-right">{car?.make || 'N/A'} {car?.model || 'N/A'}</span>
+                <span className="text-muted-foreground">{vehicle.isModelBooking ? 'Model:' : 'Make/Model:'}</span>
+                <span className="font-medium text-foreground text-right">{vehicle.displayName}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">License:</span>
-                <span className="font-medium text-foreground text-right">{car?.license_plate || 'N/A'}</span>
-                              </div>
+                <span className="text-muted-foreground">Registration:</span>
+                <span className="font-medium text-foreground text-right">{vehicle.licensePlate}</span>
+              </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Daily Rate:</span>
-                <span className="font-medium text-foreground text-right">KES {car?.daily_rate?.toLocaleString() || '0'}</span>
+                <span className="font-medium text-foreground text-right">KES {vehicle.dailyRate.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -261,7 +264,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
             <div className="text-left sm:text-right">
               <div className="text-blue-100 text-xs sm:text-sm">Security Deposit</div>
               <div className="text-lg sm:text-xl font-semibold">
-                KES {car?.security_deposit?.toLocaleString() || '0'}
+                KES {vehicle.securityDeposit.toLocaleString()}
               </div>
             </div>
           </div>

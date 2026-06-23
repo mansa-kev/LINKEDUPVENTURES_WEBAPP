@@ -6,6 +6,7 @@ import {
   getClientNameFromBooking,
   getTotalCostFromBooking,
   formatContractDate,
+  resolveContractVehicle,
 } from '../utils/contractTemplate';
 import { enhancedContractService, type ContractData, type SignedContract } from './enhancedContractService';
 
@@ -14,6 +15,7 @@ export interface GenerateContractPdfOptions {
   bookingData: ContractBookingData;
   car: ContractCar;
   signatureData: string;
+  vehicleModelId?: string | null;
 }
 
 const PDF_OPTIONS = {
@@ -27,37 +29,39 @@ const PDF_OPTIONS = {
 export function buildContractData(
   bookingId: string,
   bookingData: ContractBookingData,
-  car: ContractCar
+  car: ContractCar,
+  vehicleModelId?: string | null
 ): ContractData {
+  const resolved = resolveContractVehicle(car, vehicleModelId);
   return {
     booking_id: bookingId,
     client_name: getClientNameFromBooking(bookingData),
     client_email: bookingData?.email || bookingData?.metadata?.guest_info?.email || '',
     client_phone: bookingData?.phone || bookingData?.metadata?.guest_info?.phone || '',
-    car_make: car?.make || '',
-    car_model: car?.model || '',
-    license_plate: car?.license_plate || '',
+    car_make: resolved.isModelBooking ? resolved.displayName : resolved.make,
+    car_model: resolved.isModelBooking ? '(or equivalent)' : resolved.model,
+    license_plate: resolved.licensePlate,
     pickup_date: String(bookingData?.startDate || bookingData?.start_date || ''),
     dropoff_date: String(bookingData?.endDate || bookingData?.end_date || ''),
-    daily_rate: Number(car?.daily_rate || 0),
+    daily_rate: resolved.dailyRate,
     total_amount: getTotalCostFromBooking(bookingData),
-    security_deposit: Number(car?.security_deposit || 0),
+    security_deposit: resolved.securityDeposit,
     po_box: bookingData?.poBox || bookingData?.po_box,
     id_number: bookingData?.idNumber || bookingData?.id_number,
-    color: car?.color,
+    color: resolved.color,
   };
 }
 
 export async function generateContractPdfBase64(
   options: GenerateContractPdfOptions
 ): Promise<string> {
-  const { contract, bookingData, car, signatureData } = options;
+  const { contract, bookingData, car, signatureData, vehicleModelId } = options;
 
   if (!signatureData || signatureData === 'signed_physically_in_person') {
     throw new Error('A client digital signature is required to generate the contract PDF.');
   }
 
-  const filledHtml = await loadFilledContractHtml(contract, bookingData, car, signatureData);
+  const filledHtml = await loadFilledContractHtml(contract, bookingData, car, signatureData, vehicleModelId);
   if (!filledHtml) {
     throw new Error('No active HTML contract template found. Upload one in Admin → Contract Manager.');
   }
@@ -90,7 +94,7 @@ export async function generateAndSaveContract(
   }
 
   const pdfBase64 = await generateContractPdfBase64(options);
-  const contractData = buildContractData(bookingId, options.bookingData, options.car);
+  const contractData = buildContractData(bookingId, options.bookingData, options.car, options.vehicleModelId);
 
   return enhancedContractService.saveSignedContract(
     bookingId,
@@ -117,6 +121,14 @@ export function buildBookingSummaryForContract(booking: any, car: any): Contract
   };
 }
 
-export function formatContractSummaryLine(bookingData: ContractBookingData, car: ContractCar): string {
-  return `${getClientNameFromBooking(bookingData)} · ${car?.make || ''} ${car?.model || ''} · ${formatContractDate(bookingData?.startDate)} – ${formatContractDate(bookingData?.endDate)}`;
+export function formatContractSummaryLine(
+  bookingData: ContractBookingData,
+  car: ContractCar,
+  vehicleModelId?: string | null
+): string {
+  const resolved = resolveContractVehicle(car, vehicleModelId);
+  const vehicleLabel = resolved.isModelBooking
+    ? resolved.displayName
+    : `${resolved.make} ${resolved.model}`.trim();
+  return `${getClientNameFromBooking(bookingData)} · ${vehicleLabel} · ${formatContractDate(bookingData?.startDate)} – ${formatContractDate(bookingData?.endDate)}`;
 }
