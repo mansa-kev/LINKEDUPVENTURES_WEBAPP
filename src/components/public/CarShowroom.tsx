@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useInView } from 'react-intersection-observer';
 import { fleetService } from '../../services/fleetService';
-import { VehicleModel } from '../../types';
+import { VehicleModelGroup } from '../../utils/vehicleModelGrouping';
 import { SearchControls } from './SearchControls';
 import { FilterPanel } from './FilterPanel';
 import { PromoBadge } from './PromoBadge';
@@ -34,8 +34,8 @@ interface CarShowroomProps {
 
 export function CarShowroom({ isHome = false, showSearchControls = true }: CarShowroomProps) {
   const [searchParamsURL] = useSearchParams();
-  const [models, setModels] = useState<VehicleModel[]>([]);
-  const [filteredModels, setFilteredModels] = useState<VehicleModel[]>([]);
+  const [modelGroups, setModelGroups] = useState<VehicleModelGroup[]>([]);
+  const [filteredGroups, setFilteredGroups] = useState<VehicleModelGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const { ref, inView } = useInView();
 
@@ -59,20 +59,17 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
     async function fetchVehicleModels() {
       setLoading(true);
       try {
-        let result: any;
+        let result: VehicleModelGroup[];
         if (searchParams.pickupDate && searchParams.dropoffDate) {
-          result = await fleetService.getAvailableVehicleModels(searchParams.pickupDate, searchParams.dropoffDate);
+          result = await fleetService.getAvailableGroupedVehicleModels(
+            searchParams.pickupDate,
+            searchParams.dropoffDate
+          );
         } else {
-          result = await fleetService.getAllVehicleModels();
+          result = await fleetService.getGroupedPublicVehicleModels();
         }
 
-        if (result && typeof result === 'object' && 'data' in result) {
-          setModels(result.data || []);
-        } else if (Array.isArray(result)) {
-          setModels(result);
-        } else {
-          setModels([]);
-        }
+        setModelGroups(Array.isArray(result) ? result : []);
       } catch (error) {
         console.error('Error fetching vehicle models:', error);
       } finally {
@@ -84,37 +81,36 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
 
   // Apply filters whenever models or filters change
   useEffect(() => {
-    let result = [...models];
+    let result = [...modelGroups];
+    const modelFromGroup = (group: VehicleModelGroup) => group.representative;
 
-    // Filter by category
     if (filters.category) {
-      result = result.filter(m => (m.category || '').toLowerCase() === filters.category);
+      result = result.filter((group) => (group.category || '').toLowerCase() === filters.category);
     }
 
-    // Filter by price
     if (filters.priceMin > 0) {
-      result = result.filter(m => Number(m.base_daily_rate || 0) >= filters.priceMin);
+      result = result.filter((group) => Number(group.base_daily_rate || 0) >= filters.priceMin);
     }
     if (filters.priceMax < 50000) {
-      result = result.filter(m => Number(m.base_daily_rate || 0) <= filters.priceMax);
+      result = result.filter((group) => Number(group.base_daily_rate || 0) <= filters.priceMax);
     }
 
-    // Filter by transmission
     if (filters.transmission) {
-      result = result.filter(m => (m.transmission || '').toLowerCase() === filters.transmission);
+      result = result.filter(
+        (group) => (modelFromGroup(group).transmission || '').toLowerCase() === filters.transmission
+      );
     }
 
-    // Filter by fuel type
     if (filters.fuelType) {
-      result = result.filter(m => (m.fuel_type || '').toLowerCase() === filters.fuelType);
+      result = result.filter(
+        (group) => (modelFromGroup(group).fuel_type || '').toLowerCase() === filters.fuelType
+      );
     }
 
-    // Filter by seats
     if (filters.minSeats > 0) {
-      result = result.filter(m => Number(m.seats || 0) >= filters.minSeats);
+      result = result.filter((group) => Number(modelFromGroup(group).seats || 0) >= filters.minSeats);
     }
 
-    // Sort
     switch (filters.sortBy) {
       case 'price_asc':
         result.sort((a, b) => Number(a.base_daily_rate || 0) - Number(b.base_daily_rate || 0));
@@ -123,15 +119,19 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
         result.sort((a, b) => Number(b.base_daily_rate || 0) - Number(a.base_daily_rate || 0));
         break;
       case 'newest':
-        result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        result.sort(
+          (a, b) =>
+            new Date(b.representative.created_at || 0).getTime() -
+            new Date(a.representative.created_at || 0).getTime()
+        );
         break;
       case 'name_asc':
-        result.sort((a, b) => `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`));
+        result.sort((a, b) => group.displayName.localeCompare(b.displayName));
         break;
     }
 
-    setFilteredModels(result);
-  }, [models, filters]);
+    setFilteredGroups(result);
+  }, [modelGroups, filters]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -151,7 +151,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
             {!loading && (
               <div className="mb-4 md:mb-6 flex items-center justify-between">
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  {filteredModels.length} {filteredModels.length === 1 ? 'model' : 'models'} found
+                  {filteredGroups.length} {filteredGroups.length === 1 ? 'model' : 'models'} found
                 </p>
               </div>
             )}
@@ -168,7 +168,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                   </div>
                 ))}
               </div>
-            ) : filteredModels.length === 0 ? (
+            ) : filteredGroups.length === 0 ? (
               <div className="text-center py-20">
                 <p className="text-lg font-bold text-white/60 mb-2">No vehicles match your criteria</p>
                 <p className="text-sm text-muted-foreground">Try adjusting your filters or search terms</p>
@@ -176,9 +176,11 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
                 <AnimatePresence mode="popLayout">
-                  {(isHome ? filteredModels.slice(0, 20) : filteredModels).map((model, i) => (
+                  {(isHome ? filteredGroups.slice(0, 20) : filteredGroups).map((group, i) => {
+                    const model = group.representative;
+                    return (
                     <motion.div
-                      key={model.id}
+                      key={group.groupKey}
                       layout
                       initial={{ opacity: 0, y: 30 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -186,7 +188,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                       transition={{ delay: i * 0.05 }}
                       className="group cursor-pointer"
                     >
-                      <Link to={`/models/${model.id}`}>
+                      <Link to={`/models/${group.representativeId}`}>
                         <div className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-md group cursor-pointer">
                           {/* Card Image Container */}
                           <div className="relative h-44 md:h-48 overflow-hidden">
@@ -230,13 +232,20 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                           <div className="p-3 md:p-4">
                             {/* Car Name - No truncation, allow 2 lines */}
                             <h3 className="font-bold text-sm md:text-base leading-tight mb-2 line-clamp-2 group-hover:text-primary transition-colors">
-                              {model.display_name || `${model.make} ${model.model}`} {model.year ? `(${model.year})` : ''}
+                              {group.displayName}
+                              {group.variantYears.length > 1 && (
+                                <span className="text-muted-foreground font-normal"> · {group.variantYears.join(', ')}</span>
+                              )}
                             </h3>
 
-                            {/* Price */}
                             <div className="font-black text-orange-500 text-base md:text-lg mb-2">
-                              KES {Number(model.base_daily_rate || 0).toLocaleString()}
+                              KES {Number(group.base_daily_rate || 0).toLocaleString()}
                               <span className="text-xs text-muted-foreground font-normal">/day</span>
+                              {group.unitCount > 1 && (
+                                <span className="block text-[10px] text-muted-foreground font-semibold mt-1">
+                                  {group.unitCount} units available
+                                </span>
+                              )}
                             </div>
 
                             {/* Specs Row */}
@@ -267,14 +276,14 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                                 onClick={(e) => {
                                   e.preventDefault();
                                   e.stopPropagation();
-                                  window.location.href = `/models/${model.id}?booking=true`;
+                                  window.location.href = `/models/${group.representativeId}?booking=true`;
                                 }}
                                 className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap"
                               >
                                 BOOK NOW
                               </button>
                               <Link 
-                                to={`/models/${model.id}`}
+                                to={`/models/${group.representativeId}`}
                                 className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs font-bold text-gray-400 hover:text-white hover:underline underline-offset-2 whitespace-nowrap transition-colors"
                               >
                                 VIEW DETAILS
@@ -285,13 +294,14 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                         </div>
                       </Link>
                     </motion.div>
-                  ))}
+                    );
+                  })}
                 </AnimatePresence>
                 <div ref={ref} className="h-10" />
               </div>
             )}
 
-            {isHome && filteredModels.length > 20 && (
+            {isHome && filteredGroups.length > 20 && (
               <div className="mt-12 flex justify-center">
                 <Link
                   to="/cars"

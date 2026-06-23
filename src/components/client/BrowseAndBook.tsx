@@ -17,7 +17,8 @@ import {
 } from 'lucide-react';
 import { fleetService } from '../../services/fleetService';
 import { bookingService } from '../../services/bookingService';
-import { Car, VehicleModel } from '../../types';
+import { VehicleModel, Car } from '../../types';
+import { VehicleModelGroup } from '../../utils/vehicleModelGrouping';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
@@ -28,7 +29,7 @@ type BookingStep = 'browse' | 'details' | 'dates' | 'confirm';
 
 export function BrowseAndBook() {
   const { user, profile } = useAuth();
-  const [models, setModels] = useState<VehicleModel[]>([]);
+  const [modelGroups, setModelGroups] = useState<VehicleModelGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -53,13 +54,8 @@ export function BrowseAndBook() {
   const fetchModels = async () => {
     setLoading(true);
     try {
-      const result = await fleetService.getAllVehicleModels();
-      if (result && typeof result === 'object' && 'data' in result) {
-        const data = (result as any).data || [];
-        setModels(data);
-      } else if (Array.isArray(result)) {
-        setModels(result);
-      }
+      const result = await fleetService.getGroupedPublicVehicleModels();
+      setModelGroups(Array.isArray(result) ? result : []);
     } catch (error) {
       console.error('Error fetching models:', error);
     } finally {
@@ -67,14 +63,15 @@ export function BrowseAndBook() {
     }
   };
 
-  const filteredModels = models
-    .filter(model => {
+  const filteredGroups = modelGroups
+    .filter((group) => {
+      const model = group.representative;
       const q = searchQuery.toLowerCase();
-      const matchesSearch = !q || `${model.make} ${model.model}`.toLowerCase().includes(q);
-      const matchesCategory = !categoryFilter || (model.category || '').toLowerCase() === categoryFilter;
+      const matchesSearch = !q || group.displayName.toLowerCase().includes(q);
+      const matchesCategory = !categoryFilter || (group.category || '').toLowerCase() === categoryFilter;
       const matchesTrans = !transmissionFilter || (model.transmission || '').toLowerCase() === transmissionFilter;
       const matchesSeats = !seatsFilter || (Number(model.seats || 0) >= Number(seatsFilter));
-      const matchesPrice = !maxPrice || (Number(model.base_daily_rate || 0) <= Number(maxPrice));
+      const matchesPrice = !maxPrice || (Number(group.base_daily_rate || 0) <= Number(maxPrice));
       return matchesSearch && matchesCategory && matchesTrans && matchesSeats && matchesPrice;
     })
     .sort((a, b) => {
@@ -83,8 +80,8 @@ export function BrowseAndBook() {
       return 0;
     });
 
-  const categories = [...new Set(models.map(m => m.category).filter(Boolean))] as string[];
-  const transmissions = [...new Set(models.map(m => m.transmission?.toLowerCase()).filter(Boolean))] as string[];
+  const categories = [...new Set(modelGroups.map((group) => group.category).filter(Boolean))] as string[];
+  const transmissions = [...new Set(modelGroups.map((group) => group.representative.transmission?.toLowerCase()).filter(Boolean))] as string[];
   const activeFilterCount = [categoryFilter, transmissionFilter, seatsFilter, maxPrice].filter(v => v !== '' && v !== 0).length;
   const resetFilters = () => {
     setCategoryFilter(''); setTransmissionFilter(''); setSeatsFilter(''); setMaxPrice('');
@@ -103,7 +100,8 @@ export function BrowseAndBook() {
   const totalAmount = discountedAmount;
   const discountSavings = originalAmount - discountedAmount;
 
-  const handleSelectModel = async (model: VehicleModel) => {
+  const handleSelectModel = async (group: VehicleModelGroup) => {
+    const model = group.representative;
     setSelectedModel(model);
     setBookingStep('dates');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -195,7 +193,7 @@ export function BrowseAndBook() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">Browse Models</h1>
-          <p className="text-sm text-muted-foreground">{filteredModels.length} models available</p>
+          <p className="text-sm text-muted-foreground">{filteredGroups.length} models available</p>
         </div>
       </div>
 
@@ -276,31 +274,33 @@ export function BrowseAndBook() {
         <div className="flex justify-center py-20">
           <Loader2 className="animate-spin text-primary" size={32} />
         </div>
-      ) : filteredModels.length === 0 ? (
+      ) : filteredGroups.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-lg font-bold text-muted-foreground mb-2">No vehicles match your filters</p>
           <p className="text-sm text-muted-foreground">Try adjusting your search or check back later</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredModels.map((model) => (
+          {filteredGroups.map((group) => {
+            const model = group.representative;
+            return (
             <motion.div
-              key={model.id}
+              key={group.groupKey}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-card rounded-2xl border border-border overflow-hidden group hover:border-primary/20 transition-colors"
             >
               <div className="relative aspect-[16/10] bg-muted overflow-hidden">
                 <img
-                  src={model.primary_image_url || model.gallery_urls?.[0] || `https://picsum.photos/seed/${model.id}/400/250`}
-                  alt={`${model.make} ${model.model}`}
+                  src={group.primary_image_url || model.gallery_urls?.[0] || `https://picsum.photos/seed/${group.representativeId}/400/250`}
+                  alt={group.displayName}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
                   referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/m-${model.id}/400/250`; }}
+                  onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/m-${group.representativeId}/400/250`; }}
                 />
-                {model.category && (
+                {group.category && (
                   <span className="absolute top-3 right-3 px-2.5 py-1 bg-black/50 backdrop-blur-sm rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
-                    {model.category}
+                    {group.category}
                   </span>
                 )}
               </div>
@@ -308,11 +308,14 @@ export function BrowseAndBook() {
               <div className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-sm">{model.display_name || `${model.make} ${model.model}`}</h3>
-                    <p className="text-xs text-muted-foreground">{model.year || ''}</p>
+                    <h3 className="font-bold text-sm">{group.displayName}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {group.variantYears.length > 0 ? group.variantYears.join(', ') : ''}
+                      {group.unitCount > 0 ? ` · ${group.unitCount} units` : ''}
+                    </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-primary">KES {Number(model.base_daily_rate || 0).toLocaleString()}</p>
+                    <p className="font-bold text-primary">KES {Number(group.base_daily_rate || 0).toLocaleString()}</p>
                     <p className="text-[10px] text-muted-foreground">/day</p>
                   </div>
                 </div>
@@ -324,14 +327,15 @@ export function BrowseAndBook() {
                 </div>
 
                 <button
-                  onClick={() => handleSelectModel(model)}
+                  onClick={() => handleSelectModel(group)}
                   className="w-full py-3 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                   Book Now <ArrowRight size={14} />
                 </button>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

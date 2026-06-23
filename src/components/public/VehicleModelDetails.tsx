@@ -17,7 +17,8 @@ export function VehicleModelDetails() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const reservationToken = searchParams.get('reservationToken');
-  const [model, setModel] = useState<VehicleModel | null>(null);
+  const [modelFamily, setModelFamily] = useState<any | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<VehicleModel | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeImage, setActiveImage] = useState(0);
   const [showBooking, setShowBooking] = useState(false);
@@ -27,8 +28,17 @@ export function VehicleModelDetails() {
     async function fetchModel() {
       if (!id) return;
       try {
-        const modelData = await fleetService.getVehicleModelById(id);
-        setModel(modelData);
+        const family = await fleetService.getVehicleModelFamilyById(id);
+        if (!family) {
+          setModelFamily(null);
+          setSelectedVariant(null);
+          return;
+        }
+        setModelFamily(family);
+        const initialVariant =
+          family.variants.find((variant: VehicleModel) => variant.id === id) ||
+          family.representative;
+        setSelectedVariant(initialVariant);
       } finally {
         setLoading(false);
       }
@@ -37,13 +47,13 @@ export function VehicleModelDetails() {
   }, [id]);
 
   useEffect(() => {
-    if (searchParams.get('booking') === 'true' && model) {
+    if (searchParams.get('booking') === 'true' && selectedVariant) {
       setShowBooking(true);
     }
-    if (searchParams.get('reservation') === 'true' && model && !reservationToken) {
+    if (searchParams.get('reservation') === 'true' && selectedVariant && !reservationToken) {
       setShowReservation(true);
     }
-  }, [searchParams, model, reservationToken]);
+  }, [searchParams, selectedVariant, reservationToken]);
 
   const toggleBooking = () => {
     const next = !showBooking;
@@ -71,7 +81,9 @@ export function VehicleModelDetails() {
     navigate(`?${searchParams.toString()}`, { replace: true });
   };
 
-  if (loading || !model) return <LogoLoader fullScreen message="Loading vehicle model..." />;
+  if (loading || !selectedVariant || !modelFamily) return <LogoLoader fullScreen message="Loading vehicle model..." />;
+
+  const model = selectedVariant;
 
   const isValidUrl = (url: string) =>
     url && !url.startsWith('blob:') && (url.startsWith('http') || url.startsWith('/'));
@@ -194,8 +206,31 @@ export function VehicleModelDetails() {
               <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="flex flex-col justify-between">
                 <div>
                   <h1 className="text-3xl sm:text-4xl md:text-6xl font-serif font-black italic text-white mb-2 sm:mb-4 tracking-tight">
-                    {model.display_name || `${model.make} ${model.model}`}
+                    {modelFamily.displayName}
                   </h1>
+                  {modelFamily.variants.length > 1 && (
+                    <div className="flex flex-wrap gap-2 mb-4 sm:mb-6">
+                      {modelFamily.variants.map((variant: VehicleModel) => (
+                        <button
+                          key={variant.id}
+                          type="button"
+                          onClick={() => setSelectedVariant(variant)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+                            selectedVariant.id === variant.id
+                              ? 'bg-primary text-black border-primary'
+                              : 'bg-card/50 text-white border-white/10 hover:border-primary/40'
+                          }`}
+                        >
+                          {variant.year ? `${variant.year}` : 'Standard'}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {modelFamily.unitCount > 0 && (
+                    <p className="text-xs text-muted-foreground mb-4">
+                      {modelFamily.unitCount} physical unit{modelFamily.unitCount === 1 ? '' : 's'} in fleet
+                    </p>
+                  )}
                   <p className="text-sm sm:text-base md:text-lg text-muted-foreground mb-4 sm:mb-8 leading-relaxed">
                     {model.description || ' '}
                   </p>

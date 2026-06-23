@@ -8,6 +8,7 @@ import {
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
+import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 
 type BookingStatus = 'pending' | 'confirmed' | 'on_trip' | 'completed' | 'cancelled' | 'pending_payment_verification';
 
@@ -81,8 +82,9 @@ export function AdminBookingDetail({ booking: initialBooking, onClose, onRefresh
   const isPaid      = booking.payment_status === 'paid';
   const docsOk      = booking.document_status === 'approved';
   const bookingRef  = booking.id.slice(0, 8).toUpperCase();
-  const carLine     = `${booking.cars?.make || ''} ${booking.cars?.model || ''}`.trim() || 'N/A';
-  const carFull     = `${carLine}${booking.cars?.year ? ` (${booking.cars.year})` : ''}`;
+  const vehicle = getBookingVehicleDisplay(booking, 'admin');
+  const carLine = vehicle.modelLabel;
+  const carFull = vehicle.label;
   const rentalDays  = (booking.start_date && booking.end_date)
     ? Math.max(1, Math.ceil((new Date(booking.end_date).getTime() - new Date(booking.start_date).getTime()) / 86400000))
     : '—';
@@ -521,8 +523,8 @@ export function AdminBookingDetail({ booking: initialBooking, onClose, onRefresh
                 <SectionCard icon={<Car size={13} />} title="Booking Summary">
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-x-6 gap-y-3">
                     <Field label="Booking ID" value={`#${bookingRef}`} mono />
-                    <Field label="Vehicle" value={carFull} />
-                    <Field label="Licence Plate" value={booking.cars?.license_plate || 'N/A'} />
+                    <Field label="Booked Model" value={vehicle.modelLabel} />
+                    <Field label="Assigned Unit" value={vehicle.unitLabel || 'Pending allocation'} />
                     <Field label="Rental Days" value={`${rentalDays} day${rentalDays !== 1 ? 's' : ''}`} />
                     <Field label="Start Date" value={booking.start_date || 'N/A'} />
                     <Field label="End Date" value={booking.end_date || 'N/A'} />

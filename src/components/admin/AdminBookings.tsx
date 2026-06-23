@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
+import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 
 // No longer using separate countdown hooks per card to prevent performance bottlenecks.
 // Real-time updates are driven by a single parent clock in the main component.
@@ -52,6 +53,7 @@ interface Booking {
   client?: any;
   fleet_owner?: any;
   cars?: any;
+  vehicle_model?: any;
   metadata?: any;
 }
 
@@ -104,8 +106,9 @@ const BookingCard: React.FC<{
 }> = ({ booking, now, onManage, onViewDetails, onDelete, onSyncPayment, isSyncing }) => {
   const clientName = booking.client?.full_name || booking.metadata?.guest_info?.full_name || 'Guest';
   const clientInitials = clientName.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2);
-  const carLine = `${booking.cars?.make || ''} ${booking.cars?.model || ''}`.trim() || 'N/A';
-  const carImage = booking.cars?.photos?.[0] || booking.cars?.primary_image_url;
+  const vehicle = getBookingVehicleDisplay(booking, 'admin');
+  const carLine = vehicle.modelLabel;
+  const carImage = booking.vehicle_model?.primary_image_url || booking.cars?.photos?.[0] || booking.cars?.primary_image_url;
   const totalPaid = booking.payment_status === 'paid' ? booking.total_amount : 0;
   const balance = booking.total_amount - totalPaid;
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -160,7 +163,10 @@ const BookingCard: React.FC<{
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-xs font-bold text-foreground truncate">{carLine}</p>
+            <p className="text-xs font-bold text-foreground truncate">{vehicle.label}</p>
+            {vehicle.unitLabel && (
+              <p className="text-[10px] text-muted-foreground font-mono truncate">Unit: {vehicle.unitLabel}</p>
+            )}
             <p className="text-[10px] text-muted-foreground">
               {new Date(booking.start_date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric' })} → {new Date(booking.end_date).toLocaleDateString('en-KE', { month: 'short', day: 'numeric', year: 'numeric' })}
             </p>

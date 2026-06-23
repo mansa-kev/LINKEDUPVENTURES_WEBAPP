@@ -17,6 +17,51 @@ import {
 const handleSupabaseError = handleSupabaseErrorWrapper;
 const ADMIN_CACHE_TTL_MS = 60_000;
 
+function sanitizeCarPayload(car: any) {
+  const {
+    vehicle_model,
+    fleet_owner,
+    fleet_owner_details,
+    fleet_owner_settings,
+    ...rest
+  } = car || {};
+
+  return {
+    ...rest,
+    vehicle_model_id: rest.vehicle_model_id ? rest.vehicle_model_id : null,
+    fleet_owner_id:
+      fleet_owner === '' || fleet_owner === undefined
+        ? rest.fleet_owner_id ?? null
+        : fleet_owner || rest.fleet_owner_id || null,
+  };
+}
+
+async function resolveVehicleModelIdForCar(car: {
+  make?: string;
+  model?: string;
+  year?: number;
+  vehicle_model_id?: string | null;
+}): Promise<string | null> {
+  if (car.vehicle_model_id) return car.vehicle_model_id;
+  if (!car.make || !car.model) return null;
+
+  const { data } = await supabase
+    .from('vehicle_models')
+    .select('id, year')
+    .eq('make', car.make)
+    .eq('model', car.model);
+
+  if (!data?.length) return null;
+  const exactYear = data.find((row: any) => row.year === car.year);
+  return (exactYear || data[0]).id;
+}
+
+function invalidateFleetInventoryCaches() {
+  invalidateCachePrefix('fleet:');
+  invalidateCachePrefix('admin:vehicleModels:');
+  invalidateCachePrefix('admin:cars:');
+}
+
 export const adminService = {
   // --- Dashboard ---
   getDashboardStats: async (timeRange: '7d' | '30d' | '3m' | '6m' | '1y' = '7d') => {
@@ -272,11 +317,22 @@ export const adminService = {
           overtime_charge,
           created_at,
           metadata,
+          vehicle_model_id,
           cars (
             id,
             make,
             model,
+            year,
+            license_plate,
             photos,
+            primary_image_url
+          ),
+          vehicle_model:vehicle_models (
+            id,
+            display_name,
+            make,
+            model,
+            year,
             primary_image_url
           ),
 
@@ -464,23 +520,22 @@ export const adminService = {
   },
 
   addCar: async (car: Partial<Car> & { fleet_owner?: string, fleet_owner_details?: any }) => {
-    // Handle empty date fields - convert empty strings to null
-    // Extract fleet_owner (frontend field) and remap to fleet_owner_id (DB column)
     const { fleet_owner, fleet_owner_details, ...cleanCar } = car;
-    
-    const processedCar = {
+    const resolvedModelId = await resolveVehicleModelIdForCar(cleanCar);
+    const processedCar = sanitizeCarPayload({
       ...cleanCar,
-      fleet_owner_id: fleet_owner || null,
+      vehicle_model_id: resolvedModelId,
+      fleet_owner,
       next_service_date: cleanCar.next_service_date || null,
-      last_maintenance_date: cleanCar.last_maintenance_date || null
-    };
+      last_maintenance_date: cleanCar.last_maintenance_date || null,
+    });
     
     const { data, error } = await supabase
       .from('cars')
       .insert([processedCar])
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'addCar');
-    invalidateCachePrefix('admin:cars:');
+    invalidateFleetInventoryCaches();
     invalidateCachePrefix('admin:dashboard:');
     return data;
   },
@@ -491,7 +546,7 @@ export const adminService = {
       gallery_urls: vehicleModel.gallery_urls || [],
       features: vehicleModel.features || [],
       display_name: vehicleModel.display_name || `${vehicleModel.make} ${vehicleModel.model}`.trim(),
-      slug: vehicleModel.slug || `${vehicleModel.make}-${vehicleModel.model}-${vehicleModel.year || ''}`
+      slug: vehicleModel.slug || `${vehicleModel.make}-${vehicleModel.model}`
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, ''),
@@ -517,8 +572,7 @@ export const adminService = {
       .insert([payload])
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'addVehicleModel');
-    invalidateCachePrefix('admin:vehicleModels:');
-    invalidateCachePrefix('admin:cars:');
+    invalidateFleetInventoryCaches();
     return data;
   },
 
@@ -566,16 +620,17 @@ export const adminService = {
   },
 
   updateCar: async (id: string, updates: any) => {
-    // Extract fleet_owner (frontend field) and remap to fleet_owner_id (DB column)
     const { fleet_owner, fleet_owner_details, ...cleanUpdates } = updates;
-    
-    // Handle empty date fields and map fleet_owner to fleet_owner_id
-    const processedUpdates = {
+    const resolvedModelId = await resolveVehicleModelIdForCar(cleanUpdates);
+    const processedUpdates = sanitizeCarPayload({
       ...cleanUpdates,
-      fleet_owner_id: fleet_owner || null,
+      vehicle_model_id: cleanUpdates.vehicle_model_id
+        ? cleanUpdates.vehicle_model_id
+        : resolvedModelId,
+      fleet_owner,
       next_service_date: cleanUpdates.next_service_date || null,
-      last_maintenance_date: cleanUpdates.last_maintenance_date || null
-    };
+      last_maintenance_date: cleanUpdates.last_maintenance_date || null,
+    });
     
     const { data, error } = await supabase
       .from('cars')
@@ -583,7 +638,7 @@ export const adminService = {
       .eq('id', id)
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'updateCar');
-    invalidateCachePrefix('admin:cars:');
+    invalidateFleetInventoryCaches();
     invalidateCachePrefix('admin:dashboard:');
     return data;
   },
@@ -614,7 +669,7 @@ export const adminService = {
     };
 
     if (!payload.slug && (payload.make || payload.model)) {
-      payload.slug = `${payload.make || ''}-${payload.model || ''}-${payload.year || ''}`
+      payload.slug = `${payload.make || ''}-${payload.model || ''}`
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
@@ -626,8 +681,7 @@ export const adminService = {
       .eq('id', id)
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'updateVehicleModel');
-    invalidateCachePrefix('admin:vehicleModels:');
-    invalidateCachePrefix('admin:cars:');
+    invalidateFleetInventoryCaches();
     return data;
   },
 
@@ -637,7 +691,7 @@ export const adminService = {
       .delete()
       .eq('id', id);
     if (error) return handleSupabaseErrorWrapper(error, 'deleteCar');
-    invalidateCachePrefix('admin:cars:');
+    invalidateFleetInventoryCaches();
     invalidateCachePrefix('admin:dashboard:');
   },
 
@@ -647,8 +701,7 @@ export const adminService = {
       .delete()
       .eq('id', id);
     if (error) return handleSupabaseErrorWrapper(error, 'deleteVehicleModel');
-    invalidateCachePrefix('admin:vehicleModels:');
-    invalidateCachePrefix('admin:cars:');
+    invalidateFleetInventoryCaches();
   },
 
   // --- Users ---

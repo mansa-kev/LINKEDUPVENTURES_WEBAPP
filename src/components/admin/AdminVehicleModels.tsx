@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { adminService } from '../../services/adminService';
+import { groupVehicleModels } from '../../utils/vehicleModelGrouping';
 import { VehicleModel } from '../../types';
 import {
   Car,
@@ -71,22 +72,32 @@ export function AdminVehicleModels() {
     fetchModels();
   }, []);
 
-  const filteredModels = useMemo(() => {
+  const [expandedGroupKey, setExpandedGroupKey] = useState<string | null>(null);
+
+  const groupedModels = useMemo(() => {
+    const unitCounts: Record<string, number> = {};
+    for (const row of models) {
+      unitCounts[row.id] = row.cars?.length || 0;
+    }
+    return groupVehicleModels(models, unitCounts);
+  }, [models]);
+
+  const filteredGroups = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return models;
-    return models.filter((row) => {
+    if (!query) return groupedModels;
+    return groupedModels.filter((group) => {
       const haystack = [
-        row.display_name,
-        `${row.make || ''} ${row.model || ''}`,
-        row.slug,
-        row.category,
+        group.displayName,
+        group.slug,
+        group.category,
+        group.variantYears.join(' '),
       ]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
       return haystack.includes(query);
     });
-  }, [models, search]);
+  }, [groupedModels, search]);
 
   const openCreate = () => {
     setSelectedModel(null);
@@ -214,19 +225,19 @@ export function AdminVehicleModels() {
           />
         </div>
         <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-          {filteredModels.length} model{filteredModels.length === 1 ? '' : 's'}
+          {filteredGroups.length} model famil{filteredGroups.length === 1 ? 'y' : 'ies'}
         </div>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {filteredModels.map((model) => (
-          <div key={model.id} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
+        {filteredGroups.map((group) => (
+          <div key={group.groupKey} className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
             <div className="flex">
               <div className="w-36 h-32 bg-muted shrink-0 overflow-hidden">
-                {model.primary_image_url ? (
+                {group.primary_image_url ? (
                   <img
-                    src={model.primary_image_url}
-                    alt={model.display_name || `${model.make} ${model.model}`}
+                    src={group.primary_image_url}
+                    alt={group.displayName}
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                   />
@@ -239,50 +250,75 @@ export function AdminVehicleModels() {
               <div className="flex-1 p-4 min-w-0">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h3 className="text-lg font-bold truncate">
-                      {model.display_name || `${model.make} ${model.model}`}
-                    </h3>
+                    <h3 className="text-lg font-bold truncate">{group.displayName}</h3>
                     <p className="text-xs text-muted-foreground mt-1 truncate">
-                      {model.slug || 'no-slug'}
+                      {group.slug}
+                      {group.variantYears.length > 0 && ` · ${group.variantYears.join(', ')}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${model.is_public ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
-                      {model.is_public ? 'Public' : 'Hidden'}
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${group.is_public ? 'bg-success/10 text-success' : 'bg-muted text-muted-foreground'}`}>
+                      {group.is_public ? 'Public' : 'Hidden'}
                     </span>
                   </div>
                 </div>
 
                 <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-                  <div className="text-muted-foreground">Category: <span className="text-foreground font-semibold">{model.category || 'N/A'}</span></div>
-                  <div className="text-muted-foreground">Units: <span className="text-foreground font-semibold">{model.cars?.length || 0}</span></div>
-                  <div className="text-muted-foreground">Seats: <span className="text-foreground font-semibold">{model.seats || 'N/A'}</span></div>
-                  <div className="text-muted-foreground">Rate: <span className="text-foreground font-semibold">{model.base_daily_rate ? `KES ${Number(model.base_daily_rate).toLocaleString()}` : 'N/A'}</span></div>
+                  <div className="text-muted-foreground">Category: <span className="text-foreground font-semibold">{group.category || 'N/A'}</span></div>
+                  <div className="text-muted-foreground">Units: <span className="text-foreground font-semibold">{group.unitCount}</span></div>
+                  <div className="text-muted-foreground">Variants: <span className="text-foreground font-semibold">{group.variants.length}</span></div>
+                  <div className="text-muted-foreground">Rate: <span className="text-foreground font-semibold">{group.base_daily_rate ? `KES ${Number(group.base_daily_rate).toLocaleString()}` : 'N/A'}</span></div>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end gap-2">
+                <div className="mt-4 flex items-center justify-between gap-2">
                   <button
-                    onClick={() => openEdit(model)}
-                    className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-primary transition-colors"
-                    title="Edit vehicle model"
+                    onClick={() => setExpandedGroupKey(expandedGroupKey === group.groupKey ? null : group.groupKey)}
+                    className="text-xs font-bold text-primary hover:underline"
                   >
-                    <Edit3 size={16} />
+                    {expandedGroupKey === group.groupKey ? 'Hide variants' : 'View variants'}
                   </button>
-                  <button
-                    onClick={() => handleDelete(model.id)}
-                    className="p-2 hover:bg-error/10 rounded-lg text-muted-foreground hover:text-error transition-colors"
-                    title="Delete vehicle model"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => openEdit(group.representative)}
+                      className="p-2 hover:bg-muted rounded-lg text-muted-foreground hover:text-primary transition-colors"
+                      title="Edit primary variant"
+                    >
+                      <Edit3 size={16} />
+                    </button>
+                  </div>
                 </div>
+
+                {expandedGroupKey === group.groupKey && (
+                  <div className="mt-4 space-y-2 border-t border-border pt-3">
+                    {group.variants.map((variant) => (
+                      <div key={variant.id} className="flex items-center justify-between gap-3 text-xs bg-muted/30 rounded-lg px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="font-semibold text-foreground">
+                            {variant.year ? `${variant.year}` : 'No year'}
+                            {variant.display_name && variant.display_name !== group.displayName ? ` · ${variant.display_name}` : ''}
+                          </p>
+                          <p className="text-muted-foreground truncate">{variant.slug}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-muted-foreground">{models.find((m) => m.id === variant.id)?.cars?.length || 0} units</span>
+                          <button onClick={() => openEdit(variant as VehicleModelRow)} className="p-1.5 hover:bg-muted rounded-md" title="Edit variant">
+                            <Edit3 size={14} />
+                          </button>
+                          <button onClick={() => handleDelete(variant.id)} className="p-1.5 hover:bg-error/10 rounded-md text-error" title="Delete variant">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         ))}
       </div>
 
-      {filteredModels.length === 0 && (
+      {filteredGroups.length === 0 && (
         <div className="p-12 text-center bg-card border border-border rounded-2xl">
           <div className="w-16 h-16 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
             <Car size={32} className="text-muted-foreground" />

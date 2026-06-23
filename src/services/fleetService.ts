@@ -2,6 +2,7 @@ import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../
 import { logger } from '../utils/logger';
 import { Car, VehicleModel } from '../types';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
+import { groupVehicleModels, VehicleModelGroup } from '../utils/vehicleModelGrouping';
 import {
   CALENDAR_BLOCKING_STATUSES_DB,
   PAID_REVENUE_STATUSES_DB,
@@ -12,6 +13,20 @@ import {
 const FLEET_CACHE_TTL_MS = 60_000;
 
 export const fleetService = {
+  getModelUnitCounts: async (): Promise<Record<string, number>> => {
+    const { data, error } = await supabase
+      .from('cars')
+      .select('vehicle_model_id')
+      .not('vehicle_model_id', 'is', null);
+    if (error) return {};
+    const counts: Record<string, number> = {};
+    for (const row of data || []) {
+      if (!row.vehicle_model_id) continue;
+      counts[row.vehicle_model_id] = (counts[row.vehicle_model_id] || 0) + 1;
+    }
+    return counts;
+  },
+
   // --- Public Fleet ---
   getAllVehicleModels: async () => {
     return getOrSetCache('fleet:allVehicleModels', FLEET_CACHE_TTL_MS, async () => {
@@ -24,6 +39,46 @@ export const fleetService = {
       if (error) return handleSupabaseError(error, 'getAllVehicleModels');
       return data as VehicleModel[];
     });
+  },
+
+  getGroupedPublicVehicleModels: async (): Promise<VehicleModelGroup[]> => {
+    return getOrSetCache('fleet:groupedVehicleModels', FLEET_CACHE_TTL_MS, async () => {
+      const [models, unitCounts] = await Promise.all([
+        fleetService.getAllVehicleModels(),
+        fleetService.getModelUnitCounts(),
+      ]);
+      const modelList = Array.isArray(models) ? models : [];
+      return groupVehicleModels(modelList, unitCounts).filter((group) => group.is_public);
+    });
+  },
+
+  getAvailableGroupedVehicleModels: async (
+    pickupDate: string,
+    dropoffDate: string
+  ): Promise<VehicleModelGroup[]> => {
+    const [availableModels, unitCounts] = await Promise.all([
+      fleetService.getAvailableVehicleModels(pickupDate, dropoffDate),
+      fleetService.getModelUnitCounts(),
+    ]);
+    const modelList = Array.isArray(availableModels) ? availableModels : [];
+    return groupVehicleModels(modelList, unitCounts);
+  },
+
+  getVehicleModelFamilyById: async (id: string): Promise<VehicleModelGroup | null> => {
+    const model = await fleetService.getVehicleModelById(id);
+    if (!model) return null;
+
+    const { data, error } = await supabase
+      .from('vehicle_models')
+      .select('*')
+      .eq('make', model.make)
+      .eq('model', model.model)
+      .order('year', { ascending: false, nullsFirst: false });
+
+    if (error) return handleSupabaseError(error, 'getVehicleModelFamilyById');
+    const unitCounts = await fleetService.getModelUnitCounts();
+    const groups = groupVehicleModels((data || []) as VehicleModel[], unitCounts);
+    return groups[0] || null;
   },
 
   getAvailableVehicleModels: async (pickupDate: string, dropoffDate: string) => {

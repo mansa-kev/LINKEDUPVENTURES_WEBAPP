@@ -16,6 +16,7 @@ import { sendAdminEmail } from '../../services/adminEmailService';
 import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 import { AdminBookingLifecycle } from './AdminBookingLifecycle';
+import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 type ModalType = 'pickup' | 'return' | 'extend' | 'flag' | null;
 type CommunicateMode = 'approval' | 'payment_rejected' | 'docs_rejected';
 
@@ -107,6 +108,7 @@ export function AdminBookingCommandCenter() {
         .select(`
           *,
           cars (*),
+          vehicle_model:vehicle_models (*),
           client:user_profiles!bookings_client_id_fkey (*),
           driver:user_profiles!bookings_driver_id_fkey (*),
           booking_inspections (*),
@@ -370,8 +372,9 @@ export function AdminBookingCommandCenter() {
   const signatureData = docs.signatureUrl || meta.signature || meta.signature_url;
 
   const bookingRef  = booking.id.slice(0, 8).toUpperCase();
-  const carLine     = `${booking.cars?.make || ''} ${booking.cars?.model || ''}`.trim() || 'N/A';
-  const carFull     = `${carLine}${booking.cars?.year ? ` (${booking.cars.year})` : ''}`;
+  const vehicle = getBookingVehicleDisplay(booking, 'admin');
+  const carLine = vehicle.modelLabel;
+  const carFull = vehicle.label;
   const waPhone     = clientPhone.replace(/\D/g, '').replace(/^0/, '254');
   const hasPhone    = waPhone.length >= 10;
   
@@ -808,7 +811,12 @@ export function AdminBookingCommandCenter() {
           </div>
           <h1 className="text-3xl md:text-5xl font-black tracking-tight">{clientName}</h1>
           <p className="text-base font-bold opacity-90 flex items-center gap-2">
-            <Car size={18} /> {carFull} • <span className="font-mono bg-black/20 px-2 py-0.5 rounded">{booking.cars?.license_plate || 'No Plate'}</span>
+            <Car size={18} /> {carFull}
+            {vehicle.unitLabel ? (
+              <span className="font-mono bg-black/20 px-2 py-0.5 rounded">Unit: {vehicle.unitLabel}</span>
+            ) : (
+              <span className="font-mono bg-black/20 px-2 py-0.5 rounded">Unit pending</span>
+            )}
           </p>
         </div>
 

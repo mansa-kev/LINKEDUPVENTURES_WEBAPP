@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
+import { groupVehicleModels } from '../../utils/vehicleModelGrouping';
 import { adminService } from '../../services/adminService';
 import { 
   Search, 
@@ -234,8 +235,10 @@ export function AdminCars() {
         ...formData, 
         primary_image_url: finalPrimaryUrl, 
         photos: finalGalleryUrls,
-        fleet_owner: formData.fleet_owner === '' ? null : formData.fleet_owner
+        fleet_owner: formData.fleet_owner === '' ? null : formData.fleet_owner,
+        vehicle_model_id: formData.vehicle_model_id || null,
       };
+      delete (finalData as any).vehicle_model;
 
       if (selectedCar && selectedCar.id) {
         await adminService.updateCar(selectedCar.id, finalData);
@@ -1138,10 +1141,15 @@ export function AdminCars() {
                         className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/50"
                       >
                         <option value="">No linked vehicle model</option>
-                        {vehicleModels.map((vehicleModel) => (
-                          <option key={vehicleModel.id} value={vehicleModel.id}>
-                            {vehicleModel.display_name || `${vehicleModel.make} ${vehicleModel.model}`}
-                          </option>
+                        {groupVehicleModels(vehicleModels).map((group) => (
+                          <optgroup key={group.groupKey} label={group.displayName}>
+                            {group.variants.map((vehicleModel) => (
+                              <option key={vehicleModel.id} value={vehicleModel.id}>
+                                {vehicleModel.year ? `${vehicleModel.year}` : 'Standard'}
+                                {vehicleModel.base_daily_rate ? ` · KES ${Number(vehicleModel.base_daily_rate).toLocaleString()}` : ''}
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
                       </select>
                       <p className="text-xs text-muted-foreground">
