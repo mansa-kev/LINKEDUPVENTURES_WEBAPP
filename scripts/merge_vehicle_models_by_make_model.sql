@@ -3,78 +3,113 @@
 -- (e.g. Mazda CX-8 2018/2020/2022 -> one public Mazda CX-8 card)
 --
 -- Run AFTER add_vehicle_models_foundation.sql on production.
--- Safe to re-run: idempotent; rolls back cleanly on failure.
---
--- Fixes slug collisions by:
---   1) grouping on computed family slug (not raw make/model text alone)
---   2) deleting duplicate rows BEFORE updating keeper slugs
+-- Safe to re-run. Uses inline CTEs only (no temp tables) so Supabase
+-- SQL editor can run the whole script in one shot.
 -- ===============================================================
 
 BEGIN;
 
--- Shared family key: same formula as app slug (make + model, no year)
-CREATE TEMP TABLE vm_merge_plan ON COMMIT DROP AS
-SELECT
-  vm.id,
-  vm.make,
-  vm.model,
-  vm.year,
-  vm.slug,
-  vm.sort_order,
-  vm.created_at,
-  lower(
-    regexp_replace(
-      trim(concat_ws('-', vm.make, vm.model)),
-      '[^a-zA-Z0-9]+',
-      '-',
-      'g'
-    )
-  ) AS family_slug,
-  (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) AS unit_count,
-  ROW_NUMBER() OVER (
-    PARTITION BY lower(
+-- 1) Point cars at the canonical keeper per family slug
+WITH model_stats AS (
+  SELECT
+    vm.id,
+    lower(
       regexp_replace(
         trim(concat_ws('-', vm.make, vm.model)),
         '[^a-zA-Z0-9]+',
         '-',
         'g'
       )
-    )
-    ORDER BY
-      (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
-      vm.sort_order ASC NULLS LAST,
-      vm.created_at ASC NULLS LAST,
-      vm.id ASC
-  ) AS rn,
-  FIRST_VALUE(vm.id) OVER (
-    PARTITION BY lower(
-      regexp_replace(
-        trim(concat_ws('-', vm.make, vm.model)),
-        '[^a-zA-Z0-9]+',
-        '-',
-        'g'
+    ) AS family_slug,
+    ROW_NUMBER() OVER (
+      PARTITION BY lower(
+        regexp_replace(
+          trim(concat_ws('-', vm.make, vm.model)),
+          '[^a-zA-Z0-9]+',
+          '-',
+          'g'
+        )
       )
-    )
-    ORDER BY
-      (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
-      vm.sort_order ASC NULLS LAST,
-      vm.created_at ASC NULLS LAST,
-      vm.id ASC
-  ) AS keep_id
-FROM vehicle_models vm;
-
+      ORDER BY
+        (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+        vm.sort_order ASC NULLS LAST,
+        vm.created_at ASC NULLS LAST,
+        vm.id ASC
+    ) AS rn,
+    FIRST_VALUE(vm.id) OVER (
+      PARTITION BY lower(
+        regexp_replace(
+          trim(concat_ws('-', vm.make, vm.model)),
+          '[^a-zA-Z0-9]+',
+          '-',
+          'g'
+        )
+      )
+      ORDER BY
+        (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+        vm.sort_order ASC NULLS LAST,
+        vm.created_at ASC NULLS LAST,
+        vm.id ASC
+    ) AS keep_id
+  FROM vehicle_models vm
+),
+dupes AS (
+  SELECT id AS dup_id, keep_id
+  FROM model_stats
+  WHERE rn > 1
+)
 UPDATE cars c
-SET vehicle_model_id = p.keep_id
-FROM vm_merge_plan p
-WHERE c.vehicle_model_id = p.id
-  AND p.rn > 1;
+SET vehicle_model_id = d.keep_id
+FROM dupes d
+WHERE c.vehicle_model_id = d.dup_id;
 
+-- 2) Point bookings at canonical keeper
+WITH model_stats AS (
+  SELECT
+    vm.id,
+    ROW_NUMBER() OVER (
+      PARTITION BY lower(
+        regexp_replace(
+          trim(concat_ws('-', vm.make, vm.model)),
+          '[^a-zA-Z0-9]+',
+          '-',
+          'g'
+        )
+      )
+      ORDER BY
+        (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+        vm.sort_order ASC NULLS LAST,
+        vm.created_at ASC NULLS LAST,
+        vm.id ASC
+    ) AS rn,
+    FIRST_VALUE(vm.id) OVER (
+      PARTITION BY lower(
+        regexp_replace(
+          trim(concat_ws('-', vm.make, vm.model)),
+          '[^a-zA-Z0-9]+',
+          '-',
+          'g'
+        )
+      )
+      ORDER BY
+        (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+        vm.sort_order ASC NULLS LAST,
+        vm.created_at ASC NULLS LAST,
+        vm.id ASC
+    ) AS keep_id
+  FROM vehicle_models vm
+),
+dupes AS (
+  SELECT id AS dup_id, keep_id
+  FROM model_stats
+  WHERE rn > 1
+)
 UPDATE bookings b
-SET vehicle_model_id = p.keep_id
-FROM vm_merge_plan p
-WHERE b.vehicle_model_id = p.id
-  AND p.rn > 1;
+SET vehicle_model_id = d.keep_id
+FROM dupes d
+WHERE b.vehicle_model_id = d.dup_id;
 
+-- 3) Point reservations at canonical keeper (if table exists)
 DO $$
 BEGIN
   IF EXISTS (
@@ -83,28 +118,91 @@ BEGIN
     WHERE table_schema = 'public'
       AND table_name = 'car_reservations'
   ) THEN
+    WITH model_stats AS (
+      SELECT
+        vm.id,
+        ROW_NUMBER() OVER (
+          PARTITION BY lower(
+            regexp_replace(
+              trim(concat_ws('-', vm.make, vm.model)),
+              '[^a-zA-Z0-9]+',
+              '-',
+              'g'
+            )
+          )
+          ORDER BY
+            (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+            vm.sort_order ASC NULLS LAST,
+            vm.created_at ASC NULLS LAST,
+            vm.id ASC
+        ) AS rn,
+        FIRST_VALUE(vm.id) OVER (
+          PARTITION BY lower(
+            regexp_replace(
+              trim(concat_ws('-', vm.make, vm.model)),
+              '[^a-zA-Z0-9]+',
+              '-',
+              'g'
+            )
+          )
+          ORDER BY
+            (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+            vm.sort_order ASC NULLS LAST,
+            vm.created_at ASC NULLS LAST,
+            vm.id ASC
+        ) AS keep_id
+      FROM vehicle_models vm
+    ),
+    dupes AS (
+      SELECT id AS dup_id, keep_id
+      FROM model_stats
+      WHERE rn > 1
+    )
     UPDATE car_reservations r
-    SET vehicle_model_id = p.keep_id
-    FROM vm_merge_plan p
-    WHERE r.vehicle_model_id = p.id
-      AND p.rn > 1;
+    SET vehicle_model_id = d.keep_id
+    FROM dupes d
+    WHERE r.vehicle_model_id = d.dup_id;
   END IF;
 END $$;
 
--- Remove duplicate family rows BEFORE touching slugs (avoids slug unique violations)
+-- 4) Delete duplicate family rows BEFORE updating slugs
+WITH model_stats AS (
+  SELECT
+    vm.id,
+    ROW_NUMBER() OVER (
+      PARTITION BY lower(
+        regexp_replace(
+          trim(concat_ws('-', vm.make, vm.model)),
+          '[^a-zA-Z0-9]+',
+          '-',
+          'g'
+        )
+      )
+      ORDER BY
+        (SELECT COUNT(*)::int FROM cars c WHERE c.vehicle_model_id = vm.id) DESC,
+        vm.sort_order ASC NULLS LAST,
+        vm.created_at ASC NULLS LAST,
+        vm.id ASC
+    ) AS rn
+  FROM vehicle_models vm
+)
 DELETE FROM vehicle_models vm
-USING vm_merge_plan p
-WHERE vm.id = p.id
-  AND p.rn > 1;
+USING model_stats ms
+WHERE vm.id = ms.id
+  AND ms.rn > 1;
 
--- Canonicalize surviving rows (one per family_slug)
+-- 5) Canonicalize surviving rows (one slug per family)
 UPDATE vehicle_models vm
 SET
-  slug = p.family_slug,
+  slug = lower(
+    regexp_replace(
+      trim(concat_ws('-', vm.make, vm.model)),
+      '[^a-zA-Z0-9]+',
+      '-',
+      'g'
+    )
+  ),
   display_name = trim(concat_ws(' ', vm.make, vm.model)),
-  year = NULL
-FROM vm_merge_plan p
-WHERE vm.id = p.id
-  AND p.rn = 1;
+  year = NULL;
 
 COMMIT;
