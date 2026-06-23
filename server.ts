@@ -19,6 +19,7 @@ import {
 import { createBookingExtendHandler } from "./src/server/bookingExtendHandler.js";
 import { createDeleteReservationHandler } from "./src/server/deleteReservationHandler.js";
 import { processBookingPayoutSettlements } from "./src/server/bookingPayoutSettlements.js";
+import { applyProfileSyncFromBooking, linkBookingAndSyncProfile } from "./src/utils/bookingProfileSync.js";
 
 dotenv.config({ path: '.env.local' });
 
@@ -1007,6 +1008,14 @@ async function startServer() {
         return res.status(500).json({ success: false, error: bookingError?.message || 'Failed to create booking.' });
       }
 
+      if (clientId) {
+        try {
+          await applyProfileSyncFromBooking(supabase, clientId, booking, bookingData);
+        } catch (err) {
+          console.error('Failed to sync booking documents to profile:', err);
+        }
+      }
+
       if (sourceReservationId) {
         // Single-use continuation token: null it out after the booking is linked.
         const { error: reservationUpdateError } = await supabase
@@ -1323,7 +1332,7 @@ async function startServer() {
 
       const { data: booking, error: bookingError } = await supabase
         .from('bookings')
-        .select('id, client_id, metadata')
+        .select('*')
         .eq('id', bookingId)
         .single();
 
@@ -1333,6 +1342,11 @@ async function startServer() {
 
       if (booking.client_id) {
         if (booking.client_id === authData.user.id) {
+          try {
+            await linkBookingAndSyncProfile(supabase, booking);
+          } catch (syncErr) {
+            console.error('Failed to sync claimed booking to profile:', syncErr);
+          }
           return res.json({ success: true, booking });
         }
         return res.status(409).json({ success: false, error: 'Booking already linked to another account.' });
@@ -1356,6 +1370,12 @@ async function startServer() {
 
       if (updateError) {
         return res.status(500).json({ success: false, error: updateError.message });
+      }
+
+      try {
+        await linkBookingAndSyncProfile(supabase, { ...booking, ...updated, client_id: authData.user.id });
+      } catch (syncErr) {
+        console.error('Failed to sync claimed booking to profile:', syncErr);
       }
 
       return res.json({ success: true, booking: updated });

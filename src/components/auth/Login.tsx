@@ -9,6 +9,7 @@ import { useSubdomain } from '../../contexts/SubdomainContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
 import { sendTemplatedEmail } from '../../services/emailProvider';
+import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 
 // ---------------------------------------------------------------------------
 // Rate limiting
@@ -54,31 +55,48 @@ async function ensureUserProfile(user: { id: string; email?: string; user_metada
     throw new Error(readError.message || 'Could not load your profile');
   }
 
-  if (existing) {
-    return existing;
-  }
-
   const meta = user.user_metadata || {};
-  const { error: upsertError } = await supabase.from('user_profiles').upsert({
-    id: user.id,
-    email: user.email,
-    full_name: (meta.full_name as string) || '',
-    phone_number: (meta.phone_number as string) || '',
-    license_number: (meta.license_number as string) || '',
-    role: (meta.role as string) || 'client',
-    status: 'active',
-  }, { onConflict: 'id' });
 
-  if (upsertError) {
-    throw new Error(upsertError.message || 'Could not create your profile. Please contact support.');
+  if (!existing) {
+    const { error: upsertError } = await supabase.from('user_profiles').upsert({
+      id: user.id,
+      email: user.email,
+      full_name: (meta.full_name as string) || '',
+      phone_number: (meta.phone_number as string) || '',
+      license_number: (meta.license_number as string) || '',
+      role: (meta.role as string) || 'client',
+      status: 'active',
+    }, { onConflict: 'id' });
+
+    if (upsertError) {
+      throw new Error(upsertError.message || 'Could not create your profile. Please contact support.');
+    }
   }
 
   if (meta.pending_booking_id) {
+    const pendingBookingId = meta.pending_booking_id as string;
     await supabase
       .from('bookings')
       .update({ client_id: user.id })
-      .eq('id', meta.pending_booking_id as string);
+      .eq('id', pendingBookingId);
     await supabase.auth.updateUser({ data: { pending_booking_id: null } });
+
+    const { data: linkedBooking } = await supabase
+      .from('bookings')
+      .select('*')
+      .eq('id', pendingBookingId)
+      .maybeSingle();
+    if (linkedBooking) {
+      try {
+        await linkBookingAndSyncProfile(supabase, { ...linkedBooking, client_id: user.id });
+      } catch (syncErr) {
+        console.error('Failed to sync booking documents to profile:', syncErr);
+      }
+    }
+  }
+
+  if (existing) {
+    return existing;
   }
 
   const { data: created, error: reloadError } = await supabase

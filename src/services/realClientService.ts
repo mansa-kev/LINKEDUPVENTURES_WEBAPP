@@ -5,16 +5,11 @@ import {
   CLIENT_UPCOMING_STATUSES_DB,
   CLIENT_VISIBLE_STATUSES_DB,
 } from '../constants/bookingStatuses';
+import { linkBookingAndSyncProfile, BOOKING_DOC_TO_PROFILE_COLUMN } from '../utils/bookingProfileSync';
 
 const CLIENT_CACHE_TTL_MS = 60_000;
 
-const GLOVEBOX_COLUMN_MAP: Record<string, string> = {
-  facePhotoUrl: 'face_photo_url',
-  licenseFrontUrl: 'license_front_url',
-  licenseBackUrl: 'license_back_url',
-  idFrontUrl: 'id_front_url',
-  idBackUrl: 'id_back_url',
-};
+const GLOVEBOX_COLUMN_MAP: Record<string, string> = BOOKING_DOC_TO_PROFILE_COLUMN;
 
 
 export const clientService = {
@@ -389,30 +384,8 @@ export const clientService = {
   },
 
   syncGuestBookingToProfile: async (clientId: string, booking: any) => {
-    if (!clientId || !booking) return;
-
-    const guest = booking?.metadata?.guest_info || {};
-    const docs = booking?.metadata?.documents || {};
-    const updates: Record<string, string> = {};
-
-    if (guest.full_name) updates.full_name = guest.full_name;
-    if (guest.phone) updates.phone_number = guest.phone;
-    if (guest.license_number) updates.license_number = guest.license_number;
-    if (guest.id_number) updates.id_number = guest.id_number;
-
-    for (const [docKey, column] of Object.entries(GLOVEBOX_COLUMN_MAP)) {
-      const url = docs[docKey];
-      if (url) updates[column] = url;
-    }
-
-    if (Object.keys(updates).length === 0) return;
-
-    const { error } = await supabase
-      .from('user_profiles')
-      .update(updates)
-      .eq('id', clientId);
-    if (error) throw error;
-
+    const { synced } = await linkBookingAndSyncProfile(supabase, { ...booking, client_id: clientId });
+    if (!synced) return;
     invalidateCachePrefix(`client:glovebox:${clientId}`);
     invalidateCachePrefix(`client:dashboard:${clientId}`);
   },

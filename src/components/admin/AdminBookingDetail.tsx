@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
+import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 
 type BookingStatus = 'pending' | 'confirmed' | 'on_trip' | 'completed' | 'cancelled' | 'pending_payment_verification';
 
@@ -162,6 +163,11 @@ export function AdminBookingDetail({ booking: initialBooking, onClose, onRefresh
         updated_at: new Date().toISOString(),
       }).eq('id', booking.id);
       setBooking(prev => ({ ...prev, document_status: 'approved' }));
+      try {
+        await linkBookingAndSyncProfile(supabase, booking);
+      } catch (syncErr) {
+        logger.warn('Profile sync from booking failed:', syncErr);
+      }
       toast.success('Documents approved ✓');
       enterCommunicateStep('approval');
     } catch (e: any) {

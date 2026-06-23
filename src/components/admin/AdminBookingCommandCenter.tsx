@@ -14,6 +14,7 @@ import { enhancedContractService } from '../../services/enhancedContractService'
 import { buildBookingSummaryForContract, generateAndSaveContract } from '../../services/contractPdfService';
 import { sendAdminEmail } from '../../services/adminEmailService';
 import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';
+import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 import { AdminBookingLifecycle } from './AdminBookingLifecycle';
 type ModalType = 'pickup' | 'return' | 'extend' | 'flag' | null;
 type CommunicateMode = 'approval' | 'payment_rejected' | 'docs_rejected';
@@ -28,6 +29,14 @@ function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
     Math.sin(dLon/2) * Math.sin(dLon/2); 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
   return R * c; // Distance in km
+}
+
+async function syncClientProfileFromBooking(booking: any) {
+  try {
+    await linkBookingAndSyncProfile(supabase, booking);
+  } catch (e) {
+    logger.warn('Profile sync from booking failed:', e);
+  }
 }
 
 export function AdminBookingCommandCenter() {
@@ -518,6 +527,7 @@ export function AdminBookingCommandCenter() {
       }
 
       if (booking.client_id) {
+        await syncClientProfileFromBooking(booking);
         try {
           await supabase.from('notifications').insert({
             user_id: booking.client_id,
@@ -597,6 +607,7 @@ export function AdminBookingCommandCenter() {
         }).eq('id', booking.id);
         if (confirmError) throw confirmError;
         setBooking((prev: any) => prev ? { ...prev, status: 'confirmed', payment_status: 'paid', document_status: 'approved' } : prev);
+        await syncClientProfileFromBooking(booking);
         await recordPaymentTransaction(
           booking.id,
           booking.client_id,

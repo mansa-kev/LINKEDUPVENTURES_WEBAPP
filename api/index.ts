@@ -27,6 +27,7 @@ import {
   computeBookingFinancials,
   validateBookingTotalAmount,
 } from "../src/server/bookingFinancials.js";
+import { applyProfileSyncFromBooking } from "../src/utils/bookingProfileSync.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
 // and this call is a no-op (the file won't exist), which is fine.
@@ -1011,20 +1012,9 @@ const app = express();
 
       if (clientId) {
         try {
-          await supabase
-            .from('user_profiles')
-            .update({
-              id_number: bookingData.idNumber || null,
-              face_photo_url: bookingData.facePhotoUrl || null,
-              license_front_url: bookingData.licenseFrontUrl || null,
-              license_back_url: bookingData.licenseBackUrl || null,
-              id_front_url: bookingData.idFrontUrl || null,
-              id_back_url: bookingData.idBackUrl || null,
-              license_number: bookingData.license || null,
-            })
-            .eq('id', clientId);
+          await applyProfileSyncFromBooking(supabase, clientId, booking, bookingData);
         } catch (err) {
-          console.error('Failed to update user profile docs:', err);
+          console.error('Failed to sync booking documents to profile:', err);
         }
       }
 

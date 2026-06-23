@@ -85,10 +85,12 @@ CREATE TRIGGER car_reviews_updated_at
 -- 7. RLS Policies — blog_posts
 ALTER TABLE blog_posts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public can read published blog posts" ON blog_posts;
 CREATE POLICY "Public can read published blog posts"
   ON blog_posts FOR SELECT
   USING (status = 'published');
 
+DROP POLICY IF EXISTS "Admins can manage all blog posts" ON blog_posts;
 CREATE POLICY "Admins can manage all blog posts"
   ON blog_posts FOR ALL
   USING (is_admin());
@@ -96,18 +98,22 @@ CREATE POLICY "Admins can manage all blog posts"
 -- 8. RLS Policies — car_reviews
 ALTER TABLE car_reviews ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Public can read approved reviews" ON car_reviews;
 CREATE POLICY "Public can read approved reviews"
   ON car_reviews FOR SELECT
   USING (status = 'approved');
 
+DROP POLICY IF EXISTS "Authenticated users can submit reviews" ON car_reviews;
 CREATE POLICY "Authenticated users can submit reviews"
   ON car_reviews FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can view their own reviews" ON car_reviews;
 CREATE POLICY "Users can view their own reviews"
   ON car_reviews FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Admins can manage all reviews" ON car_reviews;
 CREATE POLICY "Admins can manage all reviews"
   ON car_reviews FOR ALL
   USING (is_admin());
