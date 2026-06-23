@@ -1,4 +1,5 @@
 import { fetchCompanySettings } from '../utils/contractTemplate';
+import { getBookingVehicleDisplay } from '../utils/bookingVehicleDisplay';
 
 export interface BookingReceiptInput {
   id: string;
@@ -76,10 +77,9 @@ function buildReceiptHtml(
     `RCP-${shortRef(booking.id)}`;
   const paidAt = transaction?.created_at || booking.created_at;
   const amount = Number(transaction?.amount ?? booking.total_amount ?? 0);
-  const carLabel = booking.cars
-    ? `${booking.cars.make || ''} ${booking.cars.model || ''}`.trim()
-    : 'Rental vehicle';
-  const plate = booking.cars?.license_plate || '—';
+  const vehicle = getBookingVehicleDisplay(booking, 'client');
+  const carLabel = vehicle.modelLabel || 'Rental vehicle';
+  const plate = vehicle.isModelBooking ? 'Assigned prior to handover' : (vehicle.unitLabel || '—');
   const paymentMethod = (booking.payment_method || 'mpesa').replace(/_/g, ' ').toUpperCase();
 
   return `

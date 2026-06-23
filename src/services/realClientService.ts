@@ -6,6 +6,7 @@ import {
   CLIENT_VISIBLE_STATUSES_DB,
 } from '../constants/bookingStatuses';
 import { linkBookingAndSyncProfile, BOOKING_DOC_TO_PROFILE_COLUMN } from '../utils/bookingProfileSync';
+import { BOOKING_WITH_VEHICLE_SELECT } from '../utils/bookingVehicleDisplay';
 
 const CLIENT_CACHE_TTL_MS = 60_000;
 
@@ -19,7 +20,7 @@ export const clientService = {
       // Fetch active rental (on_trip or legacy in_progress)
       const { data: activeRows, error: aError } = await supabase
         .from('bookings')
-        .select('*, cars(*)')
+        .select(BOOKING_WITH_VEHICLE_SELECT)
         .eq('client_id', clientId)
         .in('status', [...CLIENT_ACTIVE_STATUSES_DB])
         .order('start_date', { ascending: false })
@@ -29,7 +30,7 @@ export const clientService = {
       // Fetch upcoming bookings (paid/confirmed, awaiting pickup)
       const { data: upcomingBookings, error: uError } = await supabase
         .from('bookings')
-        .select('*, cars(*)')
+        .select(BOOKING_WITH_VEHICLE_SELECT)
         .eq('client_id', clientId)
         .in('status', [...CLIENT_UPCOMING_STATUSES_DB])
         .order('start_date', { ascending: true });
@@ -44,7 +45,7 @@ export const clientService = {
       // Fetch recommendations (mocked logic based on past bookings)
       const { data: pastBookings, error: bError } = await supabase
         .from('bookings')
-        .select('*, cars(*)')
+        .select(BOOKING_WITH_VEHICLE_SELECT)
         .eq('client_id', clientId)
         .eq('status', 'completed')
         .order('end_date', { ascending: false });
@@ -239,7 +240,7 @@ export const clientService = {
     return getOrSetCache(`client:bookings:${clientId}`, CLIENT_CACHE_TTL_MS, async () => {
       const { data, error } = await supabase
         .from('bookings')
-        .select('*, cars(*)')
+        .select(BOOKING_WITH_VEHICLE_SELECT)
         .eq('client_id', clientId)
         .order('start_date', { ascending: false });
       if (error) return handleSupabaseError(error, 'getAllBookings');

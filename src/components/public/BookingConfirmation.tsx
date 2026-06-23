@@ -11,6 +11,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { paymentService } from '../../services/paymentService';
 import { toast } from 'sonner';
+import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 
 export function BookingConfirmation() {
   const { bookingId } = useParams<{ bookingId: string }>();
@@ -40,6 +41,8 @@ export function BookingConfirmation() {
   const [reviewComment, setReviewComment] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
+
+  const vehicle = booking ? getBookingVehicleDisplay(booking, 'client') : null;
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -422,7 +425,13 @@ export function BookingConfirmation() {
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Vehicle</p>
-                  <p className="text-sm font-bold text-foreground">{booking?.cars?.make} {booking?.cars?.model} ({booking?.cars?.year})</p>
+                  <p className="text-sm font-bold text-foreground">
+                    {vehicle?.modelLabel}
+                    {vehicle?.year ? ` (${vehicle.year})` : ''}
+                  </p>
+                  {vehicle?.clientSubtitle && (
+                    <p className="text-xs text-muted-foreground mt-1">{vehicle.clientSubtitle}</p>
+                  )}
                 </div>
               </div>
 
@@ -586,7 +595,7 @@ export function BookingConfirmation() {
                 <div>
                   <h2 className="text-2xl font-serif font-black italic text-foreground">How Was Your Experience?</h2>
                   <p className="text-muted-foreground text-sm mt-1">
-                    Share your honest review of the {booking?.cars?.make} {booking?.cars?.model}. It helps other customers and takes 30 seconds.
+                    Share your honest review of the {vehicle?.modelLabel || 'vehicle'}. It helps other customers and takes 30 seconds.
                   </p>
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../lib/supabase';
+import { BOOKING_WITH_VEHICLE_SELECT } from '../utils/bookingVehicleDisplay';
 
 const DEFAULT_COMMISSION_RATE = 0.15; // 15% platform commission
 
@@ -35,7 +36,7 @@ export const bookingService = {
   getBookingById: async (id: string) => {
     const { data, error } = await supabase
       .from('bookings')
-      .select('*, cars(*)')
+      .select(BOOKING_WITH_VEHICLE_SELECT)
       .eq('id', id)
       .single();
     if (error) return handleSupabaseError(error, 'getBookingById');

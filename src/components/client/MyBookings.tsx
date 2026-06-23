@@ -9,6 +9,7 @@ import { isOnTripStatus } from '../../constants/bookingStatuses';
 import { openBookingReceiptPdf } from '../../services/receiptPdfService';
 import { fleetService } from '../../services/fleetService';
 import { toProxiedAssetUrl } from '../../utils/assetUrl';
+import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -293,7 +294,7 @@ export function MyBookings() {
       filter === 'all' ||
       b.status === filter ||
       (filter === 'on_trip' && isOnTripStatus(b.status));
-    const carLabel = `${b.cars.make || ''} ${b.cars.model || ''}`.toLowerCase();
+    const carLabel = getBookingVehicleDisplay(b, 'client').modelLabel.toLowerCase();
     const matchesSearch = !searchTerm || carLabel.includes(searchTerm.toLowerCase());
     return matchesFilter && matchesSearch;
   });
@@ -383,25 +384,32 @@ export function MyBookings() {
               <div className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                   {/* Car Info */}
+                  {(() => {
+                    const vehicle = getBookingVehicleDisplay(booking, 'client');
+                    return (
                   <div className="flex items-center gap-4">
                     <div className="w-20 h-20 bg-muted rounded-xl flex items-center justify-center overflow-hidden">
-                      {booking.cars.primary_image_url ? (
-                        <img src={booking.cars.primary_image_url} alt={booking.cars.model} className="w-full h-full object-cover" />
+                      {vehicle.imageUrl ? (
+                        <img src={vehicle.imageUrl} alt={vehicle.modelLabel} className="w-full h-full object-cover" />
                       ) : (
                         <Car className="text-muted-foreground" size={32} />
                       )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold text-lg">{booking.cars.make} {booking.cars.model}</h3>
+                        <h3 className="font-bold text-lg">{vehicle.modelLabel}</h3>
                         {getStatusBadge(booking.status)}
                       </div>
                       <p className="text-sm text-muted-foreground flex items-center gap-1">
                         <Calendar size={14} /> {new Date(booking.start_date).toLocaleDateString()} - {new Date(booking.end_date).toLocaleDateString()}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">Plate: {booking.cars.license_plate}</p>
+                      {vehicle.clientSubtitle && (
+                        <p className="text-xs text-muted-foreground mt-1">{vehicle.clientSubtitle}</p>
+                      )}
                     </div>
                   </div>
+                    );
+                  })()}
 
                   {/* Financial Summary */}
                   <div className="flex flex-col lg:items-end">
@@ -628,13 +636,25 @@ export function MyBookings() {
             <div className="p-5 overflow-y-auto flex-1 space-y-5">
               <div className="flex items-center gap-4 p-4 bg-muted/30 rounded-xl">
                 <div className="w-16 h-16 bg-muted rounded-lg overflow-hidden flex items-center justify-center">
-                  {detailsBooking.cars?.primary_image_url
-                    ? <img src={detailsBooking.cars.primary_image_url} alt="" className="w-full h-full object-cover" />
-                    : <Car className="text-muted-foreground" size={24} />}
+                  {(() => {
+                    const vehicle = getBookingVehicleDisplay(detailsBooking, 'client');
+                    return vehicle.imageUrl
+                      ? <img src={vehicle.imageUrl} alt="" className="w-full h-full object-cover" />
+                      : <Car className="text-muted-foreground" size={24} />;
+                  })()}
                 </div>
                 <div>
-                  <p className="font-bold">{detailsBooking.cars?.make} {detailsBooking.cars?.model}</p>
-                  <p className="text-xs text-muted-foreground">Plate: {detailsBooking.cars?.license_plate}</p>
+                  {(() => {
+                    const vehicle = getBookingVehicleDisplay(detailsBooking, 'client');
+                    return (
+                      <>
+                        <p className="font-bold">{vehicle.modelLabel}</p>
+                        {vehicle.clientSubtitle && (
+                          <p className="text-xs text-muted-foreground">{vehicle.clientSubtitle}</p>
+                        )}
+                      </>
+                    );
+                  })()}
                   <div className="mt-1">{getStatusBadge(detailsBooking.status)}</div>
                 </div>
               </div>
@@ -709,7 +729,7 @@ export function MyBookings() {
                 <div>
                   <h3 className="font-bold text-lg">Leave a Review</h3>
                   <p className="text-xs text-muted-foreground">
-                    {reviewBooking.cars?.make} {reviewBooking.cars?.model}
+                    {getBookingVehicleDisplay(reviewBooking, 'client').modelLabel}
                   </p>
                 </div>
               </div>
