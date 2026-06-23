@@ -76,8 +76,9 @@ BEGIN
   END IF;
 END $$;
 
+-- One public model per make/model/year (slug is unique on those three, not category).
 WITH distinct_units AS (
-  SELECT DISTINCT
+  SELECT DISTINCT ON (make, model, year)
     make,
     model,
     year,
@@ -94,6 +95,7 @@ WITH distinct_units AS (
     overtime_rate,
     security_deposit
   FROM cars
+  ORDER BY make, model, year, created_at DESC NULLS LAST, id
 ), inserted_models AS (
   INSERT INTO vehicle_models (
     slug,
@@ -160,9 +162,9 @@ WITH distinct_units AS (
     WHERE vm.make IS NOT DISTINCT FROM du.make
       AND vm.model IS NOT DISTINCT FROM du.model
       AND vm.year IS NOT DISTINCT FROM du.year
-      AND vm.category IS NOT DISTINCT FROM du.category
   )
-  RETURNING id, make, model, year, category
+  ON CONFLICT (slug) DO NOTHING
+  RETURNING id, make, model, year
 )
 SELECT COUNT(*) FROM inserted_models;
 
@@ -172,8 +174,7 @@ FROM vehicle_models vm
 WHERE c.vehicle_model_id IS NULL
   AND vm.make IS NOT DISTINCT FROM c.make
   AND vm.model IS NOT DISTINCT FROM c.model
-  AND vm.year IS NOT DISTINCT FROM c.year
-  AND vm.category IS NOT DISTINCT FROM c.category;
+  AND vm.year IS NOT DISTINCT FROM c.year;
 
 UPDATE bookings b
 SET vehicle_model_id = c.vehicle_model_id
