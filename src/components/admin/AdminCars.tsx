@@ -39,6 +39,13 @@ type MaintenanceStatus = 'ok' | 'due' | 'in_progress';
 interface CarItem {
   id: string;
   fleet_owner: string; // Changed from fleet_owner_id to match database
+  vehicle_model_id?: string | null;
+  vehicle_model?: {
+    id: string;
+    display_name?: string | null;
+    make?: string | null;
+    model?: string | null;
+  } | null;
   make: string;
   model: string;
   year: number;
@@ -106,6 +113,7 @@ export function AdminCars() {
   const [page, setPage] = useState(1);
   const pageSize = 20;
   const [fleetOwners, setFleetOwners] = useState<any[]>([]);
+  const [vehicleModels, setVehicleModels] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Filters & Search
@@ -139,7 +147,7 @@ export function AdminCars() {
     daily_rate: 0, overtime_rate: 0, security_deposit: 0, status: 'available',
     primary_image_url: '', photos: [], video_url: '',
     transmission: 'Automatic', fuel_type: 'Petrol', seats: 5, features: [],
-    fleet_owner: '', maintenance_status: 'ok', next_service_date: ''
+    fleet_owner: '', vehicle_model_id: '', maintenance_status: 'ok', next_service_date: ''
   });
 
   // Quick Edit State
@@ -153,9 +161,10 @@ export function AdminCars() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [carsResult, ownersData] = await Promise.all([
+      const [carsResult, ownersData, vehicleModelsResult] = await Promise.all([
         adminService.getCars(page, pageSize),
-        adminService.getFleetOwners()
+        adminService.getFleetOwners(),
+        adminService.getVehicleModels(1, 500)
       ]);
       
       if (carsResult && 'data' in carsResult) {
@@ -163,6 +172,7 @@ export function AdminCars() {
         setTotalCount(carsResult.count || 0);
       }
       setFleetOwners(ownersData || []);
+      setVehicleModels(vehicleModelsResult?.data || []);
     } catch (error) {
       console.error('Failed to fetch data:', error);
       toast.error('Failed to fetch data');
@@ -277,7 +287,7 @@ export function AdminCars() {
       daily_rate: 0, overtime_rate: 0, security_deposit: 0, status: 'available',
       primary_image_url: '', photos: [], video_url: '',
       transmission: 'Automatic', fuel_type: 'Petrol', seats: 5, features: [],
-      fleet_owner: '', maintenance_status: 'ok', next_service_date: ''
+      fleet_owner: '', vehicle_model_id: '', maintenance_status: 'ok', next_service_date: ''
     });
     setIsFormModalOpen(true);
   };
@@ -523,6 +533,11 @@ export function AdminCars() {
                         <div>
                           <p className="text-xs md:text-sm font-bold text-foreground truncate max-w-[120px] md:max-w-none">{car.make} {car.model}</p>
                           <p className="text-[8px] md:text-xs text-muted-foreground">{car.year} {car.color}</p>
+                          {car.vehicle_model && (
+                            <p className="text-[8px] md:text-xs text-primary truncate max-w-[120px] md:max-w-none">
+                              Public model: {car.vehicle_model.display_name || `${car.vehicle_model.make} ${car.vehicle_model.model}`}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -665,6 +680,11 @@ export function AdminCars() {
                   <div>
                     <p className="text-sm font-bold truncate max-w-[150px]">{car.make} {car.model}</p>
                     <p className="text-xs text-muted-foreground">{car.license_plate}</p>
+                    {car.vehicle_model && (
+                      <p className="text-[10px] text-primary truncate max-w-[150px]">
+                        {car.vehicle_model.display_name || `${car.vehicle_model.make} ${car.vehicle_model.model}`}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <ChevronDown 
@@ -684,6 +704,10 @@ export function AdminCars() {
                     <div>
                       <span className="text-xs text-muted uppercase tracking-wide">Make & Model</span>
                       <p className="text-sm text-white font-medium">{car.make} {car.model}</p>
+                    </div>
+                    <div>
+                      <span className="text-xs text-muted uppercase tracking-wide">Public Model</span>
+                      <p className="text-sm text-white font-medium">{car.vehicle_model?.display_name || (car.vehicle_model ? `${car.vehicle_model.make} ${car.vehicle_model.model}` : 'Not linked')}</p>
                     </div>
                     <div>
                       <span className="text-xs text-muted uppercase tracking-wide">Year</span>
@@ -1087,6 +1111,43 @@ export function AdminCars() {
                 <div className="space-y-6 animate-in slide-in-from-right-4">
                   <h4 className="font-bold text-lg border-b border-border pb-2">1. Basic Information</h4>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-2 md:col-span-2">
+                      <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Public Vehicle Model</label>
+                      <select
+                        value={formData.vehicle_model_id || ''}
+                        onChange={(e) => {
+                          const selectedVehicleModel = vehicleModels.find((item) => item.id === e.target.value);
+                          setFormData({
+                            ...formData,
+                            vehicle_model_id: e.target.value,
+                            make: selectedVehicleModel?.make || formData.make,
+                            model: selectedVehicleModel?.model || formData.model,
+                            year: selectedVehicleModel?.year || formData.year,
+                            category: selectedVehicleModel?.category || formData.category,
+                            description: selectedVehicleModel?.description || formData.description,
+                            primary_image_url: selectedVehicleModel?.primary_image_url || formData.primary_image_url,
+                            transmission: selectedVehicleModel?.transmission || formData.transmission,
+                            fuel_type: selectedVehicleModel?.fuel_type || formData.fuel_type,
+                            seats: selectedVehicleModel?.seats || formData.seats,
+                            features: selectedVehicleModel?.features?.length ? selectedVehicleModel.features : formData.features,
+                            daily_rate: selectedVehicleModel?.base_daily_rate || formData.daily_rate,
+                            overtime_rate: selectedVehicleModel?.overtime_rate ?? formData.overtime_rate,
+                            security_deposit: selectedVehicleModel?.security_deposit ?? formData.security_deposit,
+                          });
+                        }}
+                        className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/50"
+                      >
+                        <option value="">No linked vehicle model</option>
+                        {vehicleModels.map((vehicleModel) => (
+                          <option key={vehicleModel.id} value={vehicleModel.id}>
+                            {vehicleModel.display_name || `${vehicleModel.make} ${vehicleModel.model}`}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        Link this physical unit to a public listing model so bookings can target the model instead of a specific car.
+                      </p>
+                    </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Make *</label>
                       <input type="text" required value={formData.make} onChange={(e) => setFormData({ ...formData, make: e.target.value })} className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm focus:ring-2 focus:ring-primary/50" placeholder="e.g., Mercedes-Benz" />

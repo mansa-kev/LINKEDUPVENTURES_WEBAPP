@@ -20,7 +20,7 @@ export function createPrepareContinuationHandler(supabase: SupabaseClient) {
 
       const { data: reservation, error: resError } = await supabase
         .from('car_reservations')
-        .select('id, car_id, client_id, status, payment_status, booking_completion_token, linked_booking_id')
+        .select('id, car_id, vehicle_model_id, client_id, status, payment_status, booking_completion_token, linked_booking_id')
         .eq('id', reservationId)
         .single();
 
@@ -56,7 +56,17 @@ export function createPrepareContinuationHandler(supabase: SupabaseClient) {
       }
 
       const origin = req.get('origin') || `${req.protocol}://${req.get('host')}`;
-      const link = `${origin}/cars/${reservation.car_id}?booking=true&reservationToken=${continuationToken}`;
+      const continuationTarget = reservation.car_id
+        ? `/cars/${reservation.car_id}`
+        : reservation.vehicle_model_id
+          ? `/models/${reservation.vehicle_model_id}`
+          : null;
+
+      if (!continuationTarget) {
+        return res.status(409).json({ success: false, error: 'Reservation is missing both car_id and vehicle_model_id.' });
+      }
+
+      const link = `${origin}${continuationTarget}?booking=true&reservationToken=${continuationToken}`;
 
       if (notifyClient && reservation.client_id) {
         const { error: notificationError } = await supabase.from('notifications').insert({
@@ -78,6 +88,7 @@ export function createPrepareContinuationHandler(supabase: SupabaseClient) {
         reservationId: reservation.id,
         token: continuationToken,
         carId: reservation.car_id,
+        vehicleModelId: reservation.vehicle_model_id || null,
       });
     } catch (err: any) {
       console.error('[prepare-continuation]', err);

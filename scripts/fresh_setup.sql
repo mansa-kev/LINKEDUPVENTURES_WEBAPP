@@ -145,9 +145,37 @@ CREATE TABLE IF NOT EXISTS fleet_owner_settings (
 );
 
 -- 3. Cars
+CREATE TABLE IF NOT EXISTS vehicle_models (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug TEXT UNIQUE,
+  make TEXT NOT NULL,
+  model TEXT NOT NULL,
+  year INTEGER,
+  display_name TEXT,
+  category TEXT,
+  description TEXT,
+  primary_image_url TEXT,
+  gallery_urls TEXT[] DEFAULT '{}',
+  video_url TEXT,
+  transmission TEXT,
+  fuel_type TEXT,
+  seats INTEGER,
+  luggage INTEGER,
+  features TEXT[] DEFAULT '{}',
+  base_daily_rate NUMERIC,
+  overtime_rate NUMERIC DEFAULT 0,
+  security_deposit NUMERIC DEFAULT 0,
+  is_chauffeured_only BOOLEAN DEFAULT FALSE,
+  is_public BOOLEAN DEFAULT TRUE,
+  sort_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 CREATE TABLE IF NOT EXISTS cars (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   fleet_owner_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+  vehicle_model_id UUID REFERENCES vehicle_models(id) ON DELETE SET NULL,
   make TEXT NOT NULL,
   model TEXT NOT NULL,
   year INTEGER,
@@ -184,6 +212,7 @@ CREATE TABLE IF NOT EXISTS cars (
 CREATE TABLE IF NOT EXISTS bookings (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   car_id UUID REFERENCES cars(id) ON DELETE CASCADE,
+  vehicle_model_id UUID REFERENCES vehicle_models(id) ON DELETE SET NULL,
   client_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
   fleet_owner_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
   start_date DATE NOT NULL,

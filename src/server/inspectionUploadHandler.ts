@@ -120,7 +120,7 @@ export function createInspectionUploadHandler(supabase: SupabaseClient, requireS
 
       return res.json({
         success: true,
-        publicUrl: urlData.publicUrl,
+        publicUrl: `/api/assets/booking_inspections/${filePath}`,
         filePath,
       });
     } catch (err: any) {

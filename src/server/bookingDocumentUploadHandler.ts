@@ -64,11 +64,11 @@ export function createBookingDocumentUploadHandler(supabase: SupabaseClient) {
         return res.status(500).json({ success: false, error: uploadError.message });
       }
 
-      const { data: urlData } = supabase.storage.from('public_assets').getPublicUrl(filePath);
+      const proxyUrl = `/api/assets/public_assets/${filePath}`;
 
       return res.json({
         success: true,
-        publicUrl: urlData.publicUrl,
+        publicUrl: proxyUrl,
         filePath,
       });
     } catch (err: any) {

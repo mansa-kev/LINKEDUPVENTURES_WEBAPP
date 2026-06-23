@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS car_reservations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   car_id UUID NOT NULL REFERENCES cars(id) ON DELETE CASCADE,
+  vehicle_model_id UUID REFERENCES vehicle_models(id) ON DELETE SET NULL,
   client_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   fleet_owner_id UUID NOT NULL REFERENCES user_profiles(id),
   start_date DATE NOT NULL,
@@ -26,6 +27,7 @@ ALTER TABLE car_reservations ENABLE ROW LEVEL SECURITY;
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_car_reservations_car_id ON car_reservations(car_id);
+CREATE INDEX IF NOT EXISTS idx_car_reservations_vehicle_model_id ON car_reservations(vehicle_model_id);
 CREATE INDEX IF NOT EXISTS idx_car_reservations_client_id ON car_reservations(client_id);
 CREATE INDEX IF NOT EXISTS idx_car_reservations_status ON car_reservations(status);
 CREATE INDEX IF NOT EXISTS idx_car_reservations_dates ON car_reservations(start_date, end_date);

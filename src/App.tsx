@@ -19,6 +19,7 @@ import { AboutUs } from './components/public/AboutUs';
 import { Contact } from './components/public/Contact';
 import { BrowseCars } from './components/public/BrowseCars';
 import { CarDetails } from './components/public/CarDetails';
+import { VehicleModelDetails } from './components/public/VehicleModelDetails';
 import { BookingConfirmation } from './components/public/BookingConfirmation';
 import { HowItWorks } from './components/public/HowItWorks';
 import { FAQ } from './components/public/FAQ';
@@ -64,6 +65,7 @@ export default function App() {
                           <Route path="/contact" element={<Contact />} />
                           <Route path="/cars" element={<BrowseCars />} />
                           <Route path="/cars/:id" element={<CarDetails />} />
+                          <Route path="/models/:id" element={<VehicleModelDetails />} />
                           <Route path="/booking-confirmation/:bookingId" element={<BookingConfirmation />} />
                           <Route path="/how-it-works" element={<HowItWorks />} />
                           <Route path="/faq" element={<FAQ />} />

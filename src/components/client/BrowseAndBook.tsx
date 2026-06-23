@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { fleetService } from '../../services/fleetService';
 import { bookingService } from '../../services/bookingService';
-import { Car } from '../../types';
+import { Car, VehicleModel } from '../../types';
 import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
@@ -28,7 +28,7 @@ type BookingStep = 'browse' | 'details' | 'dates' | 'confirm';
 
 export function BrowseAndBook() {
   const { user, profile } = useAuth();
-  const [cars, setCars] = useState<Car[]>([]);
+  const [models, setModels] = useState<VehicleModel[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -38,7 +38,7 @@ export function BrowseAndBook() {
   const [sortBy, setSortBy] = useState<'recommended' | 'price_asc' | 'price_desc'>('recommended');
 
   // Booking state
-  const [selectedCar, setSelectedCar] = useState<Car | null>(null);
+  const [selectedModel, setSelectedModel] = useState<VehicleModel | null>(null);
   const [bookingStep, setBookingStep] = useState<BookingStep>('browse');
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
@@ -47,44 +47,44 @@ export function BrowseAndBook() {
   const [activePromo, setActivePromo] = useState<Promotion | null>(null);
 
   useEffect(() => {
-    fetchCars();
+    fetchModels();
   }, []);
 
-  const fetchCars = async () => {
+  const fetchModels = async () => {
     setLoading(true);
     try {
-      const result = await fleetService.getAllCars();
+      const result = await fleetService.getAllVehicleModels();
       if (result && typeof result === 'object' && 'data' in result) {
         const data = (result as any).data || [];
-        setCars(data.filter((c: Car) => c.status === 'available'));
+        setModels(data);
       } else if (Array.isArray(result)) {
-        setCars(result.filter((c: Car) => c.status === 'available'));
+        setModels(result);
       }
     } catch (error) {
-      console.error('Error fetching cars:', error);
+      console.error('Error fetching models:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const filteredCars = cars
-    .filter(car => {
+  const filteredModels = models
+    .filter(model => {
       const q = searchQuery.toLowerCase();
-      const matchesSearch = !q || `${car.make} ${car.model}`.toLowerCase().includes(q);
-      const matchesCategory = !categoryFilter || car.category?.toLowerCase() === categoryFilter;
-      const matchesTrans = !transmissionFilter || car.transmission?.toLowerCase() === transmissionFilter;
-      const matchesSeats = !seatsFilter || (car.seats || 0) >= Number(seatsFilter);
-      const matchesPrice = !maxPrice || (car.daily_rate || 0) <= Number(maxPrice);
+      const matchesSearch = !q || `${model.make} ${model.model}`.toLowerCase().includes(q);
+      const matchesCategory = !categoryFilter || (model.category || '').toLowerCase() === categoryFilter;
+      const matchesTrans = !transmissionFilter || (model.transmission || '').toLowerCase() === transmissionFilter;
+      const matchesSeats = !seatsFilter || (Number(model.seats || 0) >= Number(seatsFilter));
+      const matchesPrice = !maxPrice || (Number(model.base_daily_rate || 0) <= Number(maxPrice));
       return matchesSearch && matchesCategory && matchesTrans && matchesSeats && matchesPrice;
     })
     .sort((a, b) => {
-      if (sortBy === 'price_asc') return (a.daily_rate || 0) - (b.daily_rate || 0);
-      if (sortBy === 'price_desc') return (b.daily_rate || 0) - (a.daily_rate || 0);
+      if (sortBy === 'price_asc') return Number(a.base_daily_rate || 0) - Number(b.base_daily_rate || 0);
+      if (sortBy === 'price_desc') return Number(b.base_daily_rate || 0) - Number(a.base_daily_rate || 0);
       return 0;
     });
 
-  const categories = [...new Set(cars.map(c => c.category).filter(Boolean))] as string[];
-  const transmissions = [...new Set(cars.map(c => c.transmission?.toLowerCase()).filter(Boolean))] as string[];
+  const categories = [...new Set(models.map(m => m.category).filter(Boolean))] as string[];
+  const transmissions = [...new Set(models.map(m => m.transmission?.toLowerCase()).filter(Boolean))] as string[];
   const activeFilterCount = [categoryFilter, transmissionFilter, seatsFilter, maxPrice].filter(v => v !== '' && v !== 0).length;
   const resetFilters = () => {
     setCategoryFilter(''); setTransmissionFilter(''); setSeatsFilter(''); setMaxPrice('');
@@ -96,28 +96,28 @@ export function BrowseAndBook() {
     return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
   })();
 
-  const originalAmount = selectedCar ? selectedCar.daily_rate * totalDays : 0;
-  const discountedAmount = selectedCar && activePromo
-    ? totalDays * promotionService.applyDiscount(selectedCar.daily_rate, activePromo).discounted
+  const originalAmount = selectedModel ? Number(selectedModel.base_daily_rate || 0) * totalDays : 0;
+  const discountedAmount = selectedModel && activePromo
+    ? totalDays * promotionService.applyDiscount(Number(selectedModel.base_daily_rate || 0), activePromo).discounted
     : originalAmount;
   const totalAmount = discountedAmount;
   const discountSavings = originalAmount - discountedAmount;
 
-  const handleSelectCar = async (car: Car) => {
-    setSelectedCar(car);
+  const handleSelectModel = async (model: VehicleModel) => {
+    setSelectedModel(model);
     setBookingStep('dates');
     window.scrollTo({ top: 0, behavior: 'smooth' });
-    const promo = await promotionService.getForCategory(car.category || '');
+    const promo = await promotionService.getForCategory(model.category || '');
     setActivePromo(promo);
   };
 
   const handleConfirmBooking = async () => {
-    if (!selectedCar || !user || !pickupDate || !returnDate) return;
+    if (!selectedModel || !user || !pickupDate || !returnDate) return;
     setBookingLoading(true);
 
     try {
       const booking = await bookingService.createBooking({
-        carId: selectedCar.id,
+        vehicleModelId: selectedModel.id,
         startDate: pickupDate,
         endDate: returnDate,
         totalAmount,
@@ -130,7 +130,7 @@ export function BrowseAndBook() {
 
       toast.success('Booking created! Proceed to payment.');
       setBookingStep('browse');
-      setSelectedCar(null);
+      setSelectedModel(null);
     } catch (error: any) {
       toast.error(error.message || 'Failed to create booking');
     } finally {
@@ -141,23 +141,50 @@ export function BrowseAndBook() {
   const handleBack = () => {
     if (bookingStep === 'dates') {
       setBookingStep('browse');
-      setSelectedCar(null);
+      setSelectedModel(null);
     } else if (bookingStep === 'confirm') {
       setBookingStep('dates');
     }
   };
 
   // ─── Booking Flow (dates + confirm) ────────────────────────────────────────
-  if (bookingStep !== 'browse' && selectedCar) {
+  if (bookingStep !== 'browse' && selectedModel) {
+    const carLike: Car = {
+      id: selectedModel.id,
+      vehicle_model_id: selectedModel.id,
+      make: selectedModel.make,
+      model: selectedModel.model,
+      year: selectedModel.year || new Date().getFullYear(),
+      color: 'N/A',
+      license_plate: 'MODEL',
+      category: selectedModel.category || 'N/A',
+      description: selectedModel.description || '',
+      primary_image_url: selectedModel.primary_image_url || '',
+      photos: (selectedModel.gallery_urls || []) as any,
+      video_url: selectedModel.video_url || '',
+      transmission: selectedModel.transmission || '',
+      fuel_type: selectedModel.fuel_type || '',
+      seats: selectedModel.seats || 0,
+      luggage: selectedModel.luggage || 0,
+      features: (selectedModel.features || []) as any,
+      daily_rate: Number(selectedModel.base_daily_rate || 0),
+      overtime_rate: Number(selectedModel.overtime_rate || 0),
+      security_deposit: Number(selectedModel.security_deposit || 0),
+      status: 'available',
+      maintenance_status: 'ok',
+      created_at: selectedModel.created_at || new Date().toISOString(),
+      vehicle_model: selectedModel,
+    } as any;
+
     return (
       <div className="space-y-6 max-w-4xl mx-auto">
         <button 
-          onClick={() => { setBookingStep('browse'); setSelectedCar(null); }} 
+          onClick={() => { setBookingStep('browse'); setSelectedModel(null); }} 
           className="text-sm font-bold text-muted-foreground hover:text-foreground flex items-center gap-2 mb-2"
         >
           <ArrowRight size={16} className="rotate-180" /> Back to Catalog
         </button>
-        <BookingFlow car={selectedCar} />
+        <BookingFlow car={carLike} vehicleModelId={selectedModel.id} uploadContextId={`client-model:${selectedModel.id}`} />
       </div>
     );
   }
@@ -167,8 +194,8 @@ export function BrowseAndBook() {
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Browse Cars</h1>
-          <p className="text-sm text-muted-foreground">{filteredCars.length} vehicles available</p>
+          <h1 className="text-2xl font-bold">Browse Models</h1>
+          <p className="text-sm text-muted-foreground">{filteredModels.length} models available</p>
         </div>
       </div>
 
@@ -249,31 +276,31 @@ export function BrowseAndBook() {
         <div className="flex justify-center py-20">
           <Loader2 className="animate-spin text-primary" size={32} />
         </div>
-      ) : filteredCars.length === 0 ? (
+      ) : filteredModels.length === 0 ? (
         <div className="text-center py-20">
           <p className="text-lg font-bold text-muted-foreground mb-2">No vehicles match your filters</p>
           <p className="text-sm text-muted-foreground">Try adjusting your search or check back later</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredCars.map((car) => (
+          {filteredModels.map((model) => (
             <motion.div
-              key={car.id}
+              key={model.id}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               className="bg-card rounded-2xl border border-border overflow-hidden group hover:border-primary/20 transition-colors"
             >
               <div className="relative aspect-[16/10] bg-muted overflow-hidden">
                 <img
-                  src={car.primary_image_url || car.photos?.[0] || `https://picsum.photos/seed/${car.id}/400/250`}
-                  alt={`${car.make} ${car.model}`}
+                  src={model.primary_image_url || model.gallery_urls?.[0] || `https://picsum.photos/seed/${model.id}/400/250`}
+                  alt={`${model.make} ${model.model}`}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-150"
                   referrerPolicy="no-referrer"
-                  onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/c-${car.id}/400/250`; }}
+                  onError={(e) => { e.currentTarget.src = `https://picsum.photos/seed/m-${model.id}/400/250`; }}
                 />
-                {car.category && (
+                {model.category && (
                   <span className="absolute top-3 right-3 px-2.5 py-1 bg-black/50 backdrop-blur-sm rounded-full text-[10px] font-bold text-white uppercase tracking-wider">
-                    {car.category}
+                    {model.category}
                   </span>
                 )}
               </div>
@@ -281,23 +308,23 @@ export function BrowseAndBook() {
               <div className="p-4 space-y-3">
                 <div className="flex justify-between items-start">
                   <div>
-                    <h3 className="font-bold text-sm">{car.make} {car.model}</h3>
-                    <p className="text-xs text-muted-foreground">{car.year}</p>
+                    <h3 className="font-bold text-sm">{model.display_name || `${model.make} ${model.model}`}</h3>
+                    <p className="text-xs text-muted-foreground">{model.year || ''}</p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-primary">KES {car.daily_rate?.toLocaleString()}</p>
+                    <p className="font-bold text-primary">KES {Number(model.base_daily_rate || 0).toLocaleString()}</p>
                     <p className="text-[10px] text-muted-foreground">/day</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-                  {car.transmission && <span className="flex items-center gap-1"><Settings size={10} />{car.transmission}</span>}
-                  {car.fuel_type && <span className="flex items-center gap-1"><Fuel size={10} />{car.fuel_type}</span>}
-                  {car.seats > 0 && <span className="flex items-center gap-1"><Users size={10} />{car.seats}</span>}
+                  {model.transmission && <span className="flex items-center gap-1"><Settings size={10} />{model.transmission}</span>}
+                  {model.fuel_type && <span className="flex items-center gap-1"><Fuel size={10} />{model.fuel_type}</span>}
+                  {Number(model.seats || 0) > 0 && <span className="flex items-center gap-1"><Users size={10} />{model.seats}</span>}
                 </div>
 
                 <button
-                  onClick={() => handleSelectCar(car)}
+                  onClick={() => handleSelectModel(model)}
                   className="w-full py-3 bg-primary text-white rounded-xl font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
                 >
                   Book Now <ArrowRight size={14} />

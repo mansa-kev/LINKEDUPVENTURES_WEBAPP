@@ -1,6 +1,6 @@
 import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../lib/supabase';
 import { logger } from '../utils/logger';
-import { Car } from '../types';
+import { Car, VehicleModel } from '../types';
 import { getOrSetCache, invalidateCachePrefix } from '../utils/queryCache';
 import {
   CALENDAR_BLOCKING_STATUSES_DB,
@@ -13,6 +13,98 @@ const FLEET_CACHE_TTL_MS = 60_000;
 
 export const fleetService = {
   // --- Public Fleet ---
+  getAllVehicleModels: async () => {
+    return getOrSetCache('fleet:allVehicleModels', FLEET_CACHE_TTL_MS, async () => {
+      const { data, error } = await supabase
+        .from('vehicle_models')
+        .select('*')
+        .eq('is_public', true)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: false });
+      if (error) return handleSupabaseError(error, 'getAllVehicleModels');
+      return data as VehicleModel[];
+    });
+  },
+
+  getAvailableVehicleModels: async (pickupDate: string, dropoffDate: string) => {
+    // Pick models that have at least one available unit not blocked by booking.
+    // This is intentionally simple for phase 1: it preserves the existing unit-level availability logic.
+    const { data: cars, error: carsError } = await supabase
+      .from('cars')
+      .select('id, vehicle_model_id')
+      .eq('status', 'available')
+      .not('vehicle_model_id', 'is', null);
+
+    if (carsError) return handleSupabaseError(carsError, 'getAvailableVehicleModels - cars');
+    if (!cars?.length) return [];
+
+    const carIds = cars.map((c: any) => c.id);
+
+    const { data: bookings, error: bookingsError } = await supabase
+      .from('bookings')
+      .select('car_id')
+      .in('car_id', carIds)
+      .or(`start_date.lte.${dropoffDate},end_date.gte.${pickupDate}`)
+      .in('status', [...CALENDAR_BLOCKING_STATUSES_DB]);
+
+    if (bookingsError) return handleSupabaseError(bookingsError, 'getAvailableVehicleModels - bookings');
+
+    const { data: reservations, error: reservationsError } = await supabase
+      .from('car_reservations')
+      .select('car_id, vehicle_model_id')
+      .or(`start_date.lte.${dropoffDate},end_date.gte.${pickupDate}`)
+      .in('status', ['reserved', 'confirmed', 'pending_payment']);
+
+    if (reservationsError) return handleSupabaseError(reservationsError, 'getAvailableVehicleModels - reservations');
+
+    const bookedCarIds = new Set((bookings || []).map((b: any) => b.car_id));
+    const reservedCarIds = new Set(
+      (reservations || []).map((r: any) => r.car_id).filter(Boolean)
+    );
+
+    const modelOnlyReservationCounts: Record<string, number> = {};
+    for (const reservation of reservations || []) {
+      if (!reservation.car_id && reservation.vehicle_model_id) {
+        modelOnlyReservationCounts[reservation.vehicle_model_id] =
+          (modelOnlyReservationCounts[reservation.vehicle_model_id] || 0) + 1;
+      }
+    }
+
+    const freeUnitsByModel: Record<string, number> = {};
+    for (const car of cars || []) {
+      if (!car.vehicle_model_id) continue;
+      if (bookedCarIds.has(car.id) || reservedCarIds.has(car.id)) continue;
+      freeUnitsByModel[car.vehicle_model_id] = (freeUnitsByModel[car.vehicle_model_id] || 0) + 1;
+    }
+
+    const availableModelIds = Object.keys(freeUnitsByModel).filter(
+      (modelId) => freeUnitsByModel[modelId] > (modelOnlyReservationCounts[modelId] || 0)
+    );
+
+    if (availableModelIds.length === 0) return [];
+
+    const { data: models, error: modelsError } = await supabase
+      .from('vehicle_models')
+      .select('*')
+      .in('id', availableModelIds)
+      .eq('is_public', true)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: false });
+
+    if (modelsError) return handleSupabaseError(modelsError, 'getAvailableVehicleModels - models');
+    return models as VehicleModel[];
+  },
+
+  getVehicleModelById: async (id: string) => {
+    const { data, error } = await supabase
+      .from('vehicle_models')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (error) return handleSupabaseError(error, 'getVehicleModelById');
+    return data as VehicleModel | null;
+  },
+
   getAllCars: async () => {
     return getOrSetCache('fleet:allCars', FLEET_CACHE_TTL_MS, async () => {
       const { data, error } = await supabase
@@ -274,6 +366,7 @@ export const fleetService = {
       .select();
     if (error) return handleSupabaseError(error, 'addCar');
     invalidateCachePrefix('fleet:allCars');
+    invalidateCachePrefix('fleet:allVehicleModels');
     invalidateCachePrefix('fleet:cars:');
     invalidateCachePrefix('fleet:dashboard:');
     return data;
@@ -287,6 +380,7 @@ export const fleetService = {
       .select();
     if (error) return handleSupabaseError(error, 'updateCar');
     invalidateCachePrefix('fleet:allCars');
+    invalidateCachePrefix('fleet:allVehicleModels');
     invalidateCachePrefix('fleet:cars:');
     invalidateCachePrefix('fleet:dashboard:');
     return data;

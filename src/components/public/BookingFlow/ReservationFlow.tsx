@@ -31,10 +31,13 @@ import { InternationalPhoneInput } from '../../ui/InternationalPhoneInput';
 interface ReservationFlowProps {
   car: Car;
   onClose: () => void;
+  vehicleModelId?: string | null;
 }
 
-export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
+export function ReservationFlow({ car, onClose, vehicleModelId }: ReservationFlowProps) {
   const navigate = useNavigate();
+  const displayName = `${car.make} ${car.model}`;
+  const continuationPath = vehicleModelId ? `/models/${vehicleModelId}` : `/cars/${car.id}`;
   const [step, setStep] = useState(1);
   const [reservationFee, setReservationFee] = useState(500);
   const [phone, setPhone] = useState('');
@@ -46,7 +49,7 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
   const [altPaymentNotes, setAltPaymentNotes] = useState('');
   const [phase, setPhase] = useState<'ready' | 'creating_reservation' | 'sending_stk' | 'waiting' | 'paid' | 'failed' | 'timeout' | 'manual_pending'>('ready');
   const [formData, setFormData] = useState<ReservationData>({
-    carId: car.id,
+    ...(vehicleModelId ? { vehicleModelId } : { carId: car.id }),
     startDate: '',
     endDate: '',
     contactName: '',
@@ -145,11 +148,9 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
     if (reservationId) return reservationId;
 
     setPhase('creating_reservation');
-    const availability = await reservationService.checkAvailability(
-      formData.carId,
-      formData.startDate,
-      formData.endDate
-    );
+    const availability = vehicleModelId
+      ? await reservationService.checkModelAvailability(vehicleModelId, formData.startDate, formData.endDate)
+      : await reservationService.checkAvailability(formData.carId!, formData.startDate, formData.endDate);
 
     if (!availability.available) {
       throw new Error('Selected dates are no longer available. Please choose different dates.');
@@ -245,7 +246,7 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
       setPhase('creating_reservation');
       const id = await getOrCreateReservation();
       
-      const messageContent = `Alternative Payment Request (Reservation Fee)\nReservation ID: ${id}\nCar: ${car.make} ${car.model}\nName: ${formData.contactName}\nEmail: ${formData.contactEmail}\nPhone: ${phone}\nReservation Fee: KES ${reservationFee}\nNotes: ${altPaymentNotes}`;
+      const messageContent = `Alternative Payment Request (Reservation Fee)\nReservation ID: ${id}\nVehicle: ${displayName}\nName: ${formData.contactName}\nEmail: ${formData.contactEmail}\nPhone: ${phone}\nReservation Fee: KES ${reservationFee}\nNotes: ${altPaymentNotes}`;
       
       await supabase.from('contact_messages').insert([{
         name: formData.contactName,
@@ -259,7 +260,7 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
       if (formData.contactEmail) {
         await sendTemplatedEmail(formData.contactEmail, 'manual_payment_pending', {
           booking_id: id,
-          car_name: `${car.make} ${car.model}`,
+          car_name: displayName,
           total_amount: reservationFee.toLocaleString(),
           tracking_link: `${window.location.origin}/booking-confirmation/${id}` // Or my-bookings
         }).catch(err => console.error('Failed to send pending payment email', err));
@@ -267,7 +268,7 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
 
       toast.success('Request sent! Redirecting to WhatsApp...');
       
-      const waMessage = encodeURIComponent(`Hello LinkedUp Cars, I would like to pay the reservation fee for ${car.make} ${car.model} but I'm not using M-Pesa.\n\nMy name is ${formData.contactName} and phone is ${phone}.\nReservation ID: ${id.substring(0,8)}`);
+      const waMessage = encodeURIComponent(`Hello LinkedUp Cars, I would like to pay the reservation fee for ${displayName} but I'm not using M-Pesa.\n\nMy name is ${formData.contactName} and phone is ${phone}.\nReservation ID: ${id.substring(0,8)}`);
       window.open(`https://wa.me/254714764162?text=${waMessage}`, '_blank');
       
       setPhase('manual_pending');
@@ -304,7 +305,7 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
       }
 
       onClose();
-      navigate(`/cars/${car.id}?booking=true&reservationToken=${token}`);
+      navigate(`${continuationPath}?booking=true&reservationToken=${token}`);
     } catch (error: any) {
       toast.error(error.message || 'Could not start the booking flow.');
     }
@@ -362,8 +363,8 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
       ) : (
         <form onSubmit={(e) => e.preventDefault()} onClick={(e) => e.stopPropagation()} className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 max-h-[90vh] md:max-h-none overflow-y-auto md:overflow-visible">
           <div className="space-y-1">
-            <h3 className="text-xl sm:text-2xl md:text-3xl font-serif font-black italic text-warning">Reserve This Car</h3>
-            <p className="text-muted-foreground text-xs sm:text-sm">Pay the reservation fee via NCBA STK Push to hold this car for your dates.</p>
+            <h3 className="text-xl sm:text-2xl md:text-3xl font-serif font-black italic text-warning">Reserve This {vehicleModelId ? 'Model' : 'Car'}</h3>
+            <p className="text-muted-foreground text-xs sm:text-sm">Pay the reservation fee via NCBA STK Push to hold this {vehicleModelId ? 'model' : 'car'} for your dates.</p>
           </div>
 
           {/* Progress Bar */}
@@ -499,8 +500,8 @@ export function ReservationFlow({ car, onClose }: ReservationFlowProps) {
           
           <div className="p-4 bg-warning/5 rounded-xl border border-warning/20 space-y-3">
             <div className="flex justify-between items-center">
-              <span className="text-sm text-muted-foreground">Car</span>
-              <span className="font-bold">{car.make} {car.model}</span>
+              <span className="text-sm text-muted-foreground">{vehicleModelId ? 'Model' : 'Car'}</span>
+              <span className="font-bold">{displayName}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-muted-foreground">Dates</span>

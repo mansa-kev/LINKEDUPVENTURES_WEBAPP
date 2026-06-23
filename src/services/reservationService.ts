@@ -1,7 +1,8 @@
 import { supabase, handleSupabaseErrorWrapper as handleSupabaseError } from '../lib/supabase';
 
 export interface ReservationData {
-  carId: string;
+  carId?: string;
+  vehicleModelId?: string;
   startDate: string;
   endDate: string;
   contactName: string;
@@ -194,6 +195,7 @@ export const reservationService = {
         reservationId: result.reservationId,
         token: result.token,
         carId: result.carId,
+        vehicleModelId: result.vehicleModelId || null,
       };
     } catch (error) {
       return handleSupabaseError(error, 'prepareBookingContinuation');
@@ -209,6 +211,80 @@ export const reservationService = {
     }
 
     return data;
+  },
+
+  checkModelAvailability: async (vehicleModelId: string, startDate: string, endDate: string, ignoreReservationId?: string) => {
+    try {
+      const { data: units, error: unitsError } = await supabase
+        .from('cars')
+        .select('id')
+        .eq('vehicle_model_id', vehicleModelId)
+        .eq('status', 'available');
+
+      if (unitsError) throw unitsError;
+      const unitIds = (units || []).map((u: any) => u.id);
+      if (unitIds.length === 0) {
+        return { available: false, conflicts: [] };
+      }
+
+      const checkOverlap = (existingStart: string, existingEnd: string) => {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const existingStartDate = new Date(existingStart);
+        const existingEndDate = new Date(existingEnd);
+        return (
+          (start >= existingStartDate && start <= existingEndDate) ||
+          (end >= existingStartDate && end <= existingEndDate) ||
+          (start <= existingStartDate && end >= existingEndDate)
+        );
+      };
+
+      const { data: bookings, error: bookingError } = await supabase
+        .from('bookings')
+        .select('car_id, start_date, end_date, status')
+        .in('car_id', unitIds)
+        .in('status', ['confirmed', 'on_trip', 'pending_payment_verification', 'pending']);
+
+      if (bookingError) throw bookingError;
+
+      const blockedUnitIds = new Set(
+        (bookings || [])
+          .filter((b: any) => checkOverlap(b.start_date, b.end_date))
+          .map((b: any) => b.car_id)
+      );
+
+      let reservationQuery = supabase
+        .from('car_reservations')
+        .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+        .in('status', ['reserved', 'confirmed', 'pending_payment']);
+
+      if (ignoreReservationId) {
+        reservationQuery = reservationQuery.neq('id', ignoreReservationId);
+      }
+
+      const { data: reservations, error: resError } = await reservationQuery;
+      if (resError) throw resError;
+
+      const overlapping = (reservations || []).filter((r: any) => {
+        if (!checkOverlap(r.start_date, r.end_date)) return false;
+        if (r.car_id && unitIds.includes(r.car_id)) return true;
+        return !r.car_id && r.vehicle_model_id === vehicleModelId;
+      });
+
+      const modelOnlyHolds = overlapping.filter((r: any) => !r.car_id && r.vehicle_model_id === vehicleModelId).length;
+      const freeUnits = unitIds.filter((id) => !blockedUnitIds.has(id)).length;
+
+      // Each overlapping unit reservation or model-only hold consumes capacity.
+      const unitReservationHolds = overlapping.filter((r: any) => r.car_id && unitIds.includes(r.car_id)).length;
+
+      return {
+        available: freeUnits > (modelOnlyHolds + unitReservationHolds),
+        conflicts: overlapping,
+      };
+    } catch (error) {
+      console.error('Error checking model availability:', error);
+      return { available: false, conflicts: [] };
+    }
   },
 
   // Check if car is available for dates

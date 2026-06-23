@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { isOnTripStatus } from '../../constants/bookingStatuses';
 import { openBookingReceiptPdf } from '../../services/receiptPdfService';
 import { fleetService } from '../../services/fleetService';
+import { toProxiedAssetUrl } from '../../utils/assetUrl';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -215,7 +216,11 @@ export function MyBookings() {
   const openContract = async (booking: any) => {
     // 1. metadata fallback (legacy)
     const legacy = booking.metadata?.contract_url;
-    if (legacy) { window.open(legacy, '_blank'); return; }
+    if (legacy) {
+      const proxied = toProxiedAssetUrl(legacy) || legacy;
+      window.open(proxied, '_blank', 'noopener,noreferrer');
+      return;
+    }
     // 2. e_contracts table
     try {
       const { data, error } = await supabase
@@ -226,7 +231,11 @@ export function MyBookings() {
         .limit(1)
         .maybeSingle();
       if (error) throw error;
-      if (data?.pdf_url) { window.open(data.pdf_url, '_blank'); return; }
+      if (data?.pdf_url) {
+        const proxied = toProxiedAssetUrl(data.pdf_url) || data.pdf_url;
+        window.open(proxied, '_blank', 'noopener,noreferrer');
+        return;
+      }
       toast.error('Contract not available yet. It will appear once signed.');
     } catch {
       toast.error('Unable to load contract.');

@@ -370,6 +370,26 @@ export const adminService = {
   },
 
   // --- Cars ---
+  getVehicleModels: async (page: number = 1, pageSize: number = 50) => {
+    return getOrSetCache(`admin:vehicleModels:${page}:${pageSize}`, ADMIN_CACHE_TTL_MS, async () => {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      const { data, error, count } = await supabase
+        .from('vehicle_models')
+        .select(`
+          *,
+          cars(id)
+        `, { count: 'exact' })
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) return handleSupabaseErrorWrapper(error, 'getVehicleModels');
+      return { data: data || [], count: count || 0 };
+    });
+  },
+
   getCars: async (page: number = 1, pageSize: number = 20) => {
     return getOrSetCache(`admin:cars:${page}:${pageSize}`, ADMIN_CACHE_TTL_MS, async () => {
       const from = (page - 1) * pageSize;
@@ -379,6 +399,12 @@ export const adminService = {
         .from('cars')
         .select(`
           *,
+          vehicle_model:vehicle_models (
+            id,
+            display_name,
+            make,
+            model
+          ),
           fleet_owner:user_profiles (
             *,
             fleet_owner_settings (*)
@@ -459,6 +485,43 @@ export const adminService = {
     return data;
   },
 
+  addVehicleModel: async (vehicleModel: any) => {
+    const payload = {
+      ...vehicleModel,
+      gallery_urls: vehicleModel.gallery_urls || [],
+      features: vehicleModel.features || [],
+      display_name: vehicleModel.display_name || `${vehicleModel.make} ${vehicleModel.model}`.trim(),
+      slug: vehicleModel.slug || `${vehicleModel.make}-${vehicleModel.model}-${vehicleModel.year || ''}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, ''),
+      year: vehicleModel.year || null,
+      category: vehicleModel.category || null,
+      description: vehicleModel.description || null,
+      primary_image_url: vehicleModel.primary_image_url || null,
+      video_url: vehicleModel.video_url || null,
+      transmission: vehicleModel.transmission || null,
+      fuel_type: vehicleModel.fuel_type || null,
+      seats: vehicleModel.seats || null,
+      luggage: vehicleModel.luggage || null,
+      base_daily_rate: vehicleModel.base_daily_rate || null,
+      overtime_rate: vehicleModel.overtime_rate || 0,
+      security_deposit: vehicleModel.security_deposit || 0,
+      sort_order: vehicleModel.sort_order || 0,
+      is_chauffeured_only: !!vehicleModel.is_chauffeured_only,
+      is_public: vehicleModel.is_public !== false,
+    };
+
+    const { data, error } = await supabase
+      .from('vehicle_models')
+      .insert([payload])
+      .select();
+    if (error) return handleSupabaseErrorWrapper(error, 'addVehicleModel');
+    invalidateCachePrefix('admin:vehicleModels:');
+    invalidateCachePrefix('admin:cars:');
+    return data;
+  },
+
   addOutsourcedCar: async (car: {
     make: string;
     model: string;
@@ -525,6 +588,49 @@ export const adminService = {
     return data;
   },
 
+  updateVehicleModel: async (id: string, updates: any) => {
+    const payload = {
+      ...updates,
+      gallery_urls: updates.gallery_urls || [],
+      features: updates.features || [],
+      display_name: updates.display_name || `${updates.make || ''} ${updates.model || ''}`.trim() || null,
+      slug: updates.slug || undefined,
+      year: updates.year || null,
+      category: updates.category || null,
+      description: updates.description || null,
+      primary_image_url: updates.primary_image_url || null,
+      video_url: updates.video_url || null,
+      transmission: updates.transmission || null,
+      fuel_type: updates.fuel_type || null,
+      seats: updates.seats || null,
+      luggage: updates.luggage || null,
+      base_daily_rate: updates.base_daily_rate || null,
+      overtime_rate: updates.overtime_rate || 0,
+      security_deposit: updates.security_deposit || 0,
+      sort_order: updates.sort_order || 0,
+      is_chauffeured_only: !!updates.is_chauffeured_only,
+      is_public: updates.is_public !== false,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (!payload.slug && (payload.make || payload.model)) {
+      payload.slug = `${payload.make || ''}-${payload.model || ''}-${payload.year || ''}`
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    }
+
+    const { data, error } = await supabase
+      .from('vehicle_models')
+      .update(payload)
+      .eq('id', id)
+      .select();
+    if (error) return handleSupabaseErrorWrapper(error, 'updateVehicleModel');
+    invalidateCachePrefix('admin:vehicleModels:');
+    invalidateCachePrefix('admin:cars:');
+    return data;
+  },
+
   deleteCar: async (id: string) => {
     const { error } = await supabase
       .from('cars')
@@ -533,6 +639,16 @@ export const adminService = {
     if (error) return handleSupabaseErrorWrapper(error, 'deleteCar');
     invalidateCachePrefix('admin:cars:');
     invalidateCachePrefix('admin:dashboard:');
+  },
+
+  deleteVehicleModel: async (id: string) => {
+    const { error } = await supabase
+      .from('vehicle_models')
+      .delete()
+      .eq('id', id);
+    if (error) return handleSupabaseErrorWrapper(error, 'deleteVehicleModel');
+    invalidateCachePrefix('admin:vehicleModels:');
+    invalidateCachePrefix('admin:cars:');
   },
 
   // --- Users ---

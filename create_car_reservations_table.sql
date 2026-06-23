@@ -4,6 +4,7 @@
 CREATE TABLE car_reservations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   car_id UUID NOT NULL REFERENCES cars(id) ON DELETE CASCADE,
+  vehicle_model_id UUID REFERENCES vehicle_models(id) ON DELETE SET NULL,
   client_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
   fleet_owner_id UUID REFERENCES user_profiles(id) ON DELETE SET NULL,
   start_date DATE NOT NULL,
@@ -25,6 +26,7 @@ CREATE TABLE car_reservations (
 
 -- Create indexes for better performance
 CREATE INDEX idx_car_reservations_car_id ON car_reservations(car_id);
+CREATE INDEX idx_car_reservations_vehicle_model_id ON car_reservations(vehicle_model_id);
 CREATE INDEX idx_car_reservations_client_id ON car_reservations(client_id);
 CREATE INDEX idx_car_reservations_fleet_owner_id ON car_reservations(fleet_owner_id);
 CREATE INDEX idx_car_reservations_status ON car_reservations(status);

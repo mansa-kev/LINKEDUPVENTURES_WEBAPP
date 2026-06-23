@@ -140,8 +140,7 @@ export function createContractSaveHandler(supabase: SupabaseClient, requireServi
         return res.status(500).json({ success: false, error: uploadError.message });
       }
 
-      const { data: urlData } = supabase.storage.from('public_assets').getPublicUrl(filePath);
-      const publicUrl = urlData.publicUrl;
+      const publicUrl = `/api/assets/public_assets/${filePath}`;
 
       const { data: contractRow, error: insertError } = await supabase
         .from('e_contracts')

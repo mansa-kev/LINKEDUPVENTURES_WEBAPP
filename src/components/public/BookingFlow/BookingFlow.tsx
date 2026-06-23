@@ -13,6 +13,8 @@ import { toast } from 'sonner';
 interface BookingFlowProps {
   car: Car;
   reservationToken?: string | null;
+  vehicleModelId?: string | null;
+  uploadContextId?: string;
 }
 
 const calculateDays = (startDate?: string, endDate?: string) => {
@@ -22,12 +24,13 @@ const calculateDays = (startDate?: string, endDate?: string) => {
   return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 };
 
-export function BookingFlow({ car, reservationToken }: BookingFlowProps) {
+export function BookingFlow({ car, reservationToken, vehicleModelId, uploadContextId }: BookingFlowProps) {
   const [step, setStep] = useState(1);
   const [bookingData, setBookingData] = useState<any>({});
   const [loadingContinuation, setLoadingContinuation] = useState(false);
   const [continuationError, setContinuationError] = useState<string | null>(null);
   const { session, saveSession, clearSession, isSessionValid } = useBookingSession();
+  const contextId = uploadContextId || (vehicleModelId ? `model:${vehicleModelId}` : `car:${car.id}`);
 
   // Restore session if valid
   useEffect(() => {
@@ -97,17 +100,17 @@ export function BookingFlow({ car, reservationToken }: BookingFlowProps) {
   };
 
   const completeBooking = () => {
-    sessionStorage.removeItem(`pending_booking_${car.id}`);
-    sessionStorage.removeItem(`pending_booking_token_${car.id}`);
+    sessionStorage.removeItem(`pending_booking_${contextId}`);
+    sessionStorage.removeItem(`pending_booking_token_${contextId}`);
     clearSession();
   };
 
   const renderStep = () => {
     switch (step) {
       case 1: return <Step1 car={car} onNext={nextStep} initialData={bookingData} />;
-      case 2: return <Step2 car={car} onNext={nextStep} onPrev={prevStep} initialData={bookingData} />;
+      case 2: return <Step2 car={car} onNext={nextStep} onPrev={prevStep} initialData={bookingData} uploadContextId={contextId} />;
       case 3: return <Step3 car={car} bookingData={bookingData} onNext={nextStep} onPrev={prevStep} />;
-      case 4: return <Step4 car={car} bookingData={bookingData} onPrev={prevStep} onComplete={completeBooking} />;
+      case 4: return <Step4 car={car} bookingData={bookingData} onPrev={prevStep} onComplete={completeBooking} vehicleModelId={vehicleModelId || null} uploadContextId={contextId} />;
       default: return null;
     }
   };

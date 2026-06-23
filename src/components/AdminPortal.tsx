@@ -45,6 +45,7 @@ const importAdminDashboard = () => import('./admin/AdminDashboard');
 const importAdminBookings = () => import('./admin/AdminBookings');
 const importAdminBookingCommandCenter = () => import('./admin/AdminBookingCommandCenter');
 const importAdminCars = () => import('./admin/AdminCars');
+const importAdminVehicleModels = () => import('./admin/AdminVehicleModels');
 const importAdminUsers = () => import('./admin/AdminUsers');
 const importAdminDrivers = () => import('./admin/AdminDrivers');
 const importAdminFleetOwners = () => import('./admin/AdminFleetOwners');
@@ -74,6 +75,7 @@ const AdminDashboard = React.lazy(() => importAdminDashboard().then(m => ({ defa
 const AdminBookings = React.lazy(() => importAdminBookings().then(m => ({ default: m.AdminBookings })));
 const AdminBookingCommandCenter = React.lazy(() => importAdminBookingCommandCenter().then(m => ({ default: m.AdminBookingCommandCenter })));
 const AdminCars = React.lazy(() => importAdminCars().then(m => ({ default: m.AdminCars })));
+const AdminVehicleModels = React.lazy(() => importAdminVehicleModels().then(m => ({ default: m.AdminVehicleModels })));
 const AdminUsers = React.lazy(() => importAdminUsers().then(m => ({ default: m.AdminUsers })));
 const AdminDrivers = React.lazy(() => importAdminDrivers().then(m => ({ default: m.AdminDrivers })));
 const AdminFleetOwners = React.lazy(() => importAdminFleetOwners().then(m => ({ default: m.AdminFleetOwners })));
@@ -106,6 +108,7 @@ const ADMIN_MODULE_PRELOADERS: Record<string, () => Promise<unknown>> = {
   'concierge-booking': importAdminConciergeBooking,
   reservations: importAdminReservations,
   cars: importAdminCars,
+  'vehicle-models': importAdminVehicleModels,
   outsourced: importAdminOutsourcedCars,
   users: importAdminUsers,
   drivers: importAdminDrivers,
@@ -160,6 +163,7 @@ const MODULE_CATEGORIES: ModuleCategory[] = [
     items: [
       { id: 'bookings', label: 'Bookings Management', icon: Calendar },
       { id: 'reservations', label: 'Reservations', icon: Clock },
+      { id: 'vehicle-models', label: 'Vehicle Models', icon: Image },
       { id: 'cars', label: 'Cars Management', icon: Car },
       { id: 'outsourced', label: 'Outsourced Cars', icon: Truck },
       { id: 'users', label: 'Users Management', icon: Users },
@@ -391,6 +395,7 @@ export function AdminPortal() {
                 <Route path="bookings/:id" element={<AdminBookingCommandCenter />} />
                 <Route path="concierge-booking" element={<AdminConciergeBooking />} />
                 <Route path="reservations" element={<AdminReservations />} />
+                <Route path="vehicle-models" element={<AdminVehicleModels />} />
                 <Route path="cars" element={<AdminCars />} />
                 <Route path="outsourced" element={<AdminOutsourcedCars />} />
                 <Route path="users" element={<AdminUsers />} />

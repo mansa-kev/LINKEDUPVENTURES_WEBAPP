@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useInView } from 'react-intersection-observer';
 import { fleetService } from '../../services/fleetService';
-import { Car } from '../../types';
+import { VehicleModel } from '../../types';
 import { SearchControls } from './SearchControls';
 import { FilterPanel } from './FilterPanel';
 import { PromoBadge } from './PromoBadge';
@@ -27,13 +27,6 @@ interface Filters {
   sortBy: string;
 }
 
-// Helper function to determine car status from database fields
-const getCarStatus = (car: Car): 'available' | 'booked' | 'reserved' | 'unavailable' => {
-  if (car.status === 'rented') return 'booked';
-  if (car.status === 'maintenance' || car.status === 'unavailable') return 'unavailable';
-  return 'available';
-};
-
 interface CarShowroomProps {
   isHome?: boolean;
   showSearchControls?: boolean;
@@ -41,8 +34,8 @@ interface CarShowroomProps {
 
 export function CarShowroom({ isHome = false, showSearchControls = true }: CarShowroomProps) {
   const [searchParamsURL] = useSearchParams();
-  const [cars, setCars] = useState<Car[]>([]);
-  const [filteredCars, setFilteredCars] = useState<Car[]>([]);
+  const [models, setModels] = useState<VehicleModel[]>([]);
+  const [filteredModels, setFilteredModels] = useState<VehicleModel[]>([]);
   const [loading, setLoading] = useState(true);
   const { ref, inView } = useInView();
 
@@ -63,69 +56,71 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
   });
 
   useEffect(() => {
-    async function fetchCars() {
+    async function fetchVehicleModels() {
       setLoading(true);
       try {
-        let result;
+        let result: any;
         if (searchParams.pickupDate && searchParams.dropoffDate) {
-          result = await fleetService.getAvailableCars(searchParams.pickupDate, searchParams.dropoffDate);
+          result = await fleetService.getAvailableVehicleModels(searchParams.pickupDate, searchParams.dropoffDate);
         } else {
-          result = await fleetService.getAllCars();
+          result = await fleetService.getAllVehicleModels();
         }
 
-        if (result && 'data' in result) {
-          setCars(result.data || []);
+        if (result && typeof result === 'object' && 'data' in result) {
+          setModels(result.data || []);
         } else if (Array.isArray(result)) {
-          setCars(result);
+          setModels(result);
+        } else {
+          setModels([]);
         }
       } catch (error) {
-        console.error('Error fetching cars:', error);
+        console.error('Error fetching vehicle models:', error);
       } finally {
         setLoading(false);
       }
     }
-    fetchCars();
+    fetchVehicleModels();
   }, [searchParams]);
 
-  // Apply filters whenever cars or filters change
+  // Apply filters whenever models or filters change
   useEffect(() => {
-    let result = [...cars];
+    let result = [...models];
 
     // Filter by category
     if (filters.category) {
-      result = result.filter(c => c.category?.toLowerCase() === filters.category);
+      result = result.filter(m => (m.category || '').toLowerCase() === filters.category);
     }
 
     // Filter by price
     if (filters.priceMin > 0) {
-      result = result.filter(c => c.daily_rate >= filters.priceMin);
+      result = result.filter(m => Number(m.base_daily_rate || 0) >= filters.priceMin);
     }
     if (filters.priceMax < 50000) {
-      result = result.filter(c => c.daily_rate <= filters.priceMax);
+      result = result.filter(m => Number(m.base_daily_rate || 0) <= filters.priceMax);
     }
 
     // Filter by transmission
     if (filters.transmission) {
-      result = result.filter(c => c.transmission?.toLowerCase() === filters.transmission);
+      result = result.filter(m => (m.transmission || '').toLowerCase() === filters.transmission);
     }
 
     // Filter by fuel type
     if (filters.fuelType) {
-      result = result.filter(c => c.fuel_type?.toLowerCase() === filters.fuelType);
+      result = result.filter(m => (m.fuel_type || '').toLowerCase() === filters.fuelType);
     }
 
     // Filter by seats
     if (filters.minSeats > 0) {
-      result = result.filter(c => c.seats >= filters.minSeats);
+      result = result.filter(m => Number(m.seats || 0) >= filters.minSeats);
     }
 
     // Sort
     switch (filters.sortBy) {
       case 'price_asc':
-        result.sort((a, b) => a.daily_rate - b.daily_rate);
+        result.sort((a, b) => Number(a.base_daily_rate || 0) - Number(b.base_daily_rate || 0));
         break;
       case 'price_desc':
-        result.sort((a, b) => b.daily_rate - a.daily_rate);
+        result.sort((a, b) => Number(b.base_daily_rate || 0) - Number(a.base_daily_rate || 0));
         break;
       case 'newest':
         result.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
@@ -135,8 +130,8 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
         break;
     }
 
-    setFilteredCars(result);
-  }, [cars, filters]);
+    setFilteredModels(result);
+  }, [models, filters]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -156,7 +151,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
             {!loading && (
               <div className="mb-4 md:mb-6 flex items-center justify-between">
                 <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-                  {filteredCars.length} {filteredCars.length === 1 ? 'vehicle' : 'vehicles'} found
+                  {filteredModels.length} {filteredModels.length === 1 ? 'model' : 'models'} found
                 </p>
               </div>
             )}
@@ -173,7 +168,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                   </div>
                 ))}
               </div>
-            ) : filteredCars.length === 0 ? (
+            ) : filteredModels.length === 0 ? (
               <div className="text-center py-20">
                 <p className="text-lg font-bold text-white/60 mb-2">No vehicles match your criteria</p>
                 <p className="text-sm text-muted-foreground">Try adjusting your filters or search terms</p>
@@ -181,9 +176,9 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4 lg:gap-5">
                 <AnimatePresence mode="popLayout">
-                  {(isHome ? filteredCars.slice(0, 20) : filteredCars).map((car, i) => (
+                  {(isHome ? filteredModels.slice(0, 20) : filteredModels).map((model, i) => (
                     <motion.div
-                      key={car.id}
+                      key={model.id}
                       layout
                       initial={{ opacity: 0, y: 30 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -191,7 +186,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                       transition={{ delay: i * 0.05 }}
                       className="group cursor-pointer"
                     >
-                      <Link to={`/cars/${car.id}`}>
+                      <Link to={`/models/${model.id}`}>
                         <div className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-md group cursor-pointer">
                           {/* Card Image Container */}
                           <div className="relative h-44 md:h-48 overflow-hidden">
@@ -201,94 +196,85 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                                   !!url && !url.startsWith('blob:') && (url.startsWith('http') || url.startsWith('/'));
 
                                 // Read cache — discard any stale blob: URLs
-                                const cached = localStorage.getItem(`car_image_${car.id}`);
+                                const cached = localStorage.getItem(`model_image_${model.id}`);
                                 if (cached && isValid(cached)) return cached;
-                                if (cached && !isValid(cached)) localStorage.removeItem(`car_image_${car.id}`);
+                                if (cached && !isValid(cached)) localStorage.removeItem(`model_image_${model.id}`);
 
-                                // Use first valid URL from car data
+                                // Use first valid URL from model data
                                 const candidates = [
-                                  car.primary_image_url,
-                                  ...(Array.isArray(car.photos) ? car.photos : []),
+                                  model.primary_image_url,
+                                  ...(Array.isArray(model.gallery_urls) ? model.gallery_urls : []),
                                 ].filter(isValid) as string[];
 
-                                const url = candidates[0] ?? `https://picsum.photos/seed/${car.id}/800/500`;
+                                const url = candidates[0] ?? `https://picsum.photos/seed/${model.id}/800/500`;
 
                                 // Only cache real http URLs, never blob:
-                                if (isValid(url)) localStorage.setItem(`car_image_${car.id}`, url);
+                                if (isValid(url)) localStorage.setItem(`model_image_${model.id}`, url);
 
                                 return url;
                               })()}
-                              alt={`${car.make} ${car.model}`}
+                              alt={`${model.make} ${model.model}`}
                               className="w-full h-44 md:h-48 object-cover group-hover:scale-110 transition-transform duration-700"
                               loading={i < 8 ? "eager" : "lazy"}
                               referrerPolicy="no-referrer"
                               onError={(e) => {
-                                const fallbackUrl = `https://picsum.photos/seed/showroom-${car.id}/800/500`;
+                                const fallbackUrl = `https://picsum.photos/seed/showroom-${model.id}/800/500`;
                                 e.currentTarget.src = fallbackUrl;
-                                localStorage.setItem(`car_image_${car.id}`, fallbackUrl);
+                                localStorage.setItem(`model_image_${model.id}`, fallbackUrl);
                               }}
                             />
-                            <CarStatusBadges status={getCarStatus(car)} />
+                            <CarStatusBadges status={'available'} />
                           </div>
 
                           {/* Card Body */}
                           <div className="p-3 md:p-4">
                             {/* Car Name - No truncation, allow 2 lines */}
                             <h3 className="font-bold text-sm md:text-base leading-tight mb-2 line-clamp-2 group-hover:text-primary transition-colors">
-                              {car.make} {car.model} ({car.year})
+                              {model.display_name || `${model.make} ${model.model}`} {model.year ? `(${model.year})` : ''}
                             </h3>
 
                             {/* Price */}
                             <div className="font-black text-orange-500 text-base md:text-lg mb-2">
-                              KES {car.daily_rate?.toLocaleString()}
+                              KES {Number(model.base_daily_rate || 0).toLocaleString()}
                               <span className="text-xs text-muted-foreground font-normal">/day</span>
                             </div>
 
                             {/* Specs Row */}
                             <div className="flex flex-wrap gap-1 mb-3">
-                              {car.transmission && (
+                              {model.transmission && (
                                 <div className="flex items-center gap-1 text-xs text-gray-400 bg-gray-800/50 px-2 py-1 rounded">
                                   <Settings size={12} className="w-3 h-3" />
-                                  <span>{car.transmission}</span>
+                                  <span>{model.transmission}</span>
                                 </div>
                               )}
-                              {car.fuel_type && (
+                              {model.fuel_type && (
                                 <div className="flex items-center gap-1 text-xs text-gray-400 bg-gray-800/50 px-2 py-1 rounded">
                                   <Fuel size={12} className="w-3 h-3" />
-                                  <span>{car.fuel_type}</span>
+                                  <span>{model.fuel_type}</span>
                                 </div>
                               )}
-                              {car.seats > 0 && (
+                              {Number(model.seats || 0) > 0 && (
                                 <div className="flex items-center gap-1 text-xs text-gray-400 bg-gray-800/50 px-2 py-1 rounded">
                                   <Users size={12} className="w-3 h-3" />
-                                  <span>{car.seats} seats</span>
+                                  <span>{model.seats} seats</span>
                                 </div>
                               )}
                             </div>
 
                             {/* BOOK NOW + View Details */}
                             <div className="flex items-center justify-between gap-1 md:gap-2 mt-3 pt-2 border-t border-white/10">
-                              {car.status === 'booked' ? (
-                                <button
-                                  disabled
-                                  className="bg-green-500 text-green-100 text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full whitespace-nowrap cursor-not-allowed opacity-75"
-                                >
-                                  BOOKED
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    e.stopPropagation();
-                                    window.location.href = `/cars/${car.id}?booking=true`;
-                                  }}
-                                  className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap"
-                                >
-                                  BOOK NOW
-                                </button>
-                              )}
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  window.location.href = `/models/${model.id}?booking=true`;
+                                }}
+                                className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap"
+                              >
+                                BOOK NOW
+                              </button>
                               <Link 
-                                to={`/cars/${car.id}`}
+                                to={`/models/${model.id}`}
                                 className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs font-bold text-gray-400 hover:text-white hover:underline underline-offset-2 whitespace-nowrap transition-colors"
                               >
                                 VIEW DETAILS
@@ -305,7 +291,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
               </div>
             )}
 
-            {isHome && filteredCars.length > 20 && (
+            {isHome && filteredModels.length > 20 && (
               <div className="mt-12 flex justify-center">
                 <Link
                   to="/cars"

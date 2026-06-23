@@ -155,7 +155,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
               <nav className="flex flex-col gap-6">
                 <Link to="/cars" onClick={() => setIsSidebarOpen(false)} className="flex items-center gap-4 text-lg font-bold text-muted-foreground hover:text-primary transition-colors">
-                  <Search size={20} /> Browse Cars
+                  <Search size={20} /> Browse Models
                 </Link>
                 {secondaryNav.map((item) => (
                   <Link
@@ -189,7 +189,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-20 glass-dark z-50 flex items-center justify-around px-2 border-t border-white/5">
         {[
           { label: 'Home', path: '/', icon: Home },
-          { label: 'Browse', path: '/cars', icon: Search },
+            { label: 'Browse', path: '/cars', icon: Search },
           { label: 'Insights', path: '/insights', icon: BookOpen },
           { label: 'FAQ', path: '/faq', icon: HelpCircle },
           { label: 'Login', path: loginUrl, icon: User },
@@ -250,7 +250,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           <div>
             <h4 className="font-bold uppercase tracking-widest text-xs mb-6 text-foreground">Quick Links</h4>
             <div className="flex flex-col gap-4">
-              <Link to="/cars" className="text-sm text-muted-foreground hover:text-primary transition-colors">Browse Cars</Link>
+              <Link to="/cars" className="text-sm text-muted-foreground hover:text-primary transition-colors">Browse Models</Link>
               {secondaryNav.slice(0, 4).map(item => (
                 <Link key={item.path} to={item.path} className="text-sm text-muted-foreground hover:text-primary transition-colors">
                   {item.label}

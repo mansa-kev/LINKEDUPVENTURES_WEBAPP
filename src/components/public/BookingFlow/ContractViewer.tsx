@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Download, ZoomIn, ZoomOut, RotateCw, AlertCircle, FileText, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+import { toProxiedAssetUrl } from '../../../utils/assetUrl';
 
 interface ContractViewerProps {
   contract: {
@@ -138,7 +139,8 @@ export function ContractViewer({ contract, bookingData, car, onContractLoaded }:
   const handleDownload = async () => {
     try {
       toast.loading('Preparing download...');
-      const response = await fetch(contractUrl);
+      const url = toProxiedAssetUrl(contractUrl) || contractUrl;
+      const response = await fetch(url);
       if (!response.ok) throw new Error('Failed to fetch contract');
       const blob = await response.blob();
       const blobUrl = URL.createObjectURL(blob);
@@ -154,7 +156,8 @@ export function ContractViewer({ contract, bookingData, car, onContractLoaded }:
     } catch {
       toast.dismiss();
       toast.error('Download failed — opening in new tab instead');
-      window.open(contractUrl, '_blank', 'noopener,noreferrer');
+      const url = toProxiedAssetUrl(contractUrl) || contractUrl;
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 

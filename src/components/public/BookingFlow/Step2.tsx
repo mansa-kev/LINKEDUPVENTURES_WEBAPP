@@ -22,6 +22,7 @@ interface Step2Props {
   onNext: (data: any) => void;
   onPrev: () => void;
   initialData?: any;
+  uploadContextId?: string;
 }
 
 type DocType = BookingDocType;
@@ -158,13 +159,14 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
   );
 }
 
-export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
+export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Step2Props) {
+  const contextId = uploadContextId || `car:${car.id}`;
   const [uploadingSlots, setUploadingSlots] = useState<Set<DocType>>(new Set());
   const [showCamera, setShowCamera] = useState<DocType | null>(null);
   const [prefilled, setPrefilled] = useState(false);
   const resumeLockRef = useRef(false);
   const [formData, setFormData] = useState(() => {
-    const saved = sessionStorage.getItem(`step2_data_${car.id}`);
+    const saved = sessionStorage.getItem(`step2_data_${contextId}`);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -186,8 +188,8 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
   });
 
   useEffect(() => {
-    sessionStorage.setItem(`step2_data_${car.id}`, JSON.stringify(formData));
-  }, [formData, car.id]);
+    sessionStorage.setItem(`step2_data_${contextId}`, JSON.stringify(formData));
+  }, [formData, contextId]);
 
   // Pre-fill from profile + glovebox for logged-in users
   useEffect(() => {
@@ -266,8 +268,8 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
 
     markUploading(type, true);
     try {
-      await stashPendingFile(car.id, type, file);
-      const url = await uploadBookingDocument(car.id, type, file);
+      await stashPendingFile(contextId, type, file);
+      const url = await uploadBookingDocument(contextId, type, file);
       applyUploadedUrl(type, url);
       toast.success(`${DOC_LABELS[type]} uploaded successfully`);
     } catch (error) {
@@ -275,7 +277,7 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
     } finally {
       markUploading(type, false);
     }
-  }, [applyUploadedUrl, car.id, markUploading, uploadingSlots]);
+  }, [applyUploadedUrl, contextId, markUploading, uploadingSlots]);
 
   const uploadFile = useCallback(async (file: File, type: DocType) => {
     await runUpload(file, type);
@@ -286,7 +288,7 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
     resumeLockRef.current = true;
 
     try {
-      const pending = await listPendingUploadsForCar(car.id);
+      const pending = await listPendingUploadsForCar(contextId);
       for (const record of pending) {
         const type = record.docType as DocType;
         if (!DOC_LABELS[type]) continue;
@@ -305,7 +307,7 @@ export function Step2({ car, onNext, onPrev, initialData }: Step2Props) {
     } finally {
       resumeLockRef.current = false;
     }
-  }, [applyUploadedUrl, car.id, markUploading]);
+  }, [applyUploadedUrl, contextId, markUploading]);
 
   useEffect(() => {
     void resumePendingUploads();

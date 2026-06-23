@@ -17,18 +17,21 @@ interface Step4Props {
   bookingData: any;
   onPrev: () => void;
   onComplete?: () => void;
+  vehicleModelId?: string | null;
+  uploadContextId?: string;
 }
 
 type PaymentPhase = 'ready' | 'creating_booking' | 'sending_stk' | 'waiting' | 'paid' | 'failed' | 'timeout' | 'manual_pending';
 
-export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
+export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, uploadContextId }: Step4Props) {
   const navigate = useNavigate();
+  const contextId = uploadContextId || (vehicleModelId ? `model:${vehicleModelId}` : `car:${car.id}`);
   const [phase, setPhase] = useState<PaymentPhase>('ready');
   const [showAltPayment, setShowAltPayment] = useState(false);
   const [altPaymentNotes, setAltPaymentNotes] = useState('');
   const [phone, setPhone] = useState(bookingData.phone || '');
-  const [bookingId, setBookingId] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_${car.id}`));
-  const [statusToken, setStatusToken] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_token_${car.id}`));
+  const [bookingId, setBookingId] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_${contextId}`));
+  const [statusToken, setStatusToken] = useState<string | null>(() => sessionStorage.getItem(`pending_booking_token_${contextId}`));
   const [paymentRequestId, setPaymentRequestId] = useState<string | null>(null);
   const [lastMessage, setLastMessage] = useState('');
   const [editableAmount, setEditableAmount] = useState<number>(bookingData.totalAmount || 0);
@@ -78,17 +81,17 @@ export function Step4({ car, bookingData, onPrev, onComplete }: Step4Props) {
     const booking = await bookingService.createBooking({
       ...bookingPayload,
       totalAmount: editableAmount,
-      carId: car.id,
+      ...(vehicleModelId ? { vehicleModelId } : { carId: car.id }),
       paymentMethod: 'ncba_stk',
     });
 
     if (!booking?.id) throw new Error('Failed to create booking');
 
     setBookingId(booking.id);
-    sessionStorage.setItem(`pending_booking_${car.id}`, booking.id);
+    sessionStorage.setItem(`pending_booking_${contextId}`, booking.id);
     if (booking.statusToken) {
       setStatusToken(booking.statusToken);
-      sessionStorage.setItem(`pending_booking_token_${car.id}`, booking.statusToken);
+      sessionStorage.setItem(`pending_booking_token_${contextId}`, booking.statusToken);
     }
 
     if (bookingData.contractId) {

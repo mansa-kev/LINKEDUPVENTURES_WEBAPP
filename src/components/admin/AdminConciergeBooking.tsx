@@ -49,9 +49,9 @@ export function AdminConciergeBooking() {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<Step>('vehicle');
   const [loading, setLoading] = useState(false);
-  const [cars, setCars] = useState<any[]>([]);
+  const [vehicleModels, setVehicleModels] = useState<any[]>([]);
   const [brokers, setBrokers] = useState<Broker[]>([]);
-  const [searchCar, setSearchCar] = useState('');
+  const [searchCar, setSearchCar] = useState(''); // keep name to avoid rewriting UI blocks; now searches models
   const signatureRef = useRef<HTMLCanvasElement>(null);
 
   // Broker referral state
@@ -60,7 +60,7 @@ export function AdminConciergeBooking() {
   
   // Booking State
   const [bookingData, setBookingData] = useState({
-    carId: '',
+    vehicleModelId: '',
     startDate: '',
     endDate: '',
     totalAmount: 0,
@@ -92,8 +92,8 @@ export function AdminConciergeBooking() {
   useEffect(() => {
     const fetchData = async () => {
       setLoading(true);
-      const result = await adminService.getCars(1, 100);
-      if (result?.data) setCars(result.data);
+      const result = await adminService.getVehicleModels(1, 500);
+      if (result?.data) setVehicleModels(result.data);
       // Fetch brokers
       const { data: brokerData } = await supabase
         .from('brokers')
@@ -155,8 +155,8 @@ export function AdminConciergeBooking() {
   };
 
   const handleCheckAvailability = async () => {
-    if (!bookingData.carId || !bookingData.startDate || !bookingData.endDate) {
-      toast.error('Please select a car and date range');
+    if (!bookingData.vehicleModelId || !bookingData.startDate || !bookingData.endDate) {
+      toast.error('Please select a vehicle model and date range');
       return;
     }
     
@@ -169,19 +169,19 @@ export function AdminConciergeBooking() {
     }
 
     setLoading(true);
-    const result = await reservationService.checkAvailability(bookingData.carId, bookingData.startDate, bookingData.endDate);
-    setLoading(false);
-
-    if (result.available) {
-      const selectedCar = cars.find(c => c.id === bookingData.carId);
-      if (selectedCar) {
+    try {
+      // Lightweight check: if model exists, proceed. Allocation + final availability enforcement happens in /api/bookings.
+      const selectedModel = vehicleModels.find((m) => m.id === bookingData.vehicleModelId);
+      if (selectedModel) {
         const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24));
-        updateData({ totalAmount: days * (selectedCar.daily_rate || 0) });
+        updateData({ totalAmount: days * Number(selectedModel.base_daily_rate || 0) });
+        toast.success('Model selected. Proceeding to client details.');
+        setCurrentStep('client');
+      } else {
+        toast.error('Vehicle model not found.');
       }
-      toast.success('Car is available!');
-      setCurrentStep('client');
-    } else {
-      toast.error('Car is not available for these dates.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -228,7 +228,7 @@ export function AdminConciergeBooking() {
         : 0;
 
       const result = await adminService.createConciergeBooking({
-        carId: bookingData.carId,
+        vehicleModelId: bookingData.vehicleModelId,
         startDate: bookingData.startDate,
         endDate: bookingData.endDate,
         totalAmount: bookingData.totalAmount,
@@ -253,7 +253,11 @@ export function AdminConciergeBooking() {
       setBookingId(result.id);
 
       if (contract && bookingData.signatureUrl && bookingData.signatureUrl !== 'signed_physically_in_person') {
-        const carForContract = cars.find((c) => c.id === bookingData.carId);
+        const { data: carForContract } = await supabase
+          .from('cars')
+          .select('*')
+          .eq('id', result.car_id)
+          .maybeSingle();
         if (carForContract) {
           try {
             await generateAndSaveContract(result.id, {
@@ -383,8 +387,7 @@ export function AdminConciergeBooking() {
     }
   }, [currentStep]);
 
-
-  const selectedCar = cars.find(c => c.id === bookingData.carId);
+  const selectedModel = vehicleModels.find((m) => m.id === bookingData.vehicleModelId);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-150">
@@ -431,16 +434,18 @@ export function AdminConciergeBooking() {
                   <input type="text" placeholder="Search make or model..." value={searchCar} onChange={e => setSearchCar(e.target.value)} className="w-full bg-muted/50 border border-border rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-primary transition-colors" />
                 </div>
                 <div className="h-64 overflow-y-auto border border-border rounded-xl divide-y divide-border scrollbar-thin">
-                  {cars.filter(c => `${c.make} ${c.model}`.toLowerCase().includes(searchCar.toLowerCase())).map(car => (
-                    <button key={car.id} onClick={() => updateData({ carId: car.id })} className={`w-full text-left p-3 flex items-center gap-3 transition-colors ${bookingData.carId === car.id ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-muted/50 border-l-2 border-transparent'}`}>
-                      {car.primary_image_url ? (
-                        <img src={car.primary_image_url} alt={car.make} className="w-12 h-10 rounded-lg object-cover" />
+                  {vehicleModels
+                    .filter((m) => `${m.make} ${m.model}`.toLowerCase().includes(searchCar.toLowerCase()))
+                    .map((model) => (
+                    <button key={model.id} onClick={() => updateData({ vehicleModelId: model.id })} className={`w-full text-left p-3 flex items-center gap-3 transition-colors ${bookingData.vehicleModelId === model.id ? 'bg-primary/10 border-l-2 border-primary' : 'hover:bg-muted/50 border-l-2 border-transparent'}`}>
+                      {model.primary_image_url ? (
+                        <img src={model.primary_image_url} alt={model.make} className="w-12 h-10 rounded-lg object-cover" />
                       ) : (
                         <div className="w-12 h-10 rounded-lg bg-muted flex items-center justify-center"><Car size={16} className="text-muted-foreground"/></div>
                       )}
                       <div>
-                        <p className="font-bold text-sm">{car.make} {car.model}</p>
-                        <p className="text-xs text-primary font-bold">KES {(car.daily_rate || 0).toLocaleString()}/day</p>
+                        <p className="font-bold text-sm">{model.display_name || `${model.make} ${model.model}`}</p>
+                        <p className="text-xs text-primary font-bold">KES {Number(model.base_daily_rate || 0).toLocaleString()}/day</p>
                       </div>
                     </button>
                   ))}
@@ -688,7 +693,7 @@ export function AdminConciergeBooking() {
                       ...bookingData,
                       days: getBookingDays(),
                     }}
-                    car={selectedCar}
+                    car={selectedModel}
                   />
                 </div>
               )}
@@ -821,7 +826,7 @@ export function AdminConciergeBooking() {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground text-sm font-bold">Vehicle</span>
-                  <span className="text-sm font-bold">{selectedCar?.make} {selectedCar?.model}</span>
+                  <span className="text-sm font-bold">{selectedModel?.display_name || `${selectedModel?.make || ''} ${selectedModel?.model || ''}`}</span>
                 </div>
                 <div className="flex justify-between pt-3 border-t border-border">
                   <span className="text-muted-foreground text-sm font-bold">Amount Paid</span>

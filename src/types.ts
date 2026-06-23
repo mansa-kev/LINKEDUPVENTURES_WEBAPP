@@ -1,5 +1,33 @@
+export interface VehicleModel {
+  id: string;
+  slug?: string;
+  make: string;
+  model: string;
+  year?: number;
+  display_name?: string;
+  category?: string;
+  description?: string;
+  primary_image_url?: string;
+  gallery_urls?: string[];
+  video_url?: string;
+  transmission?: string;
+  fuel_type?: string;
+  seats?: number;
+  luggage?: number;
+  features?: string[];
+  base_daily_rate?: number;
+  overtime_rate?: number;
+  security_deposit?: number;
+  is_chauffeured_only?: boolean;
+  is_public?: boolean;
+  sort_order?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface Car {
   id: string;
+  vehicle_model_id?: string | null;
   make: string;
   model: string;
   year: number;
@@ -27,10 +55,12 @@ export interface Car {
   outsource_commission_rate?: number;
   fleet_owner_id?: string;
   created_at: string;
+  vehicle_model?: VehicleModel;
 }
 
 export interface Booking {
   id: string;
+  vehicle_model_id?: string | null;
   client_id: string;
   car_id: string;
   fleet_owner_id: string;
@@ -49,9 +79,35 @@ export interface Booking {
   metadata?: any;
   created_at: string;
   cars?: Car;
+  vehicle_model?: VehicleModel;
   client?: UserProfile;
   fleet_owner?: UserProfile;
   driver?: DriverProfile;
+}
+
+export interface CarReservation {
+  id: string;
+  car_id?: string | null;
+  vehicle_model_id?: string | null;
+  client_id?: string | null;
+  fleet_owner_id?: string | null;
+  start_date: string;
+  end_date: string;
+  reservation_fee: number;
+  total_amount: number;
+  status: 'reserved' | 'confirmed' | 'cancelled' | 'expired' | 'converted';
+  payment_status: 'pending' | 'paid' | 'refunded' | 'failed';
+  payment_method?: string | null;
+  transaction_code?: string | null;
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string;
+  notes?: string | null;
+  expires_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  cars?: Car;
+  vehicle_model?: VehicleModel;
 }
 
 export interface UserProfile {

@@ -28,6 +28,7 @@ import {
   validateBookingTotalAmount,
 } from "../src/server/bookingFinancials.js";
 import { applyProfileSyncFromBooking } from "../src/utils/bookingProfileSync.js";
+import { CALENDAR_BLOCKING_STATUSES_DB } from "../src/constants/bookingStatuses.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
 // and this call is a no-op (the file won't exist), which is fine.
@@ -218,6 +219,37 @@ const app = express();
     } catch (error) {
       console.error('Image proxy error:', error);
       res.status(500).send('Failed to fetch image');
+    }
+  });
+
+  // ─── GENERIC ASSET PROXY (Hides Supabase URL + bucket/path) ───────────────────────────
+  app.get('/api/assets/:bucket/*', async (req, res) => {
+    const bucket = String(req.params.bucket || '');
+    const filePath = String((req.params as any)[0] || '');
+
+    if (!bucket || !filePath) {
+      return res.status(400).json({ success: false, error: 'Bucket and filePath are required.' });
+    }
+
+    try {
+      const { data, error } = await supabase.storage.from(bucket).download(filePath);
+      if (error || !data) {
+        return res.status(404).json({ success: false, error: error?.message || 'Asset not found' });
+      }
+
+      const arrayBuffer = await (data as any).arrayBuffer?.();
+      const buffer = arrayBuffer ? Buffer.from(arrayBuffer) : Buffer.from(await (data as any).text?.() || '');
+
+      const contentType =
+        (data as any).type ||
+        (filePath.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
+      return res.send(buffer);
+    } catch (err: any) {
+      console.error('[asset-proxy]', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Failed to fetch asset' });
     }
   });
 
@@ -637,9 +669,9 @@ const app = express();
         });
       }
 
-      const { carId, startDate, endDate, contactName, contactEmail, contactPhone, notes } = req.body;
+      const { carId, vehicleModelId, startDate, endDate, contactName, contactEmail, contactPhone, notes } = req.body;
 
-      if (!carId || !startDate || !endDate || !contactName || !contactEmail || !contactPhone) {
+      if ((!carId && !vehicleModelId) || !startDate || !endDate || !contactName || !contactEmail || !contactPhone) {
         return res.status(400).json({ success: false, error: 'Missing required reservation fields.' });
       }
 
@@ -650,18 +682,50 @@ const app = express();
         return res.status(400).json({ success: false, error: 'Please provide a valid reservation date range.' });
       }
 
-      const { data: car, error: carError } = await supabase
-        .from('cars')
-        .select('id, fleet_owner_id, daily_rate')
-        .eq('id', carId)
-        .single();
+      let resolvedCarId: string | null = carId || null;
+      let dailyRate = 0;
+      let fleetOwnerId: string | null = null;
 
-      if (carError || !car) {
-        return res.status(404).json({ success: false, error: 'Car not found.' });
+      if (resolvedCarId) {
+        const { data: car, error: carError } = await supabase
+          .from('cars')
+          .select('id, fleet_owner_id, daily_rate')
+          .eq('id', resolvedCarId)
+          .single();
+
+        if (carError || !car) {
+          return res.status(404).json({ success: false, error: 'Car not found.' });
+        }
+
+        fleetOwnerId = car.fleet_owner_id || null;
+        dailyRate = Number(car.daily_rate || 0);
+      } else {
+        const { data: model, error: modelError } = await supabase
+          .from('vehicle_models')
+          .select('id, base_daily_rate')
+          .eq('id', vehicleModelId)
+          .eq('is_public', true)
+          .single();
+
+        if (modelError || !model) {
+          return res.status(404).json({ success: false, error: 'Vehicle model not found.' });
+        }
+
+        dailyRate = Number(model.base_daily_rate || 0);
       }
 
-      if (!car.fleet_owner_id) {
-        return res.status(409).json({ success: false, error: 'This car is not assigned to a fleet owner yet.' });
+      if (!fleetOwnerId) {
+        const { data: adminUser } = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(1)
+          .single();
+        if (adminUser) {
+          fleetOwnerId = adminUser.id;
+        } else {
+          return res.status(409).json({ success: false, error: 'No general fleet is available.' });
+        }
       }
 
       let clientId: string | null = null;
@@ -689,7 +753,7 @@ const app = express();
 
         reservationFee = Number(feeSetting?.value || 500);
       }
-      const totalAmount = reservationFee + (Number(car.daily_rate || 0) * days);
+      const totalAmount = reservationFee + (dailyRate * days);
       const firstTokenPart = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now()}`;
       const secondTokenPart = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Math.random().toString(36).slice(2)}`;
       const continuationToken = `${firstTokenPart}${secondTokenPart}`;
@@ -697,9 +761,10 @@ const app = express();
       const { data: reservation, error: reservationError } = await supabase
         .from('car_reservations')
         .insert({
-          car_id: carId,
+          car_id: resolvedCarId,
+          vehicle_model_id: vehicleModelId || null,
           client_id: clientId,
-          fleet_owner_id: car.fleet_owner_id,
+          fleet_owner_id: fleetOwnerId,
           start_date: startDate,
           end_date: endDate,
           reservation_fee: reservationFee,
@@ -801,7 +866,8 @@ const app = express();
 
       const bookingData = req.body || {};
       const {
-        carId,
+        carId: rawCarId,
+        vehicleModelId,
         startDate,
         endDate,
         totalAmount,
@@ -817,7 +883,7 @@ const app = express();
         brokerCommissionAmount,
       } = bookingData;
 
-      if (!carId || !startDate || !endDate || totalAmount == null) {
+      if ((!rawCarId && !vehicleModelId) || !startDate || !endDate || totalAmount == null) {
         return res.status(400).json({ success: false, error: 'Missing required booking fields.' });
       }
 
@@ -845,7 +911,7 @@ const app = express();
       if (sourceReservationId) {
         const { data: reservation, error: reservationError } = await supabase
           .from('car_reservations')
-          .select('id, car_id, fleet_owner_id, client_id, start_date, end_date, status, payment_status, linked_booking_id, booking_completion_token')
+          .select('id, car_id, vehicle_model_id, fleet_owner_id, client_id, start_date, end_date, status, payment_status, linked_booking_id, booking_completion_token')
           .eq('id', sourceReservationId)
           .single();
 
@@ -857,8 +923,12 @@ const app = express();
           return res.status(409).json({ success: false, error: 'Only paid active reservations can be completed into a booking.' });
         }
 
-        if (reservation.car_id !== carId) {
+        if (rawCarId && reservation.car_id && reservation.car_id !== rawCarId) {
           return res.status(409).json({ success: false, error: 'This reservation does not match the selected vehicle.' });
+        }
+
+        if (vehicleModelId && reservation.vehicle_model_id && reservation.vehicle_model_id !== vehicleModelId) {
+          return res.status(409).json({ success: false, error: 'This reservation does not match the selected model.' });
         }
 
         if (reservationContinuationToken && reservation.booking_completion_token !== reservationContinuationToken) {
@@ -868,7 +938,94 @@ const app = express();
         sourceReservation = reservation;
       }
 
-      const available = await checkBookingAvailability(carId, startDate, endDate, sourceReservationId || undefined);
+      let resolvedCarId: string | null = rawCarId || null;
+
+      if (!resolvedCarId && vehicleModelId) {
+        const { data: candidateCars, error: candidateCarsError } = await supabase
+          .from('cars')
+          .select('id')
+          .eq('status', 'available')
+          .eq('vehicle_model_id', vehicleModelId)
+          .order('created_at', { ascending: true })
+          .limit(200);
+
+        if (candidateCarsError) {
+          return res.status(500).json({ success: false, error: candidateCarsError.message || 'Failed to load available units.' });
+        }
+
+        const candidateIds = (candidateCars || []).map((c: any) => c.id);
+        if (!candidateIds.length) {
+          return res.status(409).json({ success: false, error: 'No available units exist for this model.' });
+        }
+
+        const { data: blockingBookings, error: blockingBookingsError } = await supabase
+          .from('bookings')
+          .select('car_id, start_date, end_date')
+          .in('car_id', candidateIds)
+          .in('status', [...CALENDAR_BLOCKING_STATUSES_DB]);
+
+        if (blockingBookingsError) {
+          return res.status(500).json({ success: false, error: blockingBookingsError.message || 'Failed to check unit availability.' });
+        }
+
+        let reservationQuery = supabase
+          .from('car_reservations')
+          .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+          .in('status', ['reserved', 'confirmed', 'pending_payment']);
+
+        if (sourceReservationId) {
+          reservationQuery = reservationQuery.neq('id', sourceReservationId);
+        }
+
+        const { data: blockingReservations, error: blockingReservationsError } = await reservationQuery;
+        if (blockingReservationsError) {
+          return res.status(500).json({ success: false, error: blockingReservationsError.message || 'Failed to check reservation availability.' });
+        }
+
+        const hasOverlap = (existingStart: string, existingEnd: string) => {
+          const requestedStart = new Date(startDate);
+          const requestedEnd = new Date(endDate);
+          const currentStart = new Date(existingStart);
+          const currentEnd = new Date(existingEnd);
+          return (
+            (requestedStart >= currentStart && requestedStart <= currentEnd) ||
+            (requestedEnd >= currentStart && requestedEnd <= currentEnd) ||
+            (requestedStart <= currentStart && requestedEnd >= currentEnd)
+          );
+        };
+
+        const blocked = new Set<string>();
+        for (const booking of blockingBookings || []) {
+          if (hasOverlap(booking.start_date, booking.end_date)) {
+            blocked.add(booking.car_id);
+          }
+        }
+
+        let modelOnlyHolds = 0;
+        for (const reservation of blockingReservations || []) {
+          if (!hasOverlap(reservation.start_date, reservation.end_date)) continue;
+          if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
+            blocked.add(reservation.car_id);
+          } else if (!reservation.car_id && reservation.vehicle_model_id === vehicleModelId) {
+            modelOnlyHolds += 1;
+          }
+        }
+
+        const freeUnits = candidateIds.filter((id: string) => !blocked.has(id));
+        const selected = freeUnits.length > modelOnlyHolds ? freeUnits[0] : null;
+
+        if (!selected) {
+          return res.status(409).json({ success: false, error: 'Selected dates are not available for this model.' });
+        }
+
+        resolvedCarId = selected;
+      }
+
+      if (!resolvedCarId) {
+        return res.status(400).json({ success: false, error: 'Missing required booking fields.' });
+      }
+
+      const available = await checkBookingAvailability(resolvedCarId, startDate, endDate, sourceReservationId || undefined);
       if (!available) {
         return res.status(409).json({ success: false, error: 'Selected dates are not available. The car is either booked or reserved for these dates.' });
       }
@@ -876,7 +1033,7 @@ const app = express();
       const { data: carRow, error: carRowError } = await supabase
         .from('cars')
         .select('id, fleet_owner_id, daily_rate, is_outsourced, outsource_commission_rate, outsource_owner_name, outsource_owner_email, outsource_owner_phone')
-        .eq('id', carId)
+        .eq('id', resolvedCarId)
         .single();
 
       if (carRowError || !carRow) {
@@ -914,7 +1071,8 @@ const app = express();
       const statusToken = (globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, '');
 
       const payload = {
-        car_id: carId,
+        car_id: resolvedCarId,
+        vehicle_model_id: vehicleModelId || null,
         client_id: clientId || sourceReservation?.client_id || null,
         fleet_owner_id: fleetOwnerId,
         start_date: startDate,
@@ -1477,7 +1635,7 @@ const app = express();
 
       const { data: reservation, error } = await supabase
         .from('car_reservations')
-        .select('id, car_id, start_date, end_date, reservation_fee, total_amount, status, payment_status, contact_name, contact_email, contact_phone, linked_booking_id')
+        .select('id, car_id, vehicle_model_id, start_date, end_date, reservation_fee, total_amount, status, payment_status, contact_name, contact_email, contact_phone, linked_booking_id')
         .eq('booking_completion_token', token)
         .single();
 
@@ -1495,6 +1653,7 @@ const app = express();
         success: true,
         reservationId: reservation.id,
         carId: reservation.car_id,
+        vehicleModelId: reservation.vehicle_model_id || null,
         startDate: reservation.start_date,
         endDate: reservation.end_date,
         contactName: reservation.contact_name,

@@ -208,7 +208,7 @@ export function CarDetails() {
               onClick={() => navigate('/browse-cars')}
               className="flex items-center gap-2 text-sm text-gray-400 hover:text-white group transition-colors"
             >
-              <span className="font-semibold">Browse Cars</span>
+              <span className="font-semibold">Browse Models</span>
               <span className="text-lg group-hover:translate-x-1 transition-transform inline-block">â</span>
             </button>
           </div>
