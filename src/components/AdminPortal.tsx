@@ -317,7 +317,7 @@ export function AdminPortal() {
   );
 
   return (
-    <div className="min-h-screen bg-background flex flex-col text-foreground transition-colors duration-300">
+    <div className={`${theme} min-h-screen bg-background flex flex-col text-foreground transition-colors duration-300`}>
       {/* Top Header */}
       <PortalHeader
         isDarkMode={isDarkMode}

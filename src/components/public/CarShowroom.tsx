@@ -36,9 +36,10 @@ const getCarStatus = (car: Car): 'available' | 'booked' | 'reserved' | 'unavaila
 
 interface CarShowroomProps {
   isHome?: boolean;
+  showSearchControls?: boolean;
 }
 
-export function CarShowroom({ isHome = false }: CarShowroomProps) {
+export function CarShowroom({ isHome = false, showSearchControls = true }: CarShowroomProps) {
   const [searchParamsURL] = useSearchParams();
   const [cars, setCars] = useState<Car[]>([]);
   const [filteredCars, setFilteredCars] = useState<Car[]>([]);
@@ -140,7 +141,9 @@ export function CarShowroom({ isHome = false }: CarShowroomProps) {
   return (
     <div className="min-h-screen bg-background">
       <PromoBadge />
-      <SearchControls onSearch={setSearchParams} initialParams={searchParams} />
+      {showSearchControls && (
+        <SearchControls onSearch={setSearchParams} initialParams={searchParams} />
+      )}
 
       <section className="py-8 md:py-20 px-4 md:px-6 relative overflow-hidden">
         <div className="flex flex-col md:flex-row gap-6">

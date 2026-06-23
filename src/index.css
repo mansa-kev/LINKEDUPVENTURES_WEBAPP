@@ -60,29 +60,7 @@
   animation-name: scale-in;
 }
 
-:root {
-  --background: #FFFFFF;
-  --foreground: #111827;
-  --card: #FFFFFF;
-  --card-foreground: #111827;
-  --primary: #FF6B00;
-  --primary-foreground: #FFFFFF;
-  --secondary: #F9FAFB;
-  --secondary-foreground: #111827;
-  --muted: #F3F4F6;
-  --muted-foreground: #4B5563;
-  --accent: #F3F4F6;
-  --accent-foreground: #111827;
-  --border: #D1D5DB;
-  --input: #D1D5DB;
-  --ring: #FF6B00;
-  --success: #059669;
-  --warning: #D97706;
-  --error: #DC2626;
-  --glass-bg: rgba(255, 255, 255, 0.85);
-  --glass-border: rgba(0, 0, 0, 0.15);
-}
-
+:root,
 .dark {
   --background: #0A0A0A;
   --foreground: #F5F5F5;
@@ -104,6 +82,29 @@
   --error: #EF4444;
   --glass-bg: rgba(10, 10, 10, 0.8);
   --glass-border: rgba(255, 255, 255, 0.2);
+}
+
+.light {
+  --background: #FFFFFF;
+  --foreground: #111827;
+  --card: #FFFFFF;
+  --card-foreground: #111827;
+  --primary: #FF6B00;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F9FAFB;
+  --secondary-foreground: #111827;
+  --muted: #F3F4F6;
+  --muted-foreground: #4B5563;
+  --accent: #F3F4F6;
+  --accent-foreground: #111827;
+  --border: #D1D5DB;
+  --input: #D1D5DB;
+  --ring: #FF6B00;
+  --success: #059669;
+  --warning: #D97706;
+  --error: #DC2626;
+  --glass-bg: rgba(255, 255, 255, 0.85);
+  --glass-border: rgba(0, 0, 0, 0.15);
 }
 
 /* Glassmorphism Utilities */
