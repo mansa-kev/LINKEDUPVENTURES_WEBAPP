@@ -29,6 +29,7 @@ import {
 } from "../src/server/bookingFinancials.js";
 import { applyProfileSyncFromBooking } from "../src/utils/bookingProfileSync.js";
 import { CALENDAR_BLOCKING_STATUSES_DB } from "../src/constants/bookingStatuses.js";
+import { isModelAvailableForDates } from "../src/server/modelUnitAvailability.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
 // and this call is a no-op (the file won't exist), which is fine.
@@ -363,7 +364,7 @@ const app = express();
 
       const { data: reservation } = await supabase
         .from('car_reservations')
-        .select('id, car_id, client_id, fleet_owner_id, reservation_fee, total_amount, booking_completion_token')
+        .select('id, car_id, vehicle_model_id, client_id, fleet_owner_id, reservation_fee, total_amount, booking_completion_token')
         .eq('id', paymentRequest.reservation_id)
         .maybeSingle();
 
@@ -409,7 +410,12 @@ const app = express();
         }
 
         if (reservation.client_id) {
-          const continuationLink = `/cars/${reservation.car_id}?booking=true&reservationToken=${reservation.booking_completion_token}`;
+          const continuationPath = reservation.car_id
+            ? `/cars/${reservation.car_id}`
+            : reservation.vehicle_model_id
+              ? `/models/${reservation.vehicle_model_id}`
+              : '/cars';
+          const continuationLink = `${continuationPath}?booking=true&reservationToken=${reservation.booking_completion_token}`;
           await supabase.from('notifications').insert({
             user_id: reservation.client_id,
             title: 'Reservation Confirmed',
@@ -712,6 +718,19 @@ const app = express();
         }
 
         dailyRate = Number(model.base_daily_rate || 0);
+
+        const modelAvailable = await isModelAvailableForDates(
+          supabase,
+          vehicleModelId,
+          startDate,
+          endDate
+        );
+        if (!modelAvailable) {
+          return res.status(409).json({
+            success: false,
+            error: 'Selected dates are not available for this model.',
+          });
+        }
       }
 
       if (!fleetOwnerId) {
@@ -1057,9 +1076,20 @@ const app = express();
       }
 
       const total = Number(totalAmount);
+      let rateForValidation = Number(carRow.daily_rate || 0);
+      if (vehicleModelId) {
+        const { data: modelRow } = await supabase
+          .from('vehicle_models')
+          .select('base_daily_rate')
+          .eq('id', vehicleModelId)
+          .maybeSingle();
+        if (modelRow?.base_daily_rate != null) {
+          rateForValidation = Number(modelRow.base_daily_rate);
+        }
+      }
       const amountCheck = validateBookingTotalAmount(
         total,
-        Number(carRow.daily_rate || 0),
+        rateForValidation,
         start,
         end
       );

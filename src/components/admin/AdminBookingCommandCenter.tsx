@@ -11,7 +11,7 @@ import {
 import { logger } from '../../utils/logger';
 import { adminService } from '../../services/adminService';
 import { enhancedContractService } from '../../services/enhancedContractService';
-import { buildBookingSummaryForContract, generateAndSaveContract } from '../../services/contractPdfService';
+import { buildBookingSummaryForContract, generateAndSaveContract, regenerateAndSaveContract } from '../../services/contractPdfService';
 import { sendAdminEmail } from '../../services/adminEmailService';
 import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
@@ -70,6 +70,8 @@ export function AdminBookingCommandCenter() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [isAssigningDriver, setIsAssigningDriver] = useState(false);
+  const [fleetUnits, setFleetUnits] = useState<any[]>([]);
+  const [isAssigningUnit, setIsAssigningUnit] = useState(false);
   const [conductors, setConductors] = useState<Record<string, string>>({});
 
   const fetchDrivers = async () => {
@@ -96,6 +98,35 @@ export function AdminBookingCommandCenter() {
       toast.error('Failed to allocate driver: ' + e.message);
     } finally {
       setIsAssigningDriver(false);
+    }
+  };
+
+  const fetchFleetUnits = async (modelId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('cars')
+        .select('id, license_plate, color, year, status, vehicle_model_id, make, model')
+        .eq('vehicle_model_id', modelId)
+        .order('license_plate');
+      if (error) throw error;
+      setFleetUnits(data || []);
+    } catch (err) {
+      logger.error('Failed to fetch fleet units:', err);
+      setFleetUnits([]);
+    }
+  };
+
+  const handleAssignUnit = async (carId: string) => {
+    if (!carId || !booking?.id) return;
+    setIsAssigningUnit(true);
+    try {
+      await adminService.assignBookingUnit(booking.id, carId);
+      toast.success('Fleet unit assigned successfully');
+      await fetchBooking(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to assign fleet unit');
+    } finally {
+      setIsAssigningUnit(false);
     }
   };
 
@@ -153,6 +184,15 @@ export function AdminBookingCommandCenter() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+    if (booking?.vehicle_model_id) {
+      fetchFleetUnits(booking.vehicle_model_id);
+    } else {
+      setFleetUnits([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.vehicle_model_id]);
+
   // Handle ESC for lightbox
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightboxUrl(null); };
@@ -189,7 +229,7 @@ export function AdminBookingCommandCenter() {
   };
 
   const handleRegenerateContract = async () => {
-    if (!booking?.cars) {
+    if (!booking?.cars && !booking?.vehicle_model) {
       toast.error('Vehicle details are required to generate the contract.');
       return;
     }
@@ -210,11 +250,18 @@ export function AdminBookingCommandCenter() {
         throw new Error('No active HTML contract template found. Upload one in Contract Manager.');
       }
 
-      await generateAndSaveContract(booking.id, {
+      const vehicleModelId = booking.vehicle_model_id || booking.vehicle_model?.id || null;
+      const contractCar = {
+        ...(booking.cars || {}),
+        vehicle_model: booking.vehicle_model || booking.cars?.vehicle_model,
+      };
+
+      await regenerateAndSaveContract(booking.id, {
         contract: masterContract,
-        bookingData: buildBookingSummaryForContract(booking, booking.cars),
-        car: booking.cars,
+        bookingData: buildBookingSummaryForContract(booking, contractCar),
+        car: contractCar,
         signatureData: signature,
+        vehicleModelId,
       });
 
       toast.success('Signed contract PDF generated successfully.');
@@ -928,6 +975,92 @@ export function AdminBookingCommandCenter() {
             </div>
 
             <div className="space-y-6">
+              <SectionCard title="Fleet Unit Allocation" icon={<Car size={16} />}>
+                <div className="space-y-4">
+                  {booking.vehicle_model_id && booking.cars?.vehicle_model_id &&
+                    booking.vehicle_model_id !== booking.cars.vehicle_model_id && (
+                    <div className="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl p-3 flex items-start gap-2.5 text-xs font-bold leading-normal">
+                      <AlertTriangle size={15} className="shrink-0 mt-0.5" />
+                      <div>
+                        <p>Unit mismatch</p>
+                        <p className="text-[10px] text-red-300/80 font-normal mt-0.5">
+                          The assigned unit is linked to a different catalog model than the one the client booked.
+                          Reassign a unit from the booked model below.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {booking.cars ? (
+                    <div className="p-3 bg-primary/10 border border-primary/20 rounded-xl">
+                      <p className="text-[10px] font-black uppercase text-primary tracking-widest">Currently Assigned Unit</p>
+                      <p className="text-sm font-black text-foreground mt-1">
+                        {booking.cars.year ? `${booking.cars.year} · ` : ''}
+                        {booking.cars.color || 'N/A'}
+                      </p>
+                      <p className="text-xs font-mono text-muted-foreground mt-0.5">
+                        {booking.cars.license_plate || 'No plate'} · {booking.cars.make} {booking.cars.model}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="bg-amber-500/10 border border-amber-500/20 text-amber-500 rounded-xl p-3 text-xs font-bold">
+                      No fleet unit linked to this booking yet.
+                    </div>
+                  )}
+
+                  {booking.vehicle_model && (
+                    <p className="text-xs text-muted-foreground">
+                      Booked model: <span className="font-semibold text-foreground">
+                        {booking.vehicle_model.display_name || `${booking.vehicle_model.make} ${booking.vehicle_model.model}`}
+                      </span>
+                    </p>
+                  )}
+
+                  {booking.vehicle_model_id ? (
+                    <div className="space-y-2 pt-2 border-t border-border/50">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">
+                        {booking.cars ? 'Reassign fleet unit' : 'Assign fleet unit'}
+                      </label>
+                      <div className="flex gap-2">
+                        <select
+                          value={booking.car_id || ''}
+                          onChange={(e) => {
+                            if (e.target.value) handleAssignUnit(e.target.value);
+                          }}
+                          disabled={isAssigningUnit || fleetUnits.length === 0}
+                          className="flex-1 px-3 py-2 bg-background border border-border rounded-xl text-sm"
+                        >
+                          <option value="">
+                            {fleetUnits.length === 0
+                              ? 'No units linked to this model'
+                              : '-- Select unit for handover --'}
+                          </option>
+                          {fleetUnits.map((unit) => (
+                            <option key={unit.id} value={unit.id}>
+                              {unit.license_plate || 'No plate'} · {unit.year || '—'} · {unit.color || 'N/A'} ({unit.status})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {booking.vehicle_model_id && (
+                        <a
+                          href={`/models/${booking.vehicle_model_id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"
+                        >
+                          <ExternalLink size={12} /> View public model page
+                        </a>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      This is a legacy unit-only booking with no catalog model link.
+                    </p>
+                  )}
+                </div>
+              </SectionCard>
+
               <SectionCard title="Driver & Logistics Allocation" icon={<Car size={16} />}>
                 <div className="space-y-4">
                   {booking.driver ? (

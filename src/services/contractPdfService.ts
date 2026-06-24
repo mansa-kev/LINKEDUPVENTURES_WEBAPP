@@ -104,6 +104,20 @@ export async function generateAndSaveContract(
   );
 }
 
+export async function regenerateAndSaveContract(
+  bookingId: string,
+  options: GenerateContractPdfOptions
+): Promise<SignedContract> {
+  const pdfBase64 = await generateContractPdfBase64(options);
+  const contractData = buildContractData(bookingId, options.bookingData, options.car, options.vehicleModelId);
+  return enhancedContractService.saveSignedContract(
+    bookingId,
+    options.signatureData,
+    contractData,
+    pdfBase64
+  );
+}
+
 export function buildBookingSummaryForContract(booking: any, car: any): ContractBookingData {
   const meta = booking?.metadata || {};
   const guest = meta.guest_info || {};

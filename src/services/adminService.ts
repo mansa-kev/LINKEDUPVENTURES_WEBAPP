@@ -466,6 +466,94 @@ export const adminService = {
     return data;
   },
 
+  assignBookingUnit: async (bookingId: string, carId: string) => {
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      return handleSupabaseErrorWrapper(bookingError, 'assignBookingUnit');
+    }
+
+    const { data: car, error: carError } = await supabase
+      .from('cars')
+      .select('id, vehicle_model_id, license_plate, status')
+      .eq('id', carId)
+      .single();
+
+    if (carError || !car) {
+      return handleSupabaseErrorWrapper(carError, 'assignBookingUnit');
+    }
+
+    if (booking.vehicle_model_id && car.vehicle_model_id !== booking.vehicle_model_id) {
+      throw new Error('Selected fleet unit is not linked to the booked vehicle model.');
+    }
+
+    const hasOverlap = (startDate: string, endDate: string, existingStart: string, existingEnd: string) => {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const currentStart = new Date(existingStart);
+      const currentEnd = new Date(existingEnd);
+      return (
+        (start >= currentStart && start <= currentEnd) ||
+        (end >= currentStart && end <= currentEnd) ||
+        (start <= currentStart && end >= currentEnd)
+      );
+    };
+
+    const { data: bookingConflicts, error: bookingConflictsError } = await supabase
+      .from('bookings')
+      .select('id, start_date, end_date')
+      .eq('car_id', carId)
+      .neq('id', bookingId)
+      .in('status', ['confirmed', 'on_trip', 'pending_payment_verification', 'pending']);
+
+    if (bookingConflictsError) {
+      return handleSupabaseErrorWrapper(bookingConflictsError, 'assignBookingUnit');
+    }
+
+    const bookingBlocked = (bookingConflicts || []).some((row: any) =>
+      hasOverlap(booking.start_date, booking.end_date, row.start_date, row.end_date)
+    );
+    if (bookingBlocked) {
+      throw new Error('Selected unit is not available for these booking dates.');
+    }
+
+    const { data: reservationConflicts, error: reservationConflictsError } = await supabase
+      .from('car_reservations')
+      .select('id, start_date, end_date')
+      .eq('car_id', carId)
+      .in('status', ['reserved', 'confirmed', 'pending_payment']);
+
+    if (reservationConflictsError) {
+      return handleSupabaseErrorWrapper(reservationConflictsError, 'assignBookingUnit');
+    }
+
+    const reservationBlocked = (reservationConflicts || []).some((row: any) =>
+      hasOverlap(booking.start_date, booking.end_date, row.start_date, row.end_date)
+    );
+    if (reservationBlocked) {
+      throw new Error('Selected unit has an overlapping reservation for these dates.');
+    }
+
+    const { data, error } = await supabase
+      .from('bookings')
+      .update({
+        car_id: carId,
+        vehicle_model_id: booking.vehicle_model_id || car.vehicle_model_id || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .select();
+
+    if (error) return handleSupabaseErrorWrapper(error, 'assignBookingUnit');
+    invalidateCachePrefix('admin:bookings:');
+    invalidateCachePrefix('admin:dashboard:');
+    return data;
+  },
+
   // --- Cars ---
   getVehicleModels: async (page: number = 1, pageSize: number = 50) => {
     return getOrSetCache(`admin:vehicleModels:${page}:${pageSize}`, ADMIN_CACHE_TTL_MS, async () => {

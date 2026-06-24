@@ -10,6 +10,7 @@ import { openBookingReceiptPdf } from '../../services/receiptPdfService';
 import { fleetService } from '../../services/fleetService';
 import { toProxiedAssetUrl } from '../../utils/assetUrl';
 import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
+import { getBookingRebookPath } from '../../utils/bookingSource';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -502,7 +503,7 @@ export function MyBookings() {
                           </span>
                         )}
                         <button
-                          onClick={() => navigate(`/cars/${booking.car_id}`)}
+                          onClick={() => navigate(getBookingRebookPath(booking))}
                           className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
                         >
                           <RefreshCw size={16} /> Re-book

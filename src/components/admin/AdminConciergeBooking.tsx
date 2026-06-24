@@ -275,6 +275,7 @@ export function AdminConciergeBooking() {
               },
               car: carForContract,
               signatureData: bookingData.signatureUrl,
+              vehicleModelId: bookingData.vehicleModelId,
             });
           } catch (contractErr: any) {
             console.error('Failed to save concierge contract PDF:', contractErr);

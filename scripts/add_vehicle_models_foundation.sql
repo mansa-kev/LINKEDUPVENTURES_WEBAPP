@@ -9,9 +9,6 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS vehicle_models (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slug TEXT UNIQUE,
-  family_slug TEXT,
-  family_name TEXT,
-  variant_name TEXT,
   make TEXT NOT NULL,
   model TEXT NOT NULL,
   year INTEGER,
@@ -35,6 +32,12 @@ CREATE TABLE IF NOT EXISTS vehicle_models (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Family columns may be added later by add_vehicle_model_families.sql on older DBs.
+ALTER TABLE vehicle_models
+  ADD COLUMN IF NOT EXISTS family_slug TEXT,
+  ADD COLUMN IF NOT EXISTS family_name TEXT,
+  ADD COLUMN IF NOT EXISTS variant_name TEXT;
 
 CREATE INDEX IF NOT EXISTS idx_vehicle_models_public_sort
   ON vehicle_models(is_public, sort_order, created_at DESC);

@@ -21,6 +21,7 @@ import { createDeleteReservationHandler } from "./src/server/deleteReservationHa
 import { processBookingPayoutSettlements } from "./src/server/bookingPayoutSettlements.js";
 import { applyProfileSyncFromBooking, linkBookingAndSyncProfile } from "./src/utils/bookingProfileSync.js";
 import { CALENDAR_BLOCKING_STATUSES_DB } from "./src/constants/bookingStatuses.js";
+import { isModelAvailableForDates } from "./src/server/modelUnitAvailability.js";
 
 dotenv.config({ path: '.env.local' });
 
@@ -720,6 +721,19 @@ async function startServer() {
         }
 
         dailyRate = Number(model.base_daily_rate || 0);
+
+        const modelAvailable = await isModelAvailableForDates(
+          supabase,
+          vehicleModelId,
+          startDate,
+          endDate
+        );
+        if (!modelAvailable) {
+          return res.status(409).json({
+            success: false,
+            error: 'Selected dates are not available for this model.',
+          });
+        }
       }
 
       if (!fleetOwnerId) {
@@ -1008,7 +1022,17 @@ async function startServer() {
       }
 
       // ── Server-side amount validation ──
-      const dailyRate = Number(carRow.daily_rate || 0);
+      let dailyRate = Number(carRow.daily_rate || 0);
+      if (vehicleModelId) {
+        const { data: modelRow } = await supabase
+          .from('vehicle_models')
+          .select('base_daily_rate')
+          .eq('id', vehicleModelId)
+          .maybeSingle();
+        if (modelRow?.base_daily_rate != null) {
+          dailyRate = Number(modelRow.base_daily_rate);
+        }
+      }
       const msPerDay = 1000 * 60 * 60 * 24;
       const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / msPerDay));
       const expected = dailyRate * days;

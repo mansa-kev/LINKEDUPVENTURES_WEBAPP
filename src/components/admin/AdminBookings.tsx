@@ -10,6 +10,7 @@ import {
 import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
 import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
+import { bookingFromReservation } from '../../utils/bookingSource';
 
 // No longer using separate countdown hooks per card to prevent performance bottlenecks.
 // Real-time updates are driven by a single parent clock in the main component.
@@ -326,7 +327,7 @@ export function AdminBookings() {
       case 'overdue': return b.status === 'on_trip' && new Date(b.end_date) < today;
       case 'extended': return b.sub_status === 'extended';
       case 'completed': return b.status === 'completed' || b.status === 'returned';
-      case 'from_reservation': return !!b.metadata?.from_reservation?.reservation_id;
+      case 'from_reservation': return bookingFromReservation(b);
       default: return true;
     }
   };
@@ -351,7 +352,7 @@ export function AdminBookings() {
     overdue: bookings.filter(b => b.status === 'on_trip' && new Date(b.end_date) < today).length,
     extended: bookings.filter(b => b.sub_status === 'extended').length,
     completed: bookings.filter(b => b.status === 'completed' || b.status === 'returned').length,
-    from_reservation: bookings.filter(b => !!b.metadata?.from_reservation?.reservation_id).length,
+    from_reservation: bookings.filter((b) => bookingFromReservation(b)).length,
   };
 
   const handleManageBooking = (booking: Booking) => {

@@ -9,6 +9,12 @@
 
 BEGIN;
 
+-- Ensure family columns exist before merge updates reference them.
+ALTER TABLE vehicle_models
+  ADD COLUMN IF NOT EXISTS family_slug TEXT,
+  ADD COLUMN IF NOT EXISTS family_name TEXT,
+  ADD COLUMN IF NOT EXISTS variant_name TEXT;
+
 -- 1) Point cars at the canonical keeper per family slug
 WITH model_stats AS (
   SELECT

@@ -88,6 +88,7 @@ export function contractVehicleToCarShape(
     license_plate: resolved.licensePlate,
     color: resolved.color,
     daily_rate: resolved.dailyRate,
+    overtime_rate: Number(car?.overtime_rate ?? car?.vehicle_model?.overtime_rate ?? 500),
     security_deposit: resolved.securityDeposit,
     vehicle_display_name: resolved.displayName,
     vehicle_equivalent_clause: resolved.isModelBooking
@@ -109,6 +110,73 @@ export function formatContractDate(date: string | Date | null | undefined): stri
     month: 'long',
     day: 'numeric',
   });
+}
+
+export function formatAgreementDateParts(date: string | Date | null | undefined): {
+  day: string;
+  dayOrdinal: string;
+  month: string;
+  year: string;
+  yearWords: string;
+} {
+  const d = date ? (typeof date === 'string' ? new Date(date) : date) : new Date();
+  const valid = !Number.isNaN(d.getTime()) ? d : new Date();
+  const day = String(valid.getDate());
+  const suffix =
+    day === '1' || day === '21' || day === '31'
+      ? 'st'
+      : day === '2' || day === '22'
+        ? 'nd'
+        : day === '3' || day === '23'
+          ? 'rd'
+          : 'th';
+  const month = valid.toLocaleDateString('en-GB', { month: 'long' });
+  const year = String(valid.getFullYear());
+  const yearWords = numberToWords(valid.getFullYear());
+  return { day, dayOrdinal: `${day}${suffix}`, month, year, yearWords };
+}
+
+function numberToWords(n: number): string {
+  const ones = [
+    '',
+    'One',
+    'Two',
+    'Three',
+    'Four',
+    'Five',
+    'Six',
+    'Seven',
+    'Eight',
+    'Nine',
+    'Ten',
+    'Eleven',
+    'Twelve',
+    'Thirteen',
+    'Fourteen',
+    'Fifteen',
+    'Sixteen',
+    'Seventeen',
+    'Eighteen',
+    'Nineteen',
+  ];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  if (n < 20) return ones[n] || String(n);
+  if (n < 100) {
+    const t = Math.floor(n / 10);
+    const o = n % 10;
+    return `${tens[t]}${o ? ` ${ones[o]}` : ''}`.trim();
+  }
+  if (n < 2000) {
+    const hundreds = Math.floor(n / 100);
+    const rest = n % 100;
+    return `${ones[hundreds]} Hundred${rest ? ` ${numberToWords(rest)}` : ''}`.trim();
+  }
+  if (n < 3000) {
+    const rest = n % 1000;
+    return `Two Thousand${rest ? ` ${numberToWords(rest)}` : ''}`.trim();
+  }
+  return String(n);
 }
 
 export function getClientNameFromBooking(bookingData: ContractBookingData): string {
@@ -173,6 +241,14 @@ export function applyTemplateReplacements(
     settings.contract_logo || settings.site_logo || settings.logo_url || companySig;
   const clientSigImg = `<img data-client-signature="1" src="${clientSignature || BLANK_SIGNATURE}" alt="Client Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
   const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
+  const agreementDate = formatAgreementDateParts(
+    bookingData?.startDate || bookingData?.start_date || new Date()
+  );
+  const startParts = formatAgreementDateParts(bookingData?.startDate || bookingData?.start_date);
+  const endParts = formatAgreementDateParts(bookingData?.endDate || bookingData?.end_date);
+  const overtimeRate = Number(
+    car?.overtime_rate ?? car?.vehicle_model?.overtime_rate ?? resolvedCar?.overtime_rate ?? 500
+  );
 
   let replaced = templateHtml;
   replaced = replaced.replace(/\{\{clientName\}\}/g, clientName);
@@ -189,6 +265,18 @@ export function applyTemplateReplacements(
   replaced = replaced.replace(/\{\{endDate\}\}/g, formatContractDate(bookingData?.endDate || bookingData?.end_date));
   replaced = replaced.replace(/\{\{totalAmount\}\}/g, getTotalCostFromBooking(bookingData).toLocaleString());
   replaced = replaced.replace(/\{\{dailyRate\}\}/g, resolvedCar?.daily_rate?.toLocaleString?.() || String(resolvedCar?.daily_rate || ''));
+  replaced = replaced.replace(/\{\{overtimeRate\}\}/g, overtimeRate.toLocaleString());
+  replaced = replaced.replace(/\{\{mileage\}\}/g, 'as confirmed during pickup');
+  replaced = replaced.replace(/\{\{agreementDay\}\}/g, agreementDate.dayOrdinal);
+  replaced = replaced.replace(/\{\{agreementMonth\}\}/g, agreementDate.month);
+  replaced = replaced.replace(/\{\{agreementYear\}\}/g, agreementDate.year);
+  replaced = replaced.replace(/\{\{agreementYearWords\}\}/g, agreementDate.yearWords);
+  replaced = replaced.replace(/\{\{startDay\}\}/g, startParts.dayOrdinal);
+  replaced = replaced.replace(/\{\{startMonth\}\}/g, startParts.month);
+  replaced = replaced.replace(/\{\{startYear\}\}/g, startParts.year);
+  replaced = replaced.replace(/\{\{endDay\}\}/g, endParts.dayOrdinal);
+  replaced = replaced.replace(/\{\{endMonth\}\}/g, endParts.month);
+  replaced = replaced.replace(/\{\{endYear\}\}/g, endParts.year);
   replaced = replaced.replace(/\{\{companyPoBox\}\}/g, settings.company_po_box || '2345');
   replaced = replaced.replace(/\{\{companyLogoUrl\}\}/g, contractLogo || settings.site_logo || companySig);
   replaced = replaced.replace(/\{\{logoUrl\}\}/g, contractLogo || settings.site_logo || companySig);
