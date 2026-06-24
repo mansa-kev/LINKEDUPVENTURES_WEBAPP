@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { groupVehicleModels } from '../../utils/vehicleModelGrouping';
 import { adminService } from '../../services/adminService';
 import { 
@@ -109,6 +110,17 @@ const MaintenanceBadge = ({ status }: { status: MaintenanceStatus }) => {
 };
 
 export function AdminCars() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const vehicleModelFilter = searchParams.get('modelId') || '';
+  const vehicleModelFilterIds = (searchParams.get('modelIds') || '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  const activeVehicleModelIds = vehicleModelFilterIds.length
+    ? vehicleModelFilterIds
+    : vehicleModelFilter
+      ? [vehicleModelFilter]
+      : [];
   const [cars, setCars] = useState<CarItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [page, setPage] = useState(1);
@@ -163,12 +175,18 @@ export function AdminCars() {
     setLoading(true);
     try {
       const [carsResult, ownersData, vehicleModelsResult] = await Promise.all([
-        adminService.getCars(page, pageSize),
+        activeVehicleModelIds.length
+          ? adminService.getCarsByVehicleModelIds(activeVehicleModelIds)
+          : adminService.getCars(page, pageSize),
         adminService.getFleetOwners(),
-        adminService.getVehicleModels(1, 500)
+        adminService.getVehicleModels(1, 500),
       ]);
-      
-      if (carsResult && 'data' in carsResult) {
+
+      if (activeVehicleModelIds.length) {
+        const linked = Array.isArray(carsResult) ? carsResult : [];
+        setCars(linked);
+        setTotalCount(linked.length);
+      } else if (carsResult && 'data' in carsResult) {
         setCars(carsResult.data || []);
         setTotalCount(carsResult.count || 0);
       }
@@ -184,7 +202,38 @@ export function AdminCars() {
 
   useEffect(() => {
     fetchData();
-  }, [page]);
+  }, [page, vehicleModelFilter, searchParams]);
+
+  useEffect(() => {
+    if (!vehicleModelFilter || !vehicleModels.length) return;
+    if (searchParams.get('add') !== '1') return;
+
+    const selectedModel = vehicleModels.find((item) => item.id === vehicleModelFilter);
+    if (selectedModel) {
+      setFormData((prev) => ({
+        ...prev,
+        vehicle_model_id: selectedModel.id,
+        make: selectedModel.make || prev.make,
+        model: selectedModel.model || prev.model,
+        year: selectedModel.year || prev.year,
+        category: selectedModel.category || prev.category,
+        description: selectedModel.description || prev.description,
+        primary_image_url: selectedModel.primary_image_url || prev.primary_image_url,
+        transmission: selectedModel.transmission || prev.transmission,
+        fuel_type: selectedModel.fuel_type || prev.fuel_type,
+        seats: selectedModel.seats || prev.seats,
+        daily_rate: selectedModel.base_daily_rate || prev.daily_rate,
+        overtime_rate: selectedModel.overtime_rate ?? prev.overtime_rate,
+        security_deposit: selectedModel.security_deposit ?? prev.security_deposit,
+      }));
+      setIsFormModalOpen(true);
+      setFormStep(1);
+    }
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('add');
+    setSearchParams(nextParams, { replace: true });
+  }, [vehicleModelFilter, vehicleModels, searchParams, setSearchParams]);
 
   // Mobile detection with resize listener
   useEffect(() => {
@@ -409,6 +458,30 @@ export function AdminCars() {
 
   return (
     <div className="space-y-6 animate-in fade-in duration-150">
+      {activeVehicleModelIds.length > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-primary/10 border border-primary/20 rounded-2xl">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-primary">Fleet units for public model</p>
+            <p className="text-sm font-semibold text-foreground mt-1">
+              {vehicleModels.find((item) => item.id === vehicleModelFilter)?.display_name ||
+                vehicleModels.find((item) => item.id === vehicleModelFilter)?.model ||
+                vehicleModelFilter}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('modelId');
+              next.delete('modelIds');
+              setSearchParams(next, { replace: true });
+            }}
+            className="px-4 py-2 rounded-xl text-xs font-bold border border-primary/30 hover:bg-primary/10 transition-colors"
+          >
+            Show all fleet cars
+          </button>
+        </div>
+      )}
       {/* Header & Actions */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 md:gap-4">
         <div className="flex items-center gap-2">

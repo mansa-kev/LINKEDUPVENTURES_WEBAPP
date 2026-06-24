@@ -331,6 +331,16 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
           </>
         )}
 
+        {!showAltPayment && (
+          <button
+            type="button"
+            onClick={() => setShowAltPayment(true)}
+            className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest text-primary border border-primary/25 rounded-xl hover:bg-primary/5 transition-colors"
+          >
+            Prefer a call back? Request callback
+          </button>
+        )}
+
         <div className="grid grid-cols-2 gap-2">
           <div className="p-3 bg-card/50 rounded-[14px] border border-border space-y-1">
             <label className="text-[9px] sm:text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Amount (Editable)</label>

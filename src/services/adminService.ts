@@ -446,6 +446,30 @@ export const adminService = {
     });
   },
 
+  getCarsByVehicleModelIds: async (modelIds: string[]) => {
+    if (!modelIds?.length) return [];
+    const { data, error } = await supabase
+      .from('cars')
+      .select(`
+        id,
+        make,
+        model,
+        year,
+        color,
+        license_plate,
+        status,
+        daily_rate,
+        vehicle_model_id,
+        primary_image_url,
+        fleet_owner:user_profiles(full_name)
+      `)
+      .in('vehicle_model_id', modelIds)
+      .order('year', { ascending: false })
+      .order('created_at', { ascending: false });
+    if (error) return handleSupabaseErrorWrapper(error, 'getCarsByVehicleModelIds');
+    return data || [];
+  },
+
   getCars: async (page: number = 1, pageSize: number = 20) => {
     return getOrSetCache(`admin:cars:${page}:${pageSize}`, ADMIN_CACHE_TTL_MS, async () => {
       const from = (page - 1) * pageSize;

@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Logo } from '../shared/Logo';
+import { FloatingSupportWidget } from './FloatingSupportWidget';
 
 interface NavItem {
   label: string;
@@ -287,6 +288,8 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </footer>
+
+      <FloatingSupportWidget context="LinkedUp public site" />
     </div>
   );
 }

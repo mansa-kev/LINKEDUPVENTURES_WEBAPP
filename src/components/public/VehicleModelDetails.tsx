@@ -10,7 +10,6 @@ import { VehicleModelGroup, getVehicleModelIdsForGroup } from '../../utils/vehic
 import { BookingFlow } from './BookingFlow/BookingFlow';
 import { ReservationFlow } from './BookingFlow/ReservationFlow';
 import { LogoLoader } from '../shared/LogoLoader';
-import { FloatingSupportWidget } from './FloatingSupportWidget';
 import { vehicleModelToCarLike } from '../../utils/vehicleModelAdapter';
 
 export function VehicleModelDetails() {
@@ -536,7 +535,6 @@ export function VehicleModelDetails() {
         </div>
       </div>
 
-      <FloatingSupportWidget context={`Viewing Vehicle Model: ${model.make} ${model.model}`} />
     </>
   );
 }

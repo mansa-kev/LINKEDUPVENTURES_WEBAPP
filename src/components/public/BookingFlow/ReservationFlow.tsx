@@ -624,6 +624,16 @@ export function ReservationFlow({ car, onClose, vehicleModelId }: ReservationFlo
                 </div>
               </>
             )}
+
+            {!showAltPayment && (
+              <button
+                type="button"
+                onClick={() => setShowAltPayment(true)}
+                className="w-full py-2.5 text-[10px] font-black uppercase tracking-widest text-warning border border-warning/25 rounded-xl hover:bg-warning/5 transition-colors"
+              >
+                Prefer a call back? Request callback
+              </button>
+            )}
           </div>
 
           {phase !== 'ready' && (
