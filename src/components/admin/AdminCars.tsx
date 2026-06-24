@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { groupVehicleModels } from '../../utils/vehicleModelGrouping';
 import { adminService } from '../../services/adminService';
@@ -81,6 +81,7 @@ interface CarItem {
 // --- Components ---
 
 const StatusBadge = ({ status }: { status: CarStatus }) => {
+  const safeStatus = (status || 'unavailable') as CarStatus;
   const styles: Record<CarStatus, string> = {
     available: 'bg-success/10 text-success border-success/20',
     rented: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
@@ -89,13 +90,14 @@ const StatusBadge = ({ status }: { status: CarStatus }) => {
   };
 
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[status]}`}>
-      {status}
+    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[safeStatus]}`}>
+      {safeStatus}
     </span>
   );
 };
 
 const MaintenanceBadge = ({ status }: { status: MaintenanceStatus }) => {
+  const safeStatus = (status || 'ok') as MaintenanceStatus;
   const styles: Record<MaintenanceStatus, string> = {
     ok: 'bg-success/10 text-success border-success/20',
     due: 'bg-warning/10 text-warning border-warning/20',
@@ -103,8 +105,8 @@ const MaintenanceBadge = ({ status }: { status: MaintenanceStatus }) => {
   };
 
   return (
-    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[status]}`}>
-      {status.replace('_', ' ')}
+    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${styles[safeStatus]}`}>
+      {safeStatus.replace(/_/g, ' ')}
     </span>
   );
 };
@@ -171,6 +173,36 @@ export function AdminCars() {
     value: string;
   }>({ type: null, car: null, value: '' });
 
+  const activeVehicleModelRows = useMemo(
+    () => vehicleModels.filter((item) => activeVehicleModelIds.includes(item.id)),
+    [vehicleModels, activeVehicleModelIds]
+  );
+
+  const familySummary = useMemo(() => {
+    const available = cars.filter((car) => car.status === 'available').length;
+    const maintenance = cars.filter((car) => car.status === 'maintenance').length;
+    const rented = cars.filter((car) => car.status === 'rented').length;
+    return { available, maintenance, rented };
+  }, [cars]);
+
+  const normalizeFleetCar = (car: any): CarItem => ({
+    ...car,
+    license_plate: car.license_plate || '',
+    description: car.description || '',
+    category: car.category || 'SUV',
+    color: car.color || '',
+    photos: car.photos || [],
+    features: car.features || [],
+    maintenance_status: car.maintenance_status || 'ok',
+    daily_rate: Number(car.daily_rate || 0),
+    overtime_rate: Number(car.overtime_rate || 0),
+    security_deposit: Number(car.security_deposit || 0),
+    fleet_owner_details:
+      typeof car.fleet_owner === 'object' && car.fleet_owner
+        ? car.fleet_owner
+        : car.fleet_owner_details,
+  });
+
   const fetchData = async () => {
     setLoading(true);
     try {
@@ -183,11 +215,11 @@ export function AdminCars() {
       ]);
 
       if (activeVehicleModelIds.length) {
-        const linked = Array.isArray(carsResult) ? carsResult : [];
+        const linked = (Array.isArray(carsResult) ? carsResult : []).map(normalizeFleetCar);
         setCars(linked);
         setTotalCount(linked.length);
       } else if (carsResult && 'data' in carsResult) {
-        setCars(carsResult.data || []);
+        setCars((carsResult.data || []).map(normalizeFleetCar));
         setTotalCount(carsResult.count || 0);
       }
       setFleetOwners(ownersData || []);
@@ -435,8 +467,8 @@ export function AdminCars() {
     const carName = `${c.make} ${c.model}`;
     const ownerName = c.fleet_owner?.full_name || 'Unknown Owner';
     
-    const matchesSearch = carName.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          c.license_plate.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    const matchesSearch = carName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (c.license_plate || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                           ownerName.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || c.status === statusFilter;
@@ -463,9 +495,14 @@ export function AdminCars() {
           <div>
             <p className="text-xs font-bold uppercase tracking-wider text-primary">Fleet units for public model</p>
             <p className="text-sm font-semibold text-foreground mt-1">
-              {vehicleModels.find((item) => item.id === vehicleModelFilter)?.display_name ||
+              {vehicleModels.find((item) => item.id === vehicleModelFilter)?.family_name ||
+                vehicleModels.find((item) => item.id === vehicleModelFilter)?.display_name ||
                 vehicleModels.find((item) => item.id === vehicleModelFilter)?.model ||
                 vehicleModelFilter}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {activeVehicleModelRows.length} linked model row{activeVehicleModelRows.length === 1 ? '' : 's'} ·
+              {' '}{familySummary.available} available · {familySummary.maintenance} maintenance · {familySummary.rented} rented
             </p>
           </div>
           <button

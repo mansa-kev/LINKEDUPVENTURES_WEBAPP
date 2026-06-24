@@ -202,6 +202,16 @@ SET
       'g'
     )
   ),
+  family_slug = lower(
+    regexp_replace(
+      trim(concat_ws(' ', vm.make, vm.model)),
+      '[^a-zA-Z0-9]+',
+      '-',
+      'g'
+    )
+  ),
+  family_name = trim(concat_ws(' ', vm.make, vm.model)),
+  variant_name = COALESCE(vm.variant_name, 'Standard'),
   display_name = trim(concat_ws(' ', vm.make, vm.model)),
   year = NULL;
 

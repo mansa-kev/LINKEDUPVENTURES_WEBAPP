@@ -1,6 +1,9 @@
 export interface VehicleModel {
   id: string;
   slug?: string;
+  family_slug?: string;
+  family_name?: string;
+  variant_name?: string;
   make: string;
   model: string;
   year?: number;

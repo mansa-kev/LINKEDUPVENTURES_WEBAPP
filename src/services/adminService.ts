@@ -36,6 +36,47 @@ function sanitizeCarPayload(car: any) {
   };
 }
 
+const VEHICLE_MODEL_WRITE_FIELDS = [
+  'slug',
+  'family_slug',
+  'family_name',
+  'variant_name',
+  'make',
+  'model',
+  'year',
+  'display_name',
+  'category',
+  'description',
+  'primary_image_url',
+  'gallery_urls',
+  'video_url',
+  'transmission',
+  'fuel_type',
+  'seats',
+  'luggage',
+  'features',
+  'base_daily_rate',
+  'overtime_rate',
+  'security_deposit',
+  'is_chauffeured_only',
+  'is_public',
+  'sort_order',
+] as const;
+
+function sanitizeVehicleModelPayload(input: Record<string, any> = {}) {
+  const payload: Record<string, any> = {};
+  for (const key of VEHICLE_MODEL_WRITE_FIELDS) {
+    if (input[key] !== undefined) payload[key] = input[key];
+  }
+  if (
+    typeof payload.primary_image_url === 'string' &&
+    payload.primary_image_url.startsWith('blob:')
+  ) {
+    delete payload.primary_image_url;
+  }
+  return payload;
+}
+
 async function resolveVehicleModelIdForCar(car: {
   make?: string;
   model?: string;
@@ -458,6 +499,7 @@ export const adminService = {
         color,
         license_plate,
         status,
+        maintenance_status,
         daily_rate,
         vehicle_model_id,
         primary_image_url,
@@ -565,30 +607,45 @@ export const adminService = {
   },
 
   addVehicleModel: async (vehicleModel: any) => {
+    const cleaned = sanitizeVehicleModelPayload(vehicleModel);
+    const fallbackFamilyName =
+      cleaned.family_name ||
+      `${cleaned.make || vehicleModel.make || ''} ${cleaned.model || vehicleModel.model || ''}`.trim();
+    const fallbackFamilySlug = (cleaned.family_slug || fallbackFamilyName)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
     const payload = {
-      ...vehicleModel,
-      gallery_urls: vehicleModel.gallery_urls || [],
-      features: vehicleModel.features || [],
-      display_name: vehicleModel.display_name || `${vehicleModel.make} ${vehicleModel.model}`.trim(),
-      slug: vehicleModel.slug || `${vehicleModel.make}-${vehicleModel.model}`
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, ''),
-      year: vehicleModel.year || null,
-      category: vehicleModel.category || null,
-      description: vehicleModel.description || null,
-      primary_image_url: vehicleModel.primary_image_url || null,
-      video_url: vehicleModel.video_url || null,
-      transmission: vehicleModel.transmission || null,
-      fuel_type: vehicleModel.fuel_type || null,
-      seats: vehicleModel.seats || null,
-      luggage: vehicleModel.luggage || null,
-      base_daily_rate: vehicleModel.base_daily_rate || null,
-      overtime_rate: vehicleModel.overtime_rate || 0,
-      security_deposit: vehicleModel.security_deposit || 0,
-      sort_order: vehicleModel.sort_order || 0,
-      is_chauffeured_only: !!vehicleModel.is_chauffeured_only,
-      is_public: vehicleModel.is_public !== false,
+      ...cleaned,
+      gallery_urls: cleaned.gallery_urls || [],
+      features: cleaned.features || [],
+      display_name:
+        cleaned.display_name ||
+        `${cleaned.make || vehicleModel.make || ''} ${cleaned.model || vehicleModel.model || ''}`.trim(),
+      slug:
+        cleaned.slug ||
+        `${cleaned.make || vehicleModel.make || ''}-${cleaned.model || vehicleModel.model || ''}`
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '-')
+          .replace(/^-+|-+$/g, ''),
+      family_name: fallbackFamilyName || null,
+      family_slug: fallbackFamilySlug || null,
+      variant_name: cleaned.variant_name || null,
+      year: cleaned.year || null,
+      category: cleaned.category || null,
+      description: cleaned.description || null,
+      primary_image_url: cleaned.primary_image_url || null,
+      video_url: cleaned.video_url || null,
+      transmission: cleaned.transmission || null,
+      fuel_type: cleaned.fuel_type || null,
+      seats: cleaned.seats || null,
+      luggage: cleaned.luggage || null,
+      base_daily_rate: cleaned.base_daily_rate || null,
+      overtime_rate: cleaned.overtime_rate || 0,
+      security_deposit: cleaned.security_deposit || 0,
+      sort_order: cleaned.sort_order || 0,
+      is_chauffeured_only: !!cleaned.is_chauffeured_only,
+      is_public: cleaned.is_public !== false,
     };
 
     const { data, error } = await supabase
@@ -597,6 +654,7 @@ export const adminService = {
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'addVehicleModel');
     invalidateFleetInventoryCaches();
+    invalidateCachePrefix('admin:vehicleModels:');
     return data;
   },
 
@@ -668,27 +726,41 @@ export const adminService = {
   },
 
   updateVehicleModel: async (id: string, updates: any) => {
+    const cleaned = sanitizeVehicleModelPayload(updates);
+    const fallbackFamilyName =
+      cleaned.family_name ||
+      `${cleaned.make || updates.make || ''} ${cleaned.model || updates.model || ''}`.trim();
+    const fallbackFamilySlug = (cleaned.family_slug || fallbackFamilyName)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
     const payload = {
-      ...updates,
-      gallery_urls: updates.gallery_urls || [],
-      features: updates.features || [],
-      display_name: updates.display_name || `${updates.make || ''} ${updates.model || ''}`.trim() || null,
-      slug: updates.slug || undefined,
-      year: updates.year || null,
-      category: updates.category || null,
-      description: updates.description || null,
-      primary_image_url: updates.primary_image_url || null,
-      video_url: updates.video_url || null,
-      transmission: updates.transmission || null,
-      fuel_type: updates.fuel_type || null,
-      seats: updates.seats || null,
-      luggage: updates.luggage || null,
-      base_daily_rate: updates.base_daily_rate || null,
-      overtime_rate: updates.overtime_rate || 0,
-      security_deposit: updates.security_deposit || 0,
-      sort_order: updates.sort_order || 0,
-      is_chauffeured_only: !!updates.is_chauffeured_only,
-      is_public: updates.is_public !== false,
+      ...cleaned,
+      gallery_urls: cleaned.gallery_urls || [],
+      features: cleaned.features || [],
+      display_name:
+        cleaned.display_name ||
+        `${cleaned.make || updates.make || ''} ${cleaned.model || updates.model || ''}`.trim() ||
+        null,
+      slug: cleaned.slug || undefined,
+      family_name: fallbackFamilyName || null,
+      family_slug: fallbackFamilySlug || null,
+      variant_name: cleaned.variant_name ?? null,
+      year: cleaned.year ?? null,
+      category: cleaned.category ?? null,
+      description: cleaned.description ?? null,
+      primary_image_url: cleaned.primary_image_url ?? null,
+      video_url: cleaned.video_url ?? null,
+      transmission: cleaned.transmission ?? null,
+      fuel_type: cleaned.fuel_type ?? null,
+      seats: cleaned.seats ?? null,
+      luggage: cleaned.luggage ?? null,
+      base_daily_rate: cleaned.base_daily_rate ?? null,
+      overtime_rate: cleaned.overtime_rate ?? 0,
+      security_deposit: cleaned.security_deposit ?? 0,
+      sort_order: cleaned.sort_order ?? 0,
+      is_chauffeured_only: !!cleaned.is_chauffeured_only,
+      is_public: cleaned.is_public !== false,
       updated_at: new Date().toISOString(),
     };
 
@@ -706,6 +778,38 @@ export const adminService = {
       .select();
     if (error) return handleSupabaseErrorWrapper(error, 'updateVehicleModel');
     invalidateFleetInventoryCaches();
+    invalidateCachePrefix('admin:vehicleModels:');
+    return data;
+  },
+
+  updateVehicleModelsFamily: async (
+    variantIds: string[],
+    family: { family_name: string; family_slug: string }
+  ) => {
+    if (!variantIds?.length) return [];
+    const familyName = family.family_name?.trim();
+    const familySlug =
+      family.family_slug?.trim() ||
+      familyName
+        ?.toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '');
+    if (!familyName || !familySlug) {
+      throw new Error('Family name and slug are required');
+    }
+
+    const { data, error } = await supabase
+      .from('vehicle_models')
+      .update({
+        family_name: familyName,
+        family_slug: familySlug,
+        updated_at: new Date().toISOString(),
+      })
+      .in('id', variantIds)
+      .select();
+    if (error) return handleSupabaseErrorWrapper(error, 'updateVehicleModelsFamily');
+    invalidateFleetInventoryCaches();
+    invalidateCachePrefix('admin:vehicleModels:');
     return data;
   },
 

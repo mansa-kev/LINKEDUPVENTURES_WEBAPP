@@ -60,6 +60,60 @@ export function buildModelFamilySlug(make: string, model: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
+export type SuggestedVehicleModelFamily = {
+  family_name: string;
+  family_slug: string;
+};
+
+/** Suggest a canonical public family for messy legacy make/model rows. */
+export function suggestVehicleModelFamily(
+  entry: Pick<VehicleModel, 'make' | 'model' | 'display_name'>
+): SuggestedVehicleModelFamily {
+  const make = normalizeModelText(entry.make);
+  const model = normalizeModelText(entry.model);
+  const display = normalizeModelText(entry.display_name);
+  const combined = `${model} ${display}`.replace(/\s+/g, ' ').trim();
+
+  if (
+    make.includes('toyota') &&
+    /\bv8\b/.test(combined) &&
+    /(land\s*cruiser|prado|\blc\b)/.test(combined)
+  ) {
+    return {
+      family_name: 'Toyota Land Cruiser Prado V8',
+      family_slug: 'toyota-land-cruiser-prado-v8',
+    };
+  }
+
+  if (
+    make.includes('toyota') &&
+    /(land\s*cruiser\s*prado|\bprado\b|lc\s*prado)/.test(combined) &&
+    !/\bv8\b/.test(combined)
+  ) {
+    return {
+      family_name: 'Toyota Land Cruiser Prado',
+      family_slug: 'toyota-land-cruiser-prado',
+    };
+  }
+
+  if (
+    make.includes('mercedes') &&
+    /(g\s*class|g\s*wagon|\bg\d{2,3}\b)/.test(combined)
+  ) {
+    return {
+      family_name: 'Mercedes-Benz G-Class',
+      family_slug: 'mercedes-benz-g-class',
+    };
+  }
+
+  const baseModel = stripKnownTrimSuffixes(entry.model) || entry.model?.trim() || '';
+  const familyName = `${entry.make || ''} ${baseModel}`.trim();
+  return {
+    family_name: familyName,
+    family_slug: buildModelFamilySlug(entry.make || 'vehicle', baseModel || 'model'),
+  };
+}
+
 export type VehicleModelGroup = {
   groupKey: string;
   make: string;
@@ -91,9 +145,15 @@ export function groupVehicleModels(
   }
 
   for (const entry of models || []) {
+    const persistedFamilySlug = normalizeModelText(entry.family_slug);
+    const persistedFamilyName = normalizeModelText(entry.family_name);
     const makeKey = normalizeModelText(entry.make);
-    const familyModelName = deriveFamilyModelName(entry, modelsByMake.get(makeKey) || []);
-    const key = normalizeMakeModelKey(entry.make, familyModelName);
+    const familyModelName =
+      persistedFamilyName ||
+      deriveFamilyModelName(entry, modelsByMake.get(makeKey) || []);
+    const key = persistedFamilySlug
+      ? `${makeKey}::${persistedFamilySlug}`
+      : normalizeMakeModelKey(entry.make, familyModelName);
     if (!buckets.has(key)) buckets.set(key, []);
     buckets.get(key)!.push(entry);
   }
@@ -122,11 +182,19 @@ export function groupVehicleModels(
     groups.push({
       groupKey,
       make: representative.make,
-      model: representative.model,
+      model: publicVariant.family_name || representative.family_name || representative.model,
       displayName:
+        publicVariant.family_name ||
+        representative.family_name ||
         publicVariant.display_name ||
         `${representative.make} ${representative.model}`.trim(),
-      slug: buildModelFamilySlug(representative.make, representative.model),
+      slug:
+        publicVariant.family_slug ||
+        representative.family_slug ||
+        buildModelFamilySlug(
+          representative.make,
+          publicVariant.family_name || representative.family_name || representative.model
+        ),
       representativeId: representative.id,
       representative: publicVariant,
       variants: sorted,

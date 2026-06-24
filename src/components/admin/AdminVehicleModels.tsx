@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
-import { groupVehicleModels, VehicleModelGroup, getVehicleModelIdsForGroup } from '../../utils/vehicleModelGrouping';
+import { groupVehicleModels, VehicleModelGroup, getVehicleModelIdsForGroup, suggestVehicleModelFamily } from '../../utils/vehicleModelGrouping';
 import { VehicleModel } from '../../types';
 import {
   Car,
@@ -56,6 +56,8 @@ const CATALOG_CATEGORIES = [
 const EMPTY_CATALOG_FORM: Partial<VehicleModelRow> = {
   make: '',
   model: '',
+  family_name: '',
+  family_slug: '',
   display_name: '',
   category: 'SUV',
   description: '',
@@ -69,6 +71,7 @@ const EMPTY_ADVANCED_FORM: Partial<VehicleModelRow> = {
   ...EMPTY_CATALOG_FORM,
   year: new Date().getFullYear(),
   slug: '',
+  variant_name: '',
   gallery_urls: [],
   video_url: '',
   transmission: 'Automatic',
@@ -178,6 +181,8 @@ export function AdminVehicleModels() {
   const [formData, setFormData] = useState<Partial<VehicleModelRow>>(EMPTY_CATALOG_FORM);
   const [primaryImageFile, setPrimaryImageFile] = useState<File | null>(null);
   const [galleryFiles, setGalleryFiles] = useState<File[]>([]);
+  const [familyReconcile, setFamilyReconcile] = useState({ family_name: '', family_slug: '' });
+  const [savingFamily, setSavingFamily] = useState(false);
 
   const fetchModels = async () => {
     setLoading(true);
@@ -195,6 +200,58 @@ export function AdminVehicleModels() {
   useEffect(() => {
     fetchModels();
   }, []);
+
+  useEffect(() => {
+    if (!selectedGroup) return;
+    setFamilyReconcile({
+      family_name: selectedGroup.representative.family_name || selectedGroup.displayName,
+      family_slug: selectedGroup.representative.family_slug || selectedGroup.slug,
+    });
+  }, [selectedGroup?.groupKey]);
+
+  const refreshGroupsAfterMutation = async (groupKey?: string) => {
+    const result = await adminService.getVehicleModels(1, 500);
+    const freshModels = (result?.data || []) as VehicleModelRow[];
+    setModels(freshModels);
+    if (!groupKey) return null;
+    const unitCounts = Object.fromEntries(freshModels.map((row) => [row.id, row.cars?.length || 0]));
+    const refreshed = groupVehicleModels(freshModels, unitCounts);
+    return refreshed.find((group) => group.groupKey === groupKey) || null;
+  };
+
+  const handleSuggestFamily = () => {
+    if (!selectedGroup) return;
+    const suggestion = suggestVehicleModelFamily(selectedGroup.representative);
+    setFamilyReconcile(suggestion);
+    toast.message('Suggested family applied — review and save to all variants.');
+  };
+
+  const handleApplyFamilyToAll = async () => {
+    if (!selectedGroup) return;
+    if (!familyReconcile.family_name.trim()) {
+      toast.error('Family name is required');
+      return;
+    }
+    setSavingFamily(true);
+    try {
+      await adminService.updateVehicleModelsFamily(
+        getVehicleModelIdsForGroup(selectedGroup),
+        familyReconcile
+      );
+      toast.success(`Family updated for ${selectedGroup.variants.length} variant(s)`);
+      const nextGroup = await refreshGroupsAfterMutation(selectedGroup.groupKey);
+      if (nextGroup) {
+        setSelectedGroup(nextGroup);
+        await loadFleetUnits(nextGroup);
+      } else {
+        closeGroupDetail();
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update family grouping');
+    } finally {
+      setSavingFamily(false);
+    }
+  };
 
   const groupedModels = useMemo(() => {
     const unitCounts: Record<string, number> = {};
@@ -223,6 +280,28 @@ export function AdminVehicleModels() {
       return haystack.includes(query);
     });
   }, [groupedModels, search]);
+
+  const handleMoveVariantToFamily = async (variantId: string, targetGroupKey: string) => {
+    if (!targetGroupKey || !selectedGroup) return;
+    const target = groupedModels.find((group) => group.groupKey === targetGroupKey);
+    if (!target) return;
+    try {
+      await adminService.updateVehicleModelsFamily([variantId], {
+        family_name: target.displayName,
+        family_slug: target.slug,
+      });
+      toast.success('Variant moved to selected family');
+      const nextGroup = await refreshGroupsAfterMutation(selectedGroup.groupKey);
+      if (nextGroup) {
+        setSelectedGroup(nextGroup);
+        await loadFleetUnits(nextGroup);
+      } else {
+        closeGroupDetail();
+      }
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to move variant');
+    }
+  };
 
   const loadFleetUnits = async (group: VehicleModelGroup) => {
     setLoadingUnits(true);
@@ -279,6 +358,8 @@ export function AdminVehicleModels() {
       ...EMPTY_ADVANCED_FORM,
       make: representative.make,
       model: representative.model,
+      family_name: representative.family_name || group.displayName,
+      family_slug: representative.family_slug || group.slug,
       display_name: representative.display_name || group.displayName,
       category: representative.category || group.category || 'SUV',
       description: representative.description || '',
@@ -297,6 +378,7 @@ export function AdminVehicleModels() {
       is_public: representative.is_public !== false,
       year: new Date().getFullYear(),
       slug: '',
+      variant_name: '',
     });
     setPrimaryImageFile(null);
     setGalleryFiles([]);
@@ -319,6 +401,7 @@ export function AdminVehicleModels() {
       await adminService.addVehicleModel({
         ...formData,
         primary_image_url: primaryImageUrl,
+        family_name: formData.family_name || `${formData.make} ${formData.model}`.trim(),
         display_name: formData.display_name || `${formData.make} ${formData.model}`.trim(),
       });
 
@@ -349,9 +432,13 @@ export function AdminVehicleModels() {
       let primaryImageUrl = formData.primary_image_url || '';
       if (primaryImageFile) {
         primaryImageUrl = await adminService.uploadCarImage(primaryImageFile);
+      } else if (primaryImageUrl.startsWith('blob:')) {
+        primaryImageUrl = selectedModel?.primary_image_url || '';
       }
 
-      let galleryUrls = [...(formData.gallery_urls || [])];
+      let galleryUrls = [...(formData.gallery_urls || [])].filter(
+        (url) => typeof url === 'string' && !url.startsWith('blob:')
+      );
       if (galleryFiles.length > 0) {
         const uploaded = await Promise.all(galleryFiles.map((file) => adminService.uploadCarImage(file)));
         galleryUrls = [...galleryUrls, ...uploaded];
@@ -361,6 +448,7 @@ export function AdminVehicleModels() {
         ...formData,
         primary_image_url: primaryImageUrl,
         gallery_urls: galleryUrls,
+        family_name: formData.family_name || `${formData.make} ${formData.model}`.trim(),
       };
 
       if (selectedModel?.id) {
@@ -387,7 +475,11 @@ export function AdminVehicleModels() {
         }
       }
     } catch (error: any) {
-      toast.error(error?.message || 'Failed to save vehicle model');
+      const message = error?.message || 'Failed to save vehicle model';
+      const hint = message.includes('family_slug')
+        ? ' Run scripts/add_vehicle_model_families.sql on the database first.'
+        : '';
+      toast.error(`${message}${hint}`);
     } finally {
       setSaving(false);
     }
@@ -634,65 +726,160 @@ export function AdminVehicleModels() {
                     Add Variant To This Family
                   </button>
                   {selectedGroup.variants.map((variant) => (
-                    <div key={variant.id} className="flex items-center justify-between gap-3 p-3 bg-muted/20 border border-border rounded-xl">
-                      <div>
-                        <p className="text-sm font-bold">
-                          {variant.year ? `${variant.year}` : 'No year'}
-                          {variant.display_name && variant.display_name !== selectedGroup.displayName
-                            ? ` · ${variant.display_name}`
-                            : ''}
-                        </p>
-                        <p className="text-xs text-muted-foreground font-mono">{variant.slug}</p>
+                    <div key={variant.id} className="p-3 bg-muted/20 border border-border rounded-xl space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-bold">
+                            {variant.year ? `${variant.year}` : 'No year'}
+                            {variant.display_name && variant.display_name !== selectedGroup.displayName
+                              ? ` · ${variant.display_name}`
+                              : ''}
+                          </p>
+                          <p className="text-xs text-muted-foreground font-mono">
+                            {variant.variant_name || 'Standard'} · {variant.slug}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">
+                            {models.find((row) => row.id === variant.id)?.cars?.length || 0} units
+                          </span>
+                          <button
+                            onClick={() => openAdvancedEdit(variant as VehicleModelRow)}
+                            className="p-2 hover:bg-muted rounded-lg"
+                            title="Edit variant"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
+                            onClick={() => handleDelete(variant.id)}
+                            className="p-2 hover:bg-error/10 rounded-lg text-error"
+                            title="Delete variant"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground">
-                          {models.find((row) => row.id === variant.id)?.cars?.length || 0} units
-                        </span>
-                        <button
-                          onClick={() => openAdvancedEdit(variant as VehicleModelRow)}
-                          className="p-2 hover:bg-muted rounded-lg"
-                          title="Edit variant"
-                        >
-                          <Edit3 size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(variant.id)}
-                          className="p-2 hover:bg-error/10 rounded-lg text-error"
-                          title="Delete variant"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          if (value) handleMoveVariantToFamily(variant.id, value);
+                          e.target.value = '';
+                        }}
+                        className="w-full px-3 py-2 bg-background border border-border rounded-lg text-xs"
+                      >
+                        <option value="">Move variant to another family…</option>
+                        {groupedModels
+                          .filter((group) => group.groupKey !== selectedGroup.groupKey)
+                          .map((group) => (
+                            <option key={group.groupKey} value={group.groupKey}>
+                              {group.displayName}
+                            </option>
+                          ))}
+                      </select>
                     </div>
                   ))}
                 </div>
               )}
 
               {detailTab === 'catalog' && (
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div className="p-4 bg-muted/20 rounded-xl border border-border">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Daily rate</p>
-                    <p className="font-black mt-1">
-                      {selectedGroup.base_daily_rate
-                        ? `KES ${Number(selectedGroup.base_daily_rate).toLocaleString()}`
-                        : 'Not set'}
-                    </p>
+                <div className="space-y-4">
+                  {selectedGroup.primary_image_url ? (
+                    <div className="rounded-xl overflow-hidden border border-border">
+                      <img
+                        src={selectedGroup.primary_image_url}
+                        alt={selectedGroup.displayName}
+                        className="w-full h-40 object-cover"
+                      />
+                      <p className="px-3 py-2 text-[10px] text-muted-foreground bg-muted/20">
+                        Current hero image on public catalog cards
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="p-6 text-center bg-muted/20 border border-dashed border-border rounded-xl">
+                      <p className="text-sm font-semibold">No hero image yet</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Add a primary image in catalog details — it appears on the website model card.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="p-4 bg-muted/20 rounded-xl border border-border">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Daily rate</p>
+                      <p className="font-black mt-1">
+                        {selectedGroup.base_daily_rate
+                          ? `KES ${Number(selectedGroup.base_daily_rate).toLocaleString()}`
+                          : 'Not set'}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-muted/20 rounded-xl border border-border">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Visibility</p>
+                      <p className="font-bold mt-1">{selectedGroup.is_public ? 'Public listing' : 'Hidden'}</p>
+                    </div>
+                    <div className="p-4 bg-muted/20 rounded-xl border border-border col-span-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</p>
+                      <p className="mt-1 text-muted-foreground">
+                        {selectedGroup.representative.description || 'No description yet.'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="p-4 bg-muted/20 rounded-xl border border-border">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Visibility</p>
-                    <p className="font-bold mt-1">{selectedGroup.is_public ? 'Public listing' : 'Hidden'}</p>
+
+                  <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-3">
+                    <div>
+                      <p className="text-sm font-bold">Reconcile family grouping</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Apply one public family name to all {selectedGroup.variants.length} variant row
+                        {selectedGroup.variants.length === 1 ? '' : 's'} in this drawer. Example: merge Toyota Prado
+                        Diesel, VXL, and TX into one family; keep V8 in a separate family.
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Family name (public card title)</label>
+                      <input
+                        value={familyReconcile.family_name}
+                        onChange={(e) =>
+                          setFamilyReconcile((prev) => ({ ...prev, family_name: e.target.value }))
+                        }
+                        placeholder="Toyota Land Cruiser Prado"
+                        className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase text-muted-foreground">Family slug (URL key)</label>
+                      <input
+                        value={familyReconcile.family_slug}
+                        onChange={(e) =>
+                          setFamilyReconcile((prev) => ({ ...prev, family_slug: e.target.value }))
+                        }
+                        placeholder="toyota-land-cruiser-prado"
+                        className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm font-mono"
+                      />
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSuggestFamily}
+                        className="flex-1 py-2.5 bg-card border border-border rounded-xl text-xs font-bold hover:bg-muted transition-colors"
+                      >
+                        Suggest from make/model rules
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleApplyFamilyToAll}
+                        disabled={savingFamily}
+                        className="flex-1 py-2.5 bg-primary text-primary-foreground rounded-xl text-xs font-bold disabled:opacity-60"
+                      >
+                        {savingFamily ? 'Saving…' : 'Apply to all variants'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="p-4 bg-muted/20 rounded-xl border border-border col-span-2">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</p>
-                    <p className="mt-1 text-muted-foreground">
-                      {selectedGroup.representative.description || 'No description yet.'}
-                    </p>
-                  </div>
+
                   <button
                     onClick={() => openAdvancedEdit(selectedGroup.representative as VehicleModelRow)}
-                    className="col-span-2 py-2.5 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold"
+                    className="w-full py-2.5 bg-muted hover:bg-muted/80 rounded-xl text-xs font-bold"
                   >
-                    Edit full catalog details
+                    Edit catalog details & hero image
                   </button>
                 </div>
               )}
@@ -748,6 +935,26 @@ export function AdminVehicleModels() {
                     onChange={(e) => setFormData({ ...formData, model: e.target.value })}
                     className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
                     placeholder="Axio"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase text-muted-foreground">Family name</label>
+                  <input
+                    value={formData.family_name || ''}
+                    onChange={(e) => setFormData({ ...formData, family_name: e.target.value })}
+                    className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                    placeholder="Nissan Note"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold uppercase text-muted-foreground">Family slug</label>
+                  <input
+                    value={formData.family_slug || ''}
+                    onChange={(e) => setFormData({ ...formData, family_slug: e.target.value })}
+                    className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                    placeholder="nissan-note"
                   />
                 </div>
               </div>
@@ -913,6 +1120,24 @@ export function AdminVehicleModels() {
                     onChange={(e) => setFormData({ ...formData, slug: e.target.value })}
                     className="px-4 py-2 bg-background border border-border rounded-xl text-sm"
                   />
+                  <input
+                    placeholder="Family name"
+                    value={formData.family_name || ''}
+                    onChange={(e) => setFormData({ ...formData, family_name: e.target.value })}
+                    className="md:col-span-2 px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                  />
+                  <input
+                    placeholder="Family slug"
+                    value={formData.family_slug || ''}
+                    onChange={(e) => setFormData({ ...formData, family_slug: e.target.value })}
+                    className="px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                  />
+                  <input
+                    placeholder="Variant name"
+                    value={formData.variant_name || ''}
+                    onChange={(e) => setFormData({ ...formData, variant_name: e.target.value })}
+                    className="md:col-span-3 px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                  />
                   <select
                     value={formData.category || 'SUV'}
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -946,29 +1171,56 @@ export function AdminVehicleModels() {
 
               {advancedStep === 2 && (
                 <div className="space-y-4">
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setPrimaryImageFile(file);
-                      if (file) setFormData((prev) => ({ ...prev, primary_image_url: URL.createObjectURL(file) }));
-                    }}
-                    className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
-                  />
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => setGalleryFiles(Array.from(e.target.files || []))}
-                    className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
-                  />
-                  <input
-                    placeholder="Video URL"
-                    value={formData.video_url || ''}
-                    onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
-                    className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
-                  />
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">
+                      Primary / hero image (website catalog card)
+                    </label>
+                    {formData.primary_image_url ? (
+                      <img
+                        src={formData.primary_image_url}
+                        alt="Hero preview"
+                        className="w-full max-h-48 object-cover rounded-xl border border-border"
+                      />
+                    ) : (
+                      <div className="p-8 text-center bg-muted/20 border border-dashed border-border rounded-xl text-xs text-muted-foreground">
+                        No hero image — upload one to feature this model on the public site.
+                      </div>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setPrimaryImageFile(file);
+                        if (file) {
+                          setFormData((prev) => ({
+                            ...prev,
+                            primary_image_url: URL.createObjectURL(file),
+                          }));
+                        }
+                      }}
+                      className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Gallery images (optional)</label>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => setGalleryFiles(Array.from(e.target.files || []))}
+                      className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold uppercase text-muted-foreground">Video URL (optional)</label>
+                    <input
+                      placeholder="https://..."
+                      value={formData.video_url || ''}
+                      onChange={(e) => setFormData({ ...formData, video_url: e.target.value })}
+                      className="w-full px-4 py-2 bg-background border border-border rounded-xl text-sm"
+                    />
+                  </div>
                 </div>
               )}
 

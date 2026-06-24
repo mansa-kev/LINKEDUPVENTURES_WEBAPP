@@ -9,6 +9,9 @@ BEGIN;
 CREATE TABLE IF NOT EXISTS vehicle_models (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slug TEXT UNIQUE,
+  family_slug TEXT,
+  family_name TEXT,
+  variant_name TEXT,
   make TEXT NOT NULL,
   model TEXT NOT NULL,
   year INTEGER,
@@ -37,6 +40,8 @@ CREATE INDEX IF NOT EXISTS idx_vehicle_models_public_sort
   ON vehicle_models(is_public, sort_order, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_vehicle_models_make_model
   ON vehicle_models(make, model, year);
+CREATE INDEX IF NOT EXISTS idx_vehicle_models_family_slug
+  ON vehicle_models(family_slug);
 
 ALTER TABLE vehicle_models ENABLE ROW LEVEL SECURITY;
 
@@ -99,6 +104,9 @@ WITH distinct_units AS (
 ), inserted_models AS (
   INSERT INTO vehicle_models (
     slug,
+    family_slug,
+    family_name,
+    variant_name,
     make,
     model,
     year,
@@ -132,6 +140,16 @@ WITH distinct_units AS (
         'g'
       )
     ) AS slug,
+    lower(
+      regexp_replace(
+        trim(concat_ws(' ', make, model)),
+        '[^a-zA-Z0-9]+',
+        '-',
+        'g'
+      )
+    ) AS family_slug,
+    trim(concat_ws(' ', make, model)) AS family_name,
+    COALESCE(year::text, 'Standard') AS variant_name,
     make,
     model,
     year,
