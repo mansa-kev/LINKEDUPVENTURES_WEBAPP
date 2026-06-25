@@ -67,6 +67,22 @@ export default defineConfig(({mode}) => {
               return 'dnd-kit';
             }
 
+            if (id.includes('sonner')) {
+              return 'sonner';
+            }
+
+            if (id.includes('react-signature-canvas') || id.includes('signature_pad')) {
+              return 'signature';
+            }
+
+            if (id.includes('react-helmet')) {
+              return 'helmet';
+            }
+
+            if (id.includes('date-fns')) {
+              return 'date-fns';
+            }
+
             return undefined;
           },
         },

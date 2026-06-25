@@ -1,4 +1,5 @@
 import { compressImage } from '../utils/imageCompression';
+import { supabase } from '../lib/supabase';
 import { validateFile } from '../utils/fileValidation';
 import {
   clearPendingUpload,
@@ -96,11 +97,32 @@ async function uploadBytes(
   });
 
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload?.publicUrl) {
-    throw new Error(payload?.error || `Upload failed (${response.status})`);
+  if (response.ok && payload?.publicUrl) {
+    return payload.publicUrl as string;
   }
 
-  return payload.publicUrl as string;
+  const apiError = payload?.error || `Upload failed (${response.status})`;
+
+  // Fallback: direct client upload when API/service-role is unavailable but storage policy allows it.
+  const safeCarId = carId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96);
+  const ext = fileName.toLowerCase().endsWith('.pdf')
+    ? 'pdf'
+    : (file.type === 'image/png' ? 'png' : file.type === 'image/webp' ? 'webp' : 'jpg');
+  const fallbackPath = `booking-docs/${safeCarId}_${docType}_${uploadId}.${ext}`;
+
+  const { error: directError } = await supabase.storage
+    .from('public_assets')
+    .upload(fallbackPath, file, {
+      contentType: file.type || contentType || 'image/jpeg',
+      upsert: true,
+    });
+
+  if (!directError) {
+    await clearPendingUpload(carId, docType);
+    return `/api/assets/public_assets/${fallbackPath}`;
+  }
+
+  throw new Error(apiError || directError.message);
 }
 
 /**

@@ -76,6 +76,7 @@ export function AdminLogoManager() {
         .from('app_settings')
         .upsert({
           key: 'site_logo',
+          value: publicUrl,
           logo_url: publicUrl,
           updated_at: new Date().toISOString()
         }, {

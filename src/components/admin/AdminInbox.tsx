@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { adminService } from '../../services/adminService';
 import { supabase } from '../../lib/supabase';
 import { 
@@ -19,6 +19,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { getMessageThreadKey, normalizeSubject } from '../../utils/messagingThread';
+import { debounce } from '../../utils/debounce';
 
 // --- Types ---
 
@@ -71,9 +72,10 @@ export function AdminInbox() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [replyText, setReplyText] = useState('');
+  const hasLoadedRef = useRef(false);
 
-  const fetchMessages = async () => {
-    setLoading(true);
+  const fetchMessages = useCallback(async (silent = false) => {
+    if (!silent || !hasLoadedRef.current) setLoading(true);
     try {
       const [messagesData, contactData] = await Promise.all([
         adminService.getMessages(),
@@ -119,15 +121,21 @@ export function AdminInbox() {
       ].sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
 
       setMessages(formattedMessages);
-      if (formattedMessages.length > 0 && !selectedId) {
-        setSelectedId(formattedMessages[0].id);
-      }
+      hasLoadedRef.current = true;
+      setSelectedId((current) => current || formattedMessages[0]?.id || null);
     } catch (error) {
       console.error('Failed to fetch messages:', error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const refreshMessages = useCallback(
+    debounce(() => {
+      void fetchMessages(true);
+    }, 800),
+    [fetchMessages]
+  );
 
   const handleSendBroadcast = async (b: any) => {
     try {
@@ -145,18 +153,18 @@ export function AdminInbox() {
 
   useEffect(() => {
     fetchMessages();
-  }, []);
+  }, [fetchMessages]);
 
   useEffect(() => {
     const channel = supabase
       .channel('admin-messages')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchMessages())
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contact_messages' }, () => fetchMessages())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => refreshMessages())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contact_messages' }, () => refreshMessages())
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [refreshMessages]);
 
   const handleSendMessage = async () => {
     if (!replyText.trim() || !selectedId) return;
@@ -185,7 +193,7 @@ export function AdminInbox() {
         status: 'new'
       });
       setReplyText('');
-      await fetchMessages();
+      await fetchMessages(true);
       alert('Reply sent!');
     } catch (error) {
       alert('Failed to send reply');

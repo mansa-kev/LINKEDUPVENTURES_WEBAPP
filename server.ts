@@ -22,6 +22,7 @@ import { processBookingPayoutSettlements } from "./src/server/bookingPayoutSettl
 import { applyProfileSyncFromBooking, linkBookingAndSyncProfile } from "./src/utils/bookingProfileSync.js";
 import { CALENDAR_BLOCKING_STATUSES_DB } from "./src/constants/bookingStatuses.js";
 import { isModelAvailableForDates } from "./src/server/modelUnitAvailability.js";
+import { fetchPublicAppSettings } from "./src/server/publicAppSettings.js";
 
 dotenv.config({ path: '.env.local' });
 
@@ -159,20 +160,19 @@ async function startServer() {
   app.use('/api', express.json());
 
   app.get('/api/public-app-settings', async (req, res) => {
-    const allowedKeys = ['company_po_box', 'company_signature_url', 'contract_logo', 'site_logo', 'logo_url'];
     const requestedKeys = String(req.query.keys || '')
       .split(',')
       .map((key) => key.trim())
-      .filter((key) => allowedKeys.includes(key));
+      .filter(Boolean);
 
-    const keys = requestedKeys.length ? requestedKeys : allowedKeys;
-    const { data, error } = await supabase
-      .from('app_settings')
-      .select('key, value, logo_url')
-      .in('key', keys);
+    const { settings, error } = await fetchPublicAppSettings(supabase, requestedKeys);
+    res.set('Cache-Control', 'public, max-age=300, s-maxage=300, stale-while-revalidate=600');
 
-    if (error) return res.status(500).json({ success: false, error: error.message });
-    return res.json({ success: true, settings: data || [] });
+    if (error && settings.length === 0) {
+      return res.status(500).json({ success: false, error, settings: [] });
+    }
+
+    return res.json({ success: true, settings, ...(error ? { warning: error } : {}) });
   });
 
   // ─── IMAGE PROXY ROUTE (Hides Supabase URL) ────────────────────────────────────────────

@@ -11,20 +11,26 @@ interface LogoProps {
 import {
   LOGO_STORAGE_KEY,
   LEGACY_LOGO_STORAGE_KEY,
+  readCachedLogoUrl,
+  writeCachedLogoUrl,
 } from '../../utils/catalogImageCache';
 
 const DEFAULT_LOGO = '/favicon.svg';
 
 async function fetchSiteLogoUrl(): Promise<string | null> {
   try {
-    const response = await fetch('/api/public-app-settings?keys=site_logo');
-    if (!response.ok) return null;
+    const response = await fetch('/api/public-app-settings?keys=site_logo', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) return readCachedLogoUrl();
     const body = await response.json();
     const row = (body?.settings || []).find((s: { key: string }) => s.key === 'site_logo');
-    if (!row) return null;
-    return row.logo_url || row.value || null;
+    if (!row) return readCachedLogoUrl();
+    const url = row.logo_url || row.value || null;
+    if (url) writeCachedLogoUrl(url);
+    return url;
   } catch {
-    return null;
+    return readCachedLogoUrl();
   }
 }
 
@@ -46,12 +52,18 @@ function syncFavicon(url: string) {
 export function clearLogoCache() {
   localStorage.removeItem(LOGO_STORAGE_KEY);
   localStorage.removeItem(LEGACY_LOGO_STORAGE_KEY);
+  sessionStorage.removeItem(LOGO_STORAGE_KEY);
 }
 
 export function Logo({ size = 'md', showText = true, className, fallbackToDefault = true }: LogoProps) {
-  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(() => readCachedLogoUrl());
   const [imgFailed, setImgFailed] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !readCachedLogoUrl());
+
+  useEffect(() => {
+    const cached = readCachedLogoUrl();
+    if (cached) syncFavicon(cached);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,16 +74,15 @@ export function Logo({ size = 'md', showText = true, className, fallbackToDefaul
         if (cancelled) return;
 
         if (remoteUrl) {
-          const cached = localStorage.getItem(LOGO_STORAGE_KEY);
-          if (cached && cached !== remoteUrl) {
+          if (readCachedLogoUrl() && readCachedLogoUrl() !== remoteUrl) {
             localStorage.removeItem(LEGACY_LOGO_STORAGE_KEY);
           }
           setLogoUrl(remoteUrl);
           setImgFailed(false);
-          localStorage.setItem(LOGO_STORAGE_KEY, remoteUrl);
+          writeCachedLogoUrl(remoteUrl);
           syncFavicon(remoteUrl);
         } else {
-          const cached = localStorage.getItem(LOGO_STORAGE_KEY);
+          const cached = readCachedLogoUrl();
           if (cached) {
             setLogoUrl(cached);
             syncFavicon(cached);
@@ -79,7 +90,7 @@ export function Logo({ size = 'md', showText = true, className, fallbackToDefaul
         }
       } catch (err) {
         console.error('Error fetching logo:', err);
-        const cached = localStorage.getItem(LOGO_STORAGE_KEY);
+        const cached = readCachedLogoUrl();
         if (cached && !cancelled) {
           setLogoUrl(cached);
         }
@@ -123,7 +134,7 @@ export function Logo({ size = 'md', showText = true, className, fallbackToDefaul
             fetchPriority="high"
             onError={() => {
               if (logoUrl && displayUrl === logoUrl) {
-                localStorage.removeItem(LOGO_STORAGE_KEY);
+                clearLogoCache();
                 setImgFailed(true);
                 syncFavicon(DEFAULT_LOGO);
               }

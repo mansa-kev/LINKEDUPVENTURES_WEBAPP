@@ -135,16 +135,6 @@ const ADMIN_MODULE_PRELOADERS: Record<string, () => Promise<unknown>> = {
   logout: importAdminLogout,
 };
 
-const scheduleIdle = (cb: () => void) => {
-  if (typeof window === 'undefined') return () => {};
-  if ('requestIdleCallback' in window) {
-    const id = window.requestIdleCallback(cb, { timeout: 1200 });
-    return () => window.cancelIdleCallback(id);
-  }
-  const id = window.setTimeout(cb, 250);
-  return () => window.clearTimeout(id);
-};
-
 type ModuleCategory = {
   title: string;
   items: {
@@ -250,16 +240,7 @@ export function AdminPortal() {
   const activeModule = location.pathname.split('/')[2] || 'dashboard';
 
   useEffect(() => {
-    const preloadActive = ADMIN_MODULE_PRELOADERS[activeModule];
-    preloadActive?.();
-
-    return scheduleIdle(() => {
-      ['dashboard', 'bookings', 'cars', 'users', 'financials', 'reservations'].forEach((moduleId) => {
-        if (moduleId !== activeModule) {
-          ADMIN_MODULE_PRELOADERS[moduleId]?.();
-        }
-      });
-    });
+    ADMIN_MODULE_PRELOADERS[activeModule]?.();
   }, [activeModule]);
 
   const sidebarContent = (

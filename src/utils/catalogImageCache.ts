@@ -5,6 +5,30 @@ const LEGACY_MODEL_IMAGE_PREFIX = 'model_image_';
 export const LOGO_STORAGE_KEY = 'linkedup_logo_url_v2';
 export const LEGACY_LOGO_STORAGE_KEY = 'linkedup_logo_url';
 
+export function readCachedLogoUrl(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return (
+      sessionStorage.getItem(LOGO_STORAGE_KEY) ||
+      localStorage.getItem(LOGO_STORAGE_KEY) ||
+      localStorage.getItem(LEGACY_LOGO_STORAGE_KEY)
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function writeCachedLogoUrl(url: string) {
+  if (typeof window === 'undefined' || !url) return;
+  try {
+    localStorage.setItem(LOGO_STORAGE_KEY, url);
+    sessionStorage.setItem(LOGO_STORAGE_KEY, url);
+    localStorage.removeItem(LEGACY_LOGO_STORAGE_KEY);
+  } catch {
+    // ignore quota errors
+  }
+}
+
 function isPersistableImageUrl(url?: string | null): boolean {
   if (!url) return false;
   if (url.startsWith('blob:')) return false;
