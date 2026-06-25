@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, CheckCircle, Clock, Fuel, Settings, Star, Users, X, Share2, Copy, Check } from 'lucide-react';
 import { fleetService } from '../../services/fleetService';
 import { VehicleModel } from '../../types';
-import { VehicleModelGroup } from '../../utils/vehicleModelGrouping';
+import { VehicleModelGroup, resolveModelSpecs } from '../../utils/vehicleModelGrouping';
 import { BookingFlow } from './BookingFlow/BookingFlow';
 import { ReservationFlow } from './BookingFlow/ReservationFlow';
 import { LogoLoader } from '../shared/LogoLoader';
@@ -87,6 +87,13 @@ export function VehicleModelDetails() {
     }
 
     if (bookingQuery) {
+      if (modelFamily?.booking_mode === 'disabled' || modelFamily?.booking_mode === 'reservation_only') {
+        setShowBooking(false);
+        if (modelFamily?.booking_mode === 'reservation_only') {
+          setShowReservation(true);
+        }
+        return;
+      }
       setShowBooking(true);
       setShowReservation(false);
       return;
@@ -94,7 +101,7 @@ export function VehicleModelDetails() {
 
     setShowBooking(false);
     setShowReservation(false);
-  }, [searchParams, selectedVariant, reservationToken]);
+  }, [searchParams, selectedVariant, reservationToken, modelFamily?.booking_mode]);
 
   const toggleBooking = () => {
     const next = !showBooking;
@@ -135,6 +142,10 @@ export function VehicleModelDetails() {
   }
 
   const model = selectedVariant;
+  const displaySpecs = resolveModelSpecs(modelFamily.variants);
+  const bookingMode = modelFamily.booking_mode || 'both';
+  const canBook = bookingMode === 'both' && !reservationToken;
+  const canReserve = bookingMode !== 'disabled' && !reservationToken;
 
   const isValidUrl = (url: string) =>
     url && !url.startsWith('blob:') && (url.startsWith('http') || url.startsWith('/'));
@@ -291,29 +302,40 @@ export function VehicleModelDetails() {
                       <Users className="text-primary" size={16} />
                       <div className="text-center sm:text-left">
                         <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-white/40">Seats</p>
-                        <span className="text-xs sm:text-sm font-bold text-white">{model.seats || '—'}</span>
+                        <span className="text-xs sm:text-sm font-bold text-white">{displaySpecs.seats || model.seats || '—'}</span>
                       </div>
                     </div>
                     <div className="p-2.5 sm:p-4 md:p-5 bg-card/50 backdrop-blur-xl rounded-xl sm:rounded-2xl border border-white/10 flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3">
                       <Fuel className="text-primary" size={16} />
                       <div className="text-center sm:text-left">
                         <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-white/40">Fuel</p>
-                        <span className="text-xs sm:text-sm font-bold text-white">{model.fuel_type || '—'}</span>
+                        <span className="text-xs sm:text-sm font-bold text-white">{displaySpecs.fuel_type || model.fuel_type || '—'}</span>
                       </div>
                     </div>
                     <div className="p-2.5 sm:p-4 md:p-5 bg-card/50 backdrop-blur-xl rounded-xl sm:rounded-2xl border border-white/10 flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3">
                       <Settings className="text-primary" size={16} />
                       <div className="text-center sm:text-left">
                         <p className="text-[8px] sm:text-[10px] font-black uppercase tracking-widest text-white/40">Trans</p>
-                        <span className="text-xs sm:text-sm font-bold text-white">{model.transmission || '—'}</span>
+                        <span className="text-xs sm:text-sm font-bold text-white">{displaySpecs.transmission || model.transmission || '—'}</span>
                       </div>
                     </div>
                   </div>
                 </div>
 
                 <div className="mb-4">
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold bg-success/10 text-success">
-                    <CheckCircle size={16} /> Available (model-level)
+                  <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-bold ${
+                    bookingMode === 'disabled'
+                      ? 'bg-muted/30 text-muted-foreground'
+                      : bookingMode === 'reservation_only'
+                        ? 'bg-warning/10 text-warning'
+                        : 'bg-success/10 text-success'
+                  }`}>
+                    <CheckCircle size={16} />
+                    {bookingMode === 'disabled'
+                      ? 'Booking unavailable'
+                      : bookingMode === 'reservation_only'
+                        ? 'Reservation only'
+                        : 'Available (model-level)'}
                   </div>
                 </div>
 
@@ -347,15 +369,27 @@ export function VehicleModelDetails() {
                 </div>
 
                 <div className="flex gap-3 flex-wrap">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={toggleBooking}
-                    className="flex-1 py-3.5 sm:py-5 bg-primary rounded-[14px] sm:rounded-[24px] text-black font-black uppercase tracking-[0.15em] text-xs sm:text-sm shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all"
-                  >
-                    {showBooking ? 'Close' : reservationToken ? 'Continue Booking' : 'Book Now'} <ArrowRight className="inline ml-2" size={18} />
-                  </motion.button>
-                  {!reservationToken && (
+                  {canBook && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={toggleBooking}
+                      className="flex-1 py-3.5 sm:py-5 bg-primary rounded-[14px] sm:rounded-[24px] text-black font-black uppercase tracking-[0.15em] text-xs sm:text-sm shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all"
+                    >
+                      {showBooking ? 'Close' : 'Book Now'} <ArrowRight className="inline ml-2" size={18} />
+                    </motion.button>
+                  )}
+                  {reservationToken && (
+                    <motion.button
+                      whileHover={{ scale: 1.02 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={toggleBooking}
+                      className="flex-1 py-3.5 sm:py-5 bg-primary rounded-[14px] sm:rounded-[24px] text-black font-black uppercase tracking-[0.15em] text-xs sm:text-sm shadow-xl shadow-primary/20 hover:shadow-primary/40 transition-all"
+                    >
+                      {showBooking ? 'Close' : 'Continue Booking'} <ArrowRight className="inline ml-2" size={18} />
+                    </motion.button>
+                  )}
+                  {canReserve && (
                     <motion.button
                       whileHover={{ scale: 1.02 }}
                       whileTap={{ scale: 0.98 }}
@@ -373,7 +407,7 @@ export function VehicleModelDetails() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 20 }}
-                      className="mt-6 md:mt-8 relative"
+                      className="mt-6 md:mt-8 relative lg:hidden"
                     >
                       <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-orange-500/10 to-primary/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
                       <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-primary/20">
@@ -399,7 +433,7 @@ export function VehicleModelDetails() {
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: 20 }}
-                      className="mt-6 md:mt-8 relative"
+                      className="mt-6 md:mt-8 relative lg:hidden"
                     >
                       <div className="absolute -inset-1 bg-gradient-to-r from-warning/20 via-orange-500/10 to-warning/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
                       <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-warning/20">
@@ -541,6 +575,84 @@ export function VehicleModelDetails() {
           </div>
         </div>
       </div>
+
+      <AnimatePresence>
+        {showBooking && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="hidden lg:block fixed inset-0 z-50"
+          >
+            <button
+              type="button"
+              aria-label="Close booking form"
+              onClick={toggleBooking}
+              className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              className="absolute top-20 bottom-6 left-[12%] right-6 max-w-none overflow-y-auto"
+            >
+              <div className="relative h-full">
+                <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-orange-500/10 to-primary/20 rounded-[32px] blur-2xl" />
+                <div className="relative h-full min-h-[520px] p-6 xl:p-10 bg-card/95 backdrop-blur-xl rounded-[32px] border border-primary/20 shadow-2xl">
+                  <button
+                    onClick={toggleBooking}
+                    className="absolute top-5 right-5 p-2 hover:bg-white/10 rounded-full transition-all z-10"
+                  >
+                    <X size={24} className="text-white" />
+                  </button>
+                  <BookingFlow
+                    vehicleModel={model}
+                    uploadContextId={`model:${model.id}`}
+                    reservationToken={reservationToken}
+                  />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showReservation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="hidden lg:block fixed inset-0 z-50"
+          >
+            <button
+              type="button"
+              aria-label="Close reservation form"
+              onClick={toggleReservation}
+              className="absolute inset-0 bg-black/65 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, x: 40 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 40 }}
+              className="absolute top-20 bottom-6 left-[12%] right-6 max-w-none overflow-y-auto"
+            >
+              <div className="relative h-full">
+                <div className="absolute -inset-1 bg-gradient-to-r from-warning/20 via-orange-500/10 to-warning/20 rounded-[32px] blur-2xl" />
+                <div className="relative h-full min-h-[520px] p-6 xl:p-10 bg-card/95 backdrop-blur-xl rounded-[32px] border border-warning/20 shadow-2xl">
+                  <button
+                    onClick={toggleReservation}
+                    className="absolute top-5 right-5 p-2 hover:bg-white/10 rounded-full transition-all z-10"
+                  >
+                    <X size={24} className="text-white" />
+                  </button>
+                  <ReservationFlow car={carLike} vehicleModelId={model.id} onClose={() => setShowReservation(false)} />
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </>
   );

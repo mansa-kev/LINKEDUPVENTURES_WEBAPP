@@ -50,9 +50,22 @@ export function HeroSection() {
 
   const fetchHeroContent = async () => {
     try {
+      const cached = localStorage.getItem('linkedup_hero_image');
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setHeroContent(parsed);
+            setIsLoading(false);
+          }
+        } catch {
+          // ignore invalid cache
+        }
+      }
+
       const { data, error } = await supabase
         .from('hero_content')
-        .select('*')
+        .select('id, media_type, media_url, overlay_text, display_order, is_active')
         .eq('is_active', true)
         .order('display_order', { ascending: true });
 

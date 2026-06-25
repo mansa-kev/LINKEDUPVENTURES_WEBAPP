@@ -129,7 +129,26 @@ export type VehicleModelGroup = {
   base_daily_rate?: number;
   category?: string;
   is_public: boolean;
+  booking_mode: 'both' | 'reservation_only' | 'disabled';
 };
+
+export function resolveGroupBookingMode(variants: VehicleModel[]): 'both' | 'reservation_only' | 'disabled' {
+  const modes = variants.map((variant) => variant.booking_mode || 'both');
+  if (modes.some((mode) => mode === 'both')) return 'both';
+  if (modes.some((mode) => mode === 'reservation_only')) return 'reservation_only';
+  return 'disabled';
+}
+
+export function resolveModelSpecs(variants: VehicleModel[]): Pick<VehicleModel, 'seats' | 'fuel_type' | 'transmission'> {
+  const withSpecs = variants.find(
+    (variant) => variant.seats || variant.fuel_type || variant.transmission
+  );
+  return {
+    seats: withSpecs?.seats,
+    fuel_type: withSpecs?.fuel_type,
+    transmission: withSpecs?.transmission,
+  };
+}
 
 export function groupVehicleModels(
   models: VehicleModel[],
@@ -206,6 +225,7 @@ export function groupVehicleModels(
         rates.length > 0 ? Math.min(...rates) : representative.base_daily_rate,
       category: publicVariant.category || representative.category,
       is_public: sorted.some((v) => v.is_public !== false),
+      booking_mode: resolveGroupBookingMode(sorted),
     });
   }
 

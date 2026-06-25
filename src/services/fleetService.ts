@@ -14,17 +14,19 @@ const FLEET_CACHE_TTL_MS = 60_000;
 
 export const fleetService = {
   getModelUnitCounts: async (): Promise<Record<string, number>> => {
-    const { data, error } = await supabase
-      .from('cars')
-      .select('vehicle_model_id')
-      .not('vehicle_model_id', 'is', null);
-    if (error) return {};
-    const counts: Record<string, number> = {};
-    for (const row of data || []) {
-      if (!row.vehicle_model_id) continue;
-      counts[row.vehicle_model_id] = (counts[row.vehicle_model_id] || 0) + 1;
-    }
-    return counts;
+    return getOrSetCache('fleet:modelUnitCounts', FLEET_CACHE_TTL_MS, async () => {
+      const { data, error } = await supabase
+        .from('cars')
+        .select('vehicle_model_id')
+        .not('vehicle_model_id', 'is', null);
+      if (error) return {};
+      const counts: Record<string, number> = {};
+      for (const row of data || []) {
+        if (!row.vehicle_model_id) continue;
+        counts[row.vehicle_model_id] = (counts[row.vehicle_model_id] || 0) + 1;
+      }
+      return counts;
+    });
   },
 
   // --- Public Fleet ---
@@ -65,20 +67,28 @@ export const fleetService = {
   },
 
   getVehicleModelFamilyById: async (id: string): Promise<VehicleModelGroup | null> => {
+    const groupedPublic = await fleetService.getGroupedPublicVehicleModels();
+    const cachedGroup = groupedPublic.find((group) =>
+      group.variants.some((variant) => variant.id === id)
+    );
+    if (cachedGroup) return cachedGroup;
+
     const model = await fleetService.getVehicleModelById(id);
     if (!model) return null;
 
-    const { data, error } = await supabase
-      .from('vehicle_models')
-      .select('*')
-      .eq('make', model.make)
-      .eq('model', model.model)
-      .order('year', { ascending: false, nullsFirst: false });
+    let query = supabase.from('vehicle_models').select('*');
+    if (model.family_slug) {
+      query = query.eq('family_slug', model.family_slug);
+    } else {
+      query = query.eq('make', model.make).eq('model', model.model);
+    }
+
+    const { data, error } = await query.order('year', { ascending: false, nullsFirst: false });
 
     if (error) return handleSupabaseError(error, 'getVehicleModelFamilyById');
     const unitCounts = await fleetService.getModelUnitCounts();
     const groups = groupVehicleModels((data || []) as VehicleModel[], unitCounts);
-    return groups[0] || null;
+    return groups.find((group) => group.variants.some((variant) => variant.id === id)) || groups[0] || null;
   },
 
   getRelatedVehicleModelGroups: async (

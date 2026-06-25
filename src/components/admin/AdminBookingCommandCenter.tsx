@@ -16,7 +16,9 @@ import { sendAdminEmail } from '../../services/adminEmailService';
 import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 import { AdminBookingLifecycle } from './AdminBookingLifecycle';
+import { ModelFleetStatusPanel } from './ModelFleetStatusPanel';
 import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
+import type { ModelFleetStatusSummary } from '../../utils/modelFleetStatus';
 type ModalType = 'pickup' | 'return' | 'extend' | 'flag' | null;
 type CommunicateMode = 'approval' | 'payment_rejected' | 'docs_rejected';
 
@@ -71,7 +73,22 @@ export function AdminBookingCommandCenter() {
   const [drivers, setDrivers] = useState<any[]>([]);
   const [isAssigningDriver, setIsAssigningDriver] = useState(false);
   const [fleetUnits, setFleetUnits] = useState<any[]>([]);
+  const [fleetStatus, setFleetStatus] = useState<ModelFleetStatusSummary | null>(null);
+  const [loadingFleetStatus, setLoadingFleetStatus] = useState(false);
   const [isAssigningUnit, setIsAssigningUnit] = useState(false);
+  const [showOutsourceModal, setShowOutsourceModal] = useState(false);
+  const [savingOutsource, setSavingOutsource] = useState(false);
+  const [settingReservationOnly, setSettingReservationOnly] = useState(false);
+  const [outsourceForm, setOutsourceForm] = useState({
+    make: '',
+    model: '',
+    year: new Date().getFullYear(),
+    license_plate: '',
+    color: '',
+    daily_rate: 0,
+    outsource_owner_name: '',
+    outsource_owner_phone: '',
+  });
   const [conductors, setConductors] = useState<Record<string, string>>({});
 
   const fetchDrivers = async () => {
@@ -103,16 +120,84 @@ export function AdminBookingCommandCenter() {
 
   const fetchFleetUnits = async (modelId: string) => {
     try {
-      const { data, error } = await supabase
-        .from('cars')
-        .select('id, license_plate, color, year, status, vehicle_model_id, make, model')
-        .eq('vehicle_model_id', modelId)
-        .order('license_plate');
-      if (error) throw error;
-      setFleetUnits(data || []);
+      const variantIds = await adminService.getVehicleModelVariantIds(modelId);
+      const units = await adminService.getCarsByVehicleModelIds(variantIds);
+      setFleetUnits(units || []);
     } catch (err) {
       logger.error('Failed to fetch fleet units:', err);
       setFleetUnits([]);
+    }
+  };
+
+  const fetchFleetStatus = async (modelId: string, startDate?: string, endDate?: string) => {
+    if (!startDate || !endDate) {
+      setFleetStatus(null);
+      return;
+    }
+    setLoadingFleetStatus(true);
+    try {
+      const variantIds = await adminService.getVehicleModelVariantIds(modelId);
+      const status = await adminService.getModelFleetStatus(variantIds, { startDate, endDate });
+      setFleetStatus(status);
+    } catch (err) {
+      logger.error('Failed to fetch fleet status:', err);
+      setFleetStatus(null);
+    } finally {
+      setLoadingFleetStatus(false);
+    }
+  };
+
+  const openOutsourceModal = () => {
+    const vehicle = booking?.vehicle_model;
+    setOutsourceForm({
+      make: vehicle?.make || booking?.cars?.make || '',
+      model: vehicle?.model || booking?.cars?.model || '',
+      year: booking?.cars?.year || new Date().getFullYear(),
+      license_plate: '',
+      color: '',
+      daily_rate: Number(vehicle?.base_daily_rate || booking?.cars?.daily_rate || 0),
+      outsource_owner_name: '',
+      outsource_owner_phone: '',
+    });
+    setShowOutsourceModal(true);
+  };
+
+  const handleSourceOutsourcedUnit = async () => {
+    if (!booking?.id || !booking?.vehicle_model_id) return;
+    if (!outsourceForm.make || !outsourceForm.model || !outsourceForm.license_plate || !outsourceForm.outsource_owner_name) {
+      toast.error('Make, model, plate, and supplier name are required.');
+      return;
+    }
+    setSavingOutsource(true);
+    try {
+      await adminService.addOutsourcedCarForBooking(booking.id, {
+        ...outsourceForm,
+        vehicle_model_id: booking.vehicle_model_id,
+      });
+      toast.success('Outsourced unit created and assigned to this booking');
+      setShowOutsourceModal(false);
+      await fetchBooking(true);
+      await fetchFleetUnits(booking.vehicle_model_id);
+      await fetchFleetStatus(booking.vehicle_model_id, booking.start_date, booking.end_date);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to source outsourced unit');
+    } finally {
+      setSavingOutsource(false);
+    }
+  };
+
+  const handleSetReservationOnly = async () => {
+    if (!booking?.vehicle_model_id) return;
+    setSettingReservationOnly(true);
+    try {
+      const variantIds = await adminService.getVehicleModelVariantIds(booking.vehicle_model_id);
+      await adminService.setVehicleModelBookingMode(variantIds, 'reservation_only');
+      toast.success('Model switched to reservation-only on the public site');
+      await fetchBooking(true);
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to update booking mode');
+    } finally {
+      setSettingReservationOnly(false);
     }
   };
 
@@ -187,11 +272,13 @@ export function AdminBookingCommandCenter() {
   useEffect(() => {
     if (booking?.vehicle_model_id) {
       fetchFleetUnits(booking.vehicle_model_id);
+      fetchFleetStatus(booking.vehicle_model_id, booking.start_date, booking.end_date);
     } else {
       setFleetUnits([]);
+      setFleetStatus(null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking?.vehicle_model_id]);
+  }, [booking?.vehicle_model_id, booking?.start_date, booking?.end_date]);
 
   // Handle ESC for lightbox
   useEffect(() => {
@@ -1017,7 +1104,21 @@ export function AdminBookingCommandCenter() {
                   )}
 
                   {booking.vehicle_model_id ? (
-                    <div className="space-y-2 pt-2 border-t border-border/50">
+                    <div className="space-y-3 pt-2 border-t border-border/50">
+                      <ModelFleetStatusPanel
+                        status={fleetStatus}
+                        loading={loadingFleetStatus}
+                        compact
+                        dateRangeLabel={
+                          booking.start_date && booking.end_date
+                            ? `for booking dates`
+                            : undefined
+                        }
+                        onSelectUnit={handleAssignUnit}
+                        selectedUnitId={booking.car_id}
+                        highlightBuckets={['available', 'outsourced']}
+                      />
+
                       <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground block">
                         {booking.cars ? 'Reassign fleet unit' : 'Assign fleet unit'}
                       </label>
@@ -1032,16 +1133,37 @@ export function AdminBookingCommandCenter() {
                         >
                           <option value="">
                             {fleetUnits.length === 0
-                              ? 'No units linked to this model'
+                              ? 'No units linked to this model family'
                               : '-- Select unit for handover --'}
                           </option>
                           {fleetUnits.map((unit) => (
                             <option key={unit.id} value={unit.id}>
-                              {unit.license_plate || 'No plate'} · {unit.year || '—'} · {unit.color || 'N/A'} ({unit.status})
+                              {unit.license_plate || 'No plate'} · {unit.year || '—'} · {unit.color || 'N/A'} ({unit.status}{unit.is_outsourced ? ', outsourced' : ''})
                             </option>
                           ))}
                         </select>
                       </div>
+
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={openOutsourceModal}
+                          className="px-3 py-2 rounded-xl text-xs font-bold border border-purple-500/30 text-purple-400 hover:bg-purple-500/10 transition-colors"
+                        >
+                          Source outsourced vehicle
+                        </button>
+                        {fleetStatus && fleetStatus.available === 0 && (
+                          <button
+                            type="button"
+                            onClick={handleSetReservationOnly}
+                            disabled={settingReservationOnly}
+                            className="px-3 py-2 rounded-xl text-xs font-bold border border-amber-500/30 text-amber-500 hover:bg-amber-500/10 transition-colors disabled:opacity-60"
+                          >
+                            {settingReservationOnly ? 'Updating…' : 'Set model reservation-only'}
+                          </button>
+                        )}
+                      </div>
+
                       {booking.vehicle_model_id && (
                         <a
                           href={`/models/${booking.vehicle_model_id}`}
@@ -1798,6 +1920,95 @@ export function AdminBookingCommandCenter() {
                 <button onClick={() => setActiveModal(null)} className="flex-1 py-3.5 bg-muted text-muted-foreground rounded-xl font-black text-sm hover:bg-muted/80 transition-colors">Cancel</button>
                 <button onClick={handleFlagToggle} disabled={isSubmitting} className="flex-1 py-3.5 bg-red-600 text-white rounded-xl font-black text-sm flex items-center justify-center gap-2 hover:bg-red-700 transition-colors">
                   {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : 'Flag Booking'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showOutsourceModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
+            <div className="p-6 md:p-8 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-xl font-black">Source outsourced vehicle</h3>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Creates an outsourced unit linked to the booked model and assigns it to this booking.
+                  </p>
+                </div>
+                <button onClick={() => setShowOutsourceModal(false)} className="p-2 hover:bg-muted rounded-full">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  value={outsourceForm.make}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, make: e.target.value }))}
+                  placeholder="Make"
+                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+                <input
+                  value={outsourceForm.model}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, model: e.target.value }))}
+                  placeholder="Model"
+                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+                <input
+                  type="number"
+                  value={outsourceForm.year}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, year: Number(e.target.value) }))}
+                  placeholder="Year"
+                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+                <input
+                  value={outsourceForm.license_plate}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, license_plate: e.target.value }))}
+                  placeholder="License plate"
+                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm font-mono uppercase"
+                />
+                <input
+                  value={outsourceForm.color}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, color: e.target.value }))}
+                  placeholder="Color"
+                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+                <input
+                  type="number"
+                  value={outsourceForm.daily_rate}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, daily_rate: Number(e.target.value) }))}
+                  placeholder="Daily rate"
+                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+                <input
+                  value={outsourceForm.outsource_owner_name}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, outsource_owner_name: e.target.value }))}
+                  placeholder="Supplier / owner name"
+                  className="col-span-2 px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+                <input
+                  value={outsourceForm.outsource_owner_phone}
+                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, outsource_owner_phone: e.target.value }))}
+                  placeholder="Supplier phone (optional)"
+                  className="col-span-2 px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={() => setShowOutsourceModal(false)}
+                  className="flex-1 py-3 bg-muted text-muted-foreground rounded-xl font-bold text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSourceOutsourcedUnit}
+                  disabled={savingOutsource}
+                  className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm flex items-center justify-center gap-2"
+                >
+                  {savingOutsource ? <Loader2 size={16} className="animate-spin" /> : 'Create & assign'}
                 </button>
               </div>
             </div>

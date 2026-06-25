@@ -14,6 +14,7 @@ import {
   buildPayoutBreakdown,
   createEmptyPayoutBreakdown,
 } from '../utils/partnerFinancials';
+import { buildModelFleetStatus } from '../utils/modelFleetStatus';
 const handleSupabaseError = handleSupabaseErrorWrapper;
 const ADMIN_CACHE_TTL_MS = 60_000;
 
@@ -60,6 +61,7 @@ const VEHICLE_MODEL_WRITE_FIELDS = [
   'security_deposit',
   'is_chauffeured_only',
   'is_public',
+  'booking_mode',
   'sort_order',
 ] as const;
 
@@ -554,6 +556,29 @@ export const adminService = {
     return data;
   },
 
+  getVehicleModelVariantIds: async (modelId: string) => {
+    return getOrSetCache(`admin:modelVariantIds:${modelId}`, ADMIN_CACHE_TTL_MS, async () => {
+      const { data: model, error } = await supabase
+        .from('vehicle_models')
+        .select('id, make, model, family_slug')
+        .eq('id', modelId)
+        .single();
+
+      if (error || !model) return [modelId];
+
+      let query = supabase.from('vehicle_models').select('id');
+      if (model.family_slug) {
+        query = query.eq('family_slug', model.family_slug);
+      } else {
+        query = query.eq('make', model.make).eq('model', model.model);
+      }
+
+      const { data: variants, error: variantsError } = await query;
+      if (variantsError || !variants?.length) return [modelId];
+      return variants.map((row: { id: string }) => row.id);
+    });
+  },
+
   // --- Cars ---
   getVehicleModels: async (page: number = 1, pageSize: number = 50) => {
     return getOrSetCache(`admin:vehicleModels:${page}:${pageSize}`, ADMIN_CACHE_TTL_MS, async () => {
@@ -598,6 +623,163 @@ export const adminService = {
       .order('created_at', { ascending: false });
     if (error) return handleSupabaseErrorWrapper(error, 'getCarsByVehicleModelIds');
     return data || [];
+  },
+
+  getModelFleetStatus: async (
+    modelIds: string[],
+    options: { startDate?: string; endDate?: string } = {}
+  ) => {
+    if (!modelIds?.length) {
+      return buildModelFleetStatus([], options);
+    }
+
+    const cacheKey = `admin:fleetStatus:${modelIds.sort().join(',')}:${options.startDate || 'all'}:${options.endDate || 'all'}`;
+    return getOrSetCache(cacheKey, 30_000, async () => {
+      const { data: units, error: unitsError } = await supabase
+        .from('cars')
+        .select(`
+          id,
+          make,
+          model,
+          year,
+          color,
+          license_plate,
+          status,
+          maintenance_status,
+          daily_rate,
+          vehicle_model_id,
+          primary_image_url,
+          is_outsourced,
+          fleet_owner:user_profiles(full_name)
+        `)
+        .in('vehicle_model_id', modelIds)
+        .order('license_plate');
+
+      if (unitsError) return handleSupabaseErrorWrapper(unitsError, 'getModelFleetStatus');
+
+      let bookings: any[] = [];
+      let reservations: any[] = [];
+
+      if (options.startDate && options.endDate) {
+        const [{ data: bookingRows, error: bookingError }, { data: reservationRows, error: reservationError }] =
+          await Promise.all([
+            supabase
+              .from('bookings')
+              .select('id, car_id, start_date, end_date, status')
+              .in('status', ['confirmed', 'on_trip', 'pending_payment_verification', 'pending', 'in_progress'])
+              .lte('start_date', options.endDate)
+              .gte('end_date', options.startDate),
+            supabase
+              .from('car_reservations')
+              .select('id, car_id, start_date, end_date, status')
+              .in('status', ['reserved', 'confirmed', 'pending_payment'])
+              .lte('start_date', options.endDate)
+              .gte('end_date', options.startDate),
+          ]);
+
+        if (bookingError) return handleSupabaseErrorWrapper(bookingError, 'getModelFleetStatus');
+        if (reservationError) return handleSupabaseErrorWrapper(reservationError, 'getModelFleetStatus');
+        bookings = bookingRows || [];
+        reservations = reservationRows || [];
+      }
+
+      return buildModelFleetStatus(units || [], {
+        startDate: options.startDate,
+        endDate: options.endDate,
+        bookings,
+        reservations,
+      });
+    });
+  },
+
+  setVehicleModelBookingMode: async (
+    modelIds: string[],
+    bookingMode: 'both' | 'reservation_only' | 'disabled'
+  ) => {
+    if (!modelIds?.length) throw new Error('No model variants selected.');
+
+    const { data, error } = await supabase
+      .from('vehicle_models')
+      .update({ booking_mode: bookingMode, updated_at: new Date().toISOString() })
+      .in('id', modelIds)
+      .select('id, booking_mode');
+
+    if (error) return handleSupabaseErrorWrapper(error, 'setVehicleModelBookingMode');
+    invalidateFleetInventoryCaches();
+    invalidateCachePrefix('admin:vehicleModels:');
+    return data;
+  },
+
+  addOutsourcedCarForBooking: async (
+    bookingId: string,
+    car: {
+      make: string;
+      model: string;
+      year: number;
+      license_plate: string;
+      color?: string;
+      category?: string;
+      daily_rate: number;
+      primary_image_url?: string;
+      description?: string;
+      outsource_owner_name: string;
+      outsource_owner_phone?: string | null;
+      outsource_owner_email?: string | null;
+      outsource_commission_rate?: number;
+      vehicle_model_id: string;
+    }
+  ) => {
+    const { data: booking, error: bookingError } = await supabase
+      .from('bookings')
+      .select('id, vehicle_model_id, start_date, end_date')
+      .eq('id', bookingId)
+      .single();
+
+    if (bookingError || !booking) {
+      return handleSupabaseErrorWrapper(bookingError, 'addOutsourcedCarForBooking');
+    }
+
+    const targetModelId = car.vehicle_model_id || booking.vehicle_model_id;
+    if (!targetModelId) {
+      throw new Error('Booking has no vehicle model to link an outsourced unit.');
+    }
+
+    const created = await adminService.addCar({
+      make: car.make,
+      model: car.model,
+      year: car.year,
+      license_plate: car.license_plate.trim().toUpperCase(),
+      color: car.color || 'N/A',
+      category: car.category || 'Sedan',
+      description: car.description || 'Outsourced partner vehicle',
+      daily_rate: car.daily_rate,
+      overtime_rate: 0,
+      security_deposit: 0,
+      status: 'available',
+      transmission: 'Automatic',
+      fuel_type: 'Petrol',
+      seats: 5,
+      features: [],
+      photos: [],
+      primary_image_url: car.primary_image_url || '',
+      fleet_owner: null,
+      vehicle_model_id: targetModelId,
+      is_outsourced: true,
+      is_approved: true,
+      outsource_owner_name: car.outsource_owner_name,
+      outsource_owner_phone: car.outsource_owner_phone || null,
+      outsource_owner_email: car.outsource_owner_email || null,
+      outsource_commission_rate: car.outsource_commission_rate ?? 15,
+    });
+
+    const newCar = Array.isArray(created) ? created[0] : created;
+    if (!newCar?.id) {
+      throw new Error('Failed to create outsourced fleet unit.');
+    }
+
+    await adminService.assignBookingUnit(bookingId, newCar.id);
+    invalidateCachePrefix('admin:fleetStatus:');
+    return newCar;
   },
 
   getCars: async (page: number = 1, pageSize: number = 20) => {

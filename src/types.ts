@@ -23,6 +23,7 @@ export interface VehicleModel {
   security_deposit?: number;
   is_chauffeured_only?: boolean;
   is_public?: boolean;
+  booking_mode?: 'both' | 'reservation_only' | 'disabled';
   sort_order?: number;
   created_at?: string;
   updated_at?: string;

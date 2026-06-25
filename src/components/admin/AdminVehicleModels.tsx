@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { adminService } from '../../services/adminService';
 import { groupVehicleModels, VehicleModelGroup, getVehicleModelIdsForGroup, suggestVehicleModelFamily } from '../../utils/vehicleModelGrouping';
 import { VehicleModel } from '../../types';
+import { ModelFleetStatusPanel } from './ModelFleetStatusPanel';
+import type { ModelFleetStatusSummary } from '../../utils/modelFleetStatus';
 import {
   Car,
   Edit3,
@@ -115,13 +117,24 @@ const ModelFamilyCard: React.FC<{
               <p className="text-[10px] text-muted-foreground font-mono truncate">{group.slug}</p>
             </div>
           </div>
-          <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0 ${
-              group.is_public ? 'bg-success/10 text-success border-success/30' : 'bg-muted text-muted-foreground border-border'
-            }`}
-          >
-            {group.is_public ? 'Public' : 'Hidden'}
-          </span>
+          <div className="flex flex-col items-end gap-1 shrink-0">
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
+                group.is_public ? 'bg-success/10 text-success border-success/30' : 'bg-muted text-muted-foreground border-border'
+              }`}
+            >
+              {group.is_public ? 'Public' : 'Hidden'}
+            </span>
+            {group.booking_mode && group.booking_mode !== 'both' && (
+              <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider border ${
+                group.booking_mode === 'reservation_only'
+                  ? 'bg-amber-500/10 text-amber-500 border-amber-500/30'
+                  : 'bg-red-500/10 text-red-400 border-red-500/30'
+              }`}>
+                {group.booking_mode === 'reservation_only' ? 'Reserve only' : 'No booking'}
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 text-xs">
@@ -172,6 +185,11 @@ export function AdminVehicleModels() {
   const [detailTab, setDetailTab] = useState<DetailTab>('units');
   const [fleetUnits, setFleetUnits] = useState<FleetUnit[]>([]);
   const [loadingUnits, setLoadingUnits] = useState(false);
+  const [fleetStatus, setFleetStatus] = useState<ModelFleetStatusSummary | null>(null);
+  const [loadingFleetStatus, setLoadingFleetStatus] = useState(false);
+  const [fleetStatusStart, setFleetStatusStart] = useState('');
+  const [fleetStatusEnd, setFleetStatusEnd] = useState('');
+  const [savingBookingMode, setSavingBookingMode] = useState(false);
 
   const [showCatalogForm, setShowCatalogForm] = useState(false);
   const [showAdvancedForm, setShowAdvancedForm] = useState(false);
@@ -316,15 +334,57 @@ export function AdminVehicleModels() {
     }
   };
 
+  const loadFleetStatus = async (group: VehicleModelGroup, startDate?: string, endDate?: string) => {
+    setLoadingFleetStatus(true);
+    try {
+      const status = await adminService.getModelFleetStatus(getVehicleModelIdsForGroup(group), {
+        startDate: startDate || undefined,
+        endDate: endDate || undefined,
+      });
+      setFleetStatus(status);
+    } catch (error) {
+      console.error('Failed to load fleet status:', error);
+      setFleetStatus(null);
+    } finally {
+      setLoadingFleetStatus(false);
+    }
+  };
+
+  const handleBookingModeChange = async (mode: 'both' | 'reservation_only' | 'disabled') => {
+    if (!selectedGroup) return;
+    setSavingBookingMode(true);
+    try {
+      await adminService.setVehicleModelBookingMode(getVehicleModelIdsForGroup(selectedGroup), mode);
+      toast.success(
+        mode === 'reservation_only'
+          ? 'Model set to reservation-only — Book Now hidden on public site'
+          : mode === 'disabled'
+            ? 'Model booking disabled on public site'
+            : 'Model booking restored — Book Now and Reserve available'
+      );
+      const nextGroup = await refreshGroupsAfterMutation(selectedGroup.groupKey);
+      if (nextGroup) setSelectedGroup(nextGroup);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to update booking mode');
+    } finally {
+      setSavingBookingMode(false);
+    }
+  };
+
   const openGroupDetail = async (group: VehicleModelGroup, tab: DetailTab = 'units') => {
     setSelectedGroup(group);
     setDetailTab(tab);
-    await loadFleetUnits(group);
+    const today = new Date().toISOString().slice(0, 10);
+    const weekAhead = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    setFleetStatusStart(today);
+    setFleetStatusEnd(weekAhead);
+    await Promise.all([loadFleetUnits(group), loadFleetStatus(group, today, weekAhead)]);
   };
 
   const closeGroupDetail = () => {
     setSelectedGroup(null);
     setFleetUnits([]);
+    setFleetStatus(null);
   };
 
   const openCreateCatalog = () => {
@@ -647,6 +707,52 @@ export function AdminVehicleModels() {
             <div className="p-6 overflow-y-auto flex-1 space-y-4">
               {detailTab === 'units' && (
                 <>
+                  <div className="p-4 bg-muted/20 border border-border rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Status from
+                        </label>
+                        <input
+                          type="date"
+                          value={fleetStatusStart}
+                          onChange={(e) => setFleetStatusStart(e.target.value)}
+                          className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm"
+                        />
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                          Status to
+                        </label>
+                        <input
+                          type="date"
+                          value={fleetStatusEnd}
+                          onChange={(e) => setFleetStatusEnd(e.target.value)}
+                          className="w-full px-3 py-2 bg-background border border-border rounded-xl text-sm"
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          selectedGroup &&
+                          loadFleetStatus(selectedGroup, fleetStatusStart, fleetStatusEnd)
+                        }
+                        className="px-4 py-2 bg-primary text-primary-foreground rounded-xl text-xs font-bold"
+                      >
+                        Refresh status
+                      </button>
+                    </div>
+                    <ModelFleetStatusPanel
+                      status={fleetStatus}
+                      loading={loadingFleetStatus}
+                      dateRangeLabel={
+                        fleetStatusStart && fleetStatusEnd
+                          ? `(${fleetStatusStart} → ${fleetStatusEnd})`
+                          : undefined
+                      }
+                    />
+                  </div>
+
                   <div className="flex flex-col sm:flex-row gap-2">
                     <button
                       onClick={() => navigate(buildFleetCarsUrl(selectedGroup, true))}
@@ -816,6 +922,35 @@ export function AdminVehicleModels() {
                     <div className="p-4 bg-muted/20 rounded-xl border border-border">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Visibility</p>
                       <p className="font-bold mt-1">{selectedGroup.is_public ? 'Public listing' : 'Hidden'}</p>
+                    </div>
+                    <div className="p-4 bg-muted/20 rounded-xl border border-border col-span-2 space-y-3">
+                      <div>
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Public booking mode</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          When fleet is exhausted, switch to reservation-only so clients can still hold dates while you source an outsourced unit.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {([
+                          ['both', 'Book + Reserve'],
+                          ['reservation_only', 'Reservation only'],
+                          ['disabled', 'Booking disabled'],
+                        ] as const).map(([mode, label]) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            disabled={savingBookingMode}
+                            onClick={() => handleBookingModeChange(mode)}
+                            className={`px-3 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                              selectedGroup.booking_mode === mode
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'bg-background border-border hover:border-primary/40'
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="p-4 bg-muted/20 rounded-xl border border-border col-span-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Description</p>

@@ -250,16 +250,35 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
 
                             {/* BOOK NOW + View Details */}
                             <div className="flex items-center justify-between gap-1 md:gap-2 mt-3 pt-2 border-t border-white/10">
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault();
-                                  e.stopPropagation();
-                                  window.location.href = `/models/${group.representativeId}?booking=true`;
-                                }}
-                                className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap"
-                              >
-                                BOOK NOW
-                              </button>
+                              {group.booking_mode !== 'disabled' && group.booking_mode !== 'reservation_only' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    window.location.href = `/models/${group.representativeId}?booking=true`;
+                                  }}
+                                  className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap"
+                                >
+                                  BOOK NOW
+                                </button>
+                              )}
+                              {group.booking_mode === 'reservation_only' && (
+                                <button
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    window.location.href = `/models/${group.representativeId}?reservation=true`;
+                                  }}
+                                  className="bg-white/10 hover:bg-white/15 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap border border-white/15"
+                                >
+                                  RESERVE
+                                </button>
+                              )}
+                              {group.booking_mode === 'disabled' && (
+                                <span className="text-[10px] md:text-xs font-bold uppercase tracking-wider text-gray-500 px-2 md:px-3 py-1 md:py-1.5">
+                                  Unavailable
+                                </span>
+                              )}
                               <Link 
                                 to={`/models/${group.representativeId}`}
                                 className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs font-bold text-gray-400 hover:text-white hover:underline underline-offset-2 whitespace-nowrap transition-colors"
