@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
+import { loadFilledContractHtmlCached, prefetchContractAssets } from '../../../utils/contractTemplateCache';
+import { useDebouncedValue } from '../../../utils/useDebouncedValue';
 import {
   formatContractDate,
   getClientNameFromBooking,
   getTotalCostFromBooking,
   isHtmlContract,
-  loadFilledContractHtml,
   resolveContractVehicle,
 } from '../../../utils/contractTemplate';
 
@@ -37,16 +38,32 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
 
   const [htmlTemplate, setHtmlTemplate] = useState<string | null>(null);
   const [loadingHtml, setLoadingHtml] = useState(false);
+  const debouncedSignature = useDebouncedValue(signatureData || '', 450);
+  const htmlRequestId = useRef(0);
 
   useEffect(() => {
-    if (!isHtmlTemplate) return;
+    if (!isHtmlTemplate || !contract) return;
+    void prefetchContractAssets(contract);
+  }, [isHtmlTemplate, contract]);
 
+  useEffect(() => {
+    if (!isHtmlTemplate || !contract) return;
+
+    const requestId = ++htmlRequestId.current;
     setLoadingHtml(true);
-    loadFilledContractHtml(contract, bookingData, car, signatureData, vehicleModelId)
-      .then((html) => setHtmlTemplate(html))
+
+    loadFilledContractHtmlCached(contract, bookingData, car, debouncedSignature, vehicleModelId)
+      .then((html) => {
+        if (htmlRequestId.current !== requestId) return;
+        setHtmlTemplate(html);
+      })
       .catch((err) => console.error('Failed to load HTML contract', err))
-      .finally(() => setLoadingHtml(false));
-  }, [isHtmlTemplate, contract, bookingData, car, signatureData, vehicleModelId]);
+      .finally(() => {
+        if (htmlRequestId.current === requestId) {
+          setLoadingHtml(false);
+        }
+      });
+  }, [isHtmlTemplate, contract, bookingData, car, debouncedSignature, vehicleModelId]);
 
   // Build a full-document srcDoc for the iframe so the template's CSS is
   // completely isolated from the app and cannot collapse the layout.
@@ -151,7 +168,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
       <div className="p-2 sm:p-4 bg-card">
         <div className="bg-background rounded-lg shadow-lg overflow-hidden border border-border">
           {isHtmlTemplate ? (
-            loadingHtml ? (
+            loadingHtml && !htmlTemplate ? (
               <div className="w-full h-96 flex items-center justify-center">
                 <Loader2 className="animate-spin text-primary" size={32} />
               </div>

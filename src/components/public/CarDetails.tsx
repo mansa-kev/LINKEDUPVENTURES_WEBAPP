@@ -28,6 +28,7 @@ import { fleetService } from '../../services/fleetService';
 import { reservationService } from '../../services/reservationService';
 import { Car } from '../../types';
 import { BookingFlow } from './BookingFlow/BookingFlow';
+import { DesktopFlowOverlay } from './BookingFlow/DesktopFlowOverlay';
 import { ReservationFlow } from './BookingFlow/ReservationFlow';
 import { Logo } from '../shared/Logo';
 import { LogoLoader } from '../shared/LogoLoader';
@@ -447,7 +448,7 @@ export function CarDetails() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="mt-6 md:mt-12 relative"
+                className="mt-6 md:mt-12 relative lg:hidden"
               >
                 <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-orange-500/10 to-primary/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
                 <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-primary/20">
@@ -470,7 +471,7 @@ export function CarDetails() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: 20 }}
-                className="mt-6 md:mt-12 relative"
+                className="mt-6 md:mt-12 relative lg:hidden"
               >
                 <div className="absolute -inset-1 bg-gradient-to-r from-warning/20 via-orange-500/10 to-warning/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
                 <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-warning/20">
@@ -607,6 +608,24 @@ export function CarDetails() {
         </div>
       </div>
     </div>
+
+      <DesktopFlowOverlay
+        open={showBooking}
+        onClose={toggleBooking}
+        variant="booking"
+        ariaLabel="Close booking form"
+      >
+        <BookingFlow car={car} reservationToken={reservationToken} />
+      </DesktopFlowOverlay>
+
+      <DesktopFlowOverlay
+        open={showReservation}
+        onClose={toggleReservation}
+        variant="reservation"
+        ariaLabel="Close reservation form"
+      >
+        <ReservationFlow car={car} onClose={() => setShowReservation(false)} />
+      </DesktopFlowOverlay>
     </>
   );
 }

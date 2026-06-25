@@ -243,7 +243,11 @@ const app = express();
 
       const contentType =
         (data as any).type ||
-        (filePath.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/octet-stream');
+        (filePath.toLowerCase().endsWith('.pdf')
+          ? 'application/pdf'
+          : filePath.match(/\.(jpe?g|png|webp|gif)$/i)
+            ? `image/${filePath.split('.').pop()?.toLowerCase().replace('jpg', 'jpeg')}`
+            : 'application/octet-stream');
 
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');

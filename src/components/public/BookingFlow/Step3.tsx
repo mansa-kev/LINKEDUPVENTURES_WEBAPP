@@ -6,6 +6,7 @@ import SignatureCanvas from 'react-signature-canvas';
 import { ArrowLeft, ArrowRight, FileText, Loader2, AlertCircle, CheckCircle2, Eraser, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { enhancedContractService } from '../../../services/enhancedContractService';
+import { prefetchContractAssets } from '../../../utils/contractTemplateCache';
 import { generateContractPdfBase64 } from '../../../services/contractPdfService';
 import { DirectContractDisplay } from './DirectContractDisplay';
 import { resolveContractVehicle } from '../../../utils/contractTemplate';
@@ -29,22 +30,28 @@ export function Step3({ car, bookingData, onNext, onPrev, vehicleModelId }: Step
   const vehicle = resolveContractVehicle(car, vehicleModelId);
 
   useEffect(() => {
+    let active = true;
     const fetchContract = async () => {
       try {
         const contract = await enhancedContractService.getMasterContract();
+        if (!active) return;
         if (contract) {
           const htmlUrl = contract.pdf_url || contract.contract_url || contract.template_url;
           contract.preview_url = htmlUrl && htmlUrl.includes('.html') ? htmlUrl : null;
           setContract(contract);
+          void prefetchContractAssets(contract);
         }
       } catch (error) {
         console.error('Error fetching contract:', error);
       } finally {
-        setLoadingContract(false);
+        if (active) setLoadingContract(false);
       }
-    }
+    };
     fetchContract();
-  }, [bookingData, car]);
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const clear = () => {
     if (sigPad.current) {

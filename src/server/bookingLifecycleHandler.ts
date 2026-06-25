@@ -94,15 +94,22 @@ async function insertInspection(
     .select()
     .single();
 
-  if (error) {
-    if (error.code === '23505') {
-      return {
-        error: 'An inspection of this type already exists for this booking.',
-        status: 409 as const,
-      };
-    }
-    return { error: error.message, status: 500 as const };
-  }
+      if (error) {
+        const detail = error.message || 'Failed to save inspection record.';
+        if (error.code === '23505') {
+          return {
+            error: 'An inspection of this type already exists for this booking.',
+            status: 409 as const,
+          };
+        }
+        if (error.code === '42P01') {
+          return {
+            error: 'booking_inspections table is missing. Run scripts/fix_booking_inspections_storage.sql.',
+            status: 500 as const,
+          };
+        }
+        return { error: detail, status: 500 as const };
+      }
 
   return { inspection: data };
 }
@@ -167,25 +174,45 @@ export function createBookingPickupHandler(supabase: SupabaseClient) {
       const now = new Date().toISOString();
       const pickupOdometer = payload.mileage != null ? Number(payload.mileage) : null;
 
-      const { data: updated, error: updateError } = await supabase
+      const fullUpdate: Record<string, unknown> = {
+        status: 'on_trip',
+        sub_status: 'in_transit',
+        pickup_confirmed_at: now,
+        pickup_confirmed_by: authData.user.id,
+        actual_pickup_location: payload.location || null,
+        ...(pickupOdometer != null ? { pickup_odometer: pickupOdometer } : {}),
+      };
+
+      let updated = null;
+      let updateError = null;
+
+      ({ data: updated, error: updateError } = await supabase
         .from('bookings')
-        .update({
-          status: 'on_trip',
-          sub_status: 'in_transit',
-          pickup_confirmed_at: now,
-          pickup_confirmed_by: authData.user.id,
-          actual_pickup_location: payload.location || null,
-          ...(pickupOdometer != null ? { pickup_odometer: pickupOdometer } : {}),
-        })
+        .update(fullUpdate)
         .eq('id', bookingId)
         .select()
-        .single();
+        .single());
+
+      if (updateError) {
+        console.warn('[booking-pickup] full update failed, retrying minimal:', updateError.message);
+        ({ data: updated, error: updateError } = await supabase
+          .from('bookings')
+          .update({
+            status: 'on_trip',
+            pickup_confirmed_at: now,
+          })
+          .eq('id', bookingId)
+          .select()
+          .single());
+      }
 
       if (updateError || !updated) {
         console.error('[booking-pickup] status update failed:', updateError);
         return res.status(500).json({
           success: false,
-          error: updateError?.message || 'Pickup inspection saved but booking status could not be updated.',
+          error:
+            updateError?.message ||
+            'Pickup inspection saved but booking status could not be updated. Run scripts/fix_booking_pickup_lifecycle.sql on production.',
         });
       }
 

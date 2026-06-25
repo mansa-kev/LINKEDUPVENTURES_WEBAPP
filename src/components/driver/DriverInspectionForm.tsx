@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { uploadInspectionPhoto } from '../../services/inspectionUploadService';
+import { resolveDocumentPreviewUrl } from '../../utils/documentPreviewUrl';
 import {
   submitBookingPickup,
   submitBookingReturn,
@@ -149,23 +150,29 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const localPreview = URL.createObjectURL(file);
+    if (target === 'fuel') {
+      setPhotoFuelMileage(localPreview);
+    }
     setUploading(target);
     try {
       const subfolder = target === 'fuel' ? 'fuel' : target;
       const url = await uploadInspectionPhoto(booking.id, file, subfolder);
+      const displayUrl = resolveDocumentPreviewUrl(url, true) || url;
 
       if (target === 'fuel') {
-        setPhotoFuelMileage(url);
+        setPhotoFuelMileage(displayUrl);
       } else if (target === 'exterior') {
-        setPhotosExterior(prev => [...prev, url]);
+        setPhotosExterior(prev => [...prev, displayUrl]);
       } else {
-        setPhotosInterior(prev => [...prev, url]);
+        setPhotosInterior(prev => [...prev, displayUrl]);
       }
       toast.success('Photo uploaded successfully');
     } catch (err: any) {
       console.error(err);
       toast.error('Upload failed: ' + (err.message || err));
     } finally {
+      URL.revokeObjectURL(localPreview);
       setUploading(null);
       e.target.value = '';
     }
@@ -314,7 +321,7 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
               
               {photoFuelMileage ? (
                 <div className="relative border border-border rounded-xl overflow-hidden bg-muted/20">
-                  <img src={photoFuelMileage} alt="Odometer Proof" className="w-full h-48 object-cover" />
+                  <img src={resolveDocumentPreviewUrl(photoFuelMileage, true) || photoFuelMileage} alt="Odometer Proof" className="w-full h-48 object-cover" />
                   <button
                     type="button"
                     onClick={() => setPhotoFuelMileage('')}
@@ -386,7 +393,7 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
               <div className="grid grid-cols-2 gap-2">
                 {photosExterior.map((url, idx) => (
                   <div key={idx} className="relative border border-border rounded-lg overflow-hidden h-24 bg-muted/20">
-                    <img src={url} alt={`Exterior ${idx}`} className="w-full h-full object-cover" />
+                    <img src={resolveDocumentPreviewUrl(url, true) || url} alt={`Exterior ${idx}`} className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => setPhotosExterior(prev => prev.filter((_, i) => i !== idx))}
@@ -423,7 +430,7 @@ export function DriverInspectionForm({ booking, type, onBack }: DriverInspection
               <div className="grid grid-cols-2 gap-2">
                 {photosInterior.map((url, idx) => (
                   <div key={idx} className="relative border border-border rounded-lg overflow-hidden h-24 bg-muted/20">
-                    <img src={url} alt={`Interior ${idx}`} className="w-full h-full object-cover" />
+                    <img src={resolveDocumentPreviewUrl(url, true) || url} alt={`Interior ${idx}`} className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => setPhotosInterior(prev => prev.filter((_, i) => i !== idx))}

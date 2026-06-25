@@ -47,6 +47,10 @@ export async function compressImage(file: File, maxWidth = 1200, maxHeight = 120
     return file;
   }
 
+  if (file.size < 400_000) {
+    return file;
+  }
+
   const img = await loadImageFromObjectUrl(file);
   const { width, height } = getTargetDimensions(img.width, img.height, maxWidth, maxHeight);
 

@@ -15,7 +15,7 @@ import {
   stashPendingFile,
   uploadBookingDocument,
 } from '../../../services/bookingDocumentUploadService';
-import { listPendingUploadsForCar } from '../../../utils/pendingUploadStore';
+import { resolveDocumentPreviewUrl } from '../../../utils/documentPreviewUrl';
 
 interface Step2Props {
   car: Car;
@@ -47,6 +47,7 @@ const DOC_LABELS: Record<DocType, string> = {
 interface DocumentSlotProps {
   type: DocType;
   uploadedUrl: string;
+  previewUrl?: string;
   isUploading: boolean;
   disablePicker: boolean;
   onUploadFile: (file: File, type: DocType) => void;
@@ -54,7 +55,7 @@ interface DocumentSlotProps {
   onClear: (type: DocType) => void;
 }
 
-function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadFile, onOpenCamera, onClear }: DocumentSlotProps) {
+function DocumentSlot({ type, uploadedUrl, previewUrl, isUploading, disablePicker, onUploadFile, onOpenCamera, onClear }: DocumentSlotProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const openPicker = (e: React.MouseEvent | React.TouchEvent) => {
@@ -74,6 +75,7 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
   };
 
   const isPdf = uploadedUrl && /\.pdf(\?|$)/i.test(uploadedUrl);
+  const displaySrc = previewUrl || resolveDocumentPreviewUrl(uploadedUrl, true);
 
   return (
     <div className="space-y-2">
@@ -96,11 +98,23 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
 
         <AnimatePresence mode="wait">
           {isUploading ? (
-            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-col items-center gap-1 py-3">
-              <Loader2 className="animate-spin text-primary" size={20} />
-              <p className="text-[9px] font-black uppercase tracking-widest text-primary">Uploading...</p>
+            <motion.div key="loading" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="relative">
+              {previewUrl ? (
+                <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-black/30">
+                  <img src={previewUrl} alt={DOC_LABELS[type]} className="w-full h-full object-cover opacity-80" />
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/35">
+                    <Loader2 className="animate-spin text-primary" size={20} />
+                    <p className="text-[9px] font-black uppercase tracking-widest text-primary">Uploading...</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-1 py-3">
+                  <Loader2 className="animate-spin text-primary" size={20} />
+                  <p className="text-[9px] font-black uppercase tracking-widest text-primary">Uploading...</p>
+                </div>
+              )}
             </motion.div>
-          ) : uploadedUrl ? (
+          ) : displaySrc ? (
             <motion.div key="success" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="relative">
               {isPdf ? (
                 <div className="flex flex-col items-center gap-1 py-3">
@@ -109,7 +123,7 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
                 </div>
               ) : (
                 <div className="relative w-full aspect-[4/3] rounded-xl overflow-hidden bg-black/30">
-                  <img src={uploadedUrl} alt={DOC_LABELS[type]} className="w-full h-full object-cover" loading="lazy" />
+                  <img src={displaySrc} alt={DOC_LABELS[type]} className="w-full h-full object-cover" />
                   <div className="absolute top-1 left-1 bg-green-500/90 rounded-full p-1">
                     <CheckCircle2 className="text-black" size={12} />
                   </div>
@@ -162,6 +176,8 @@ function DocumentSlot({ type, uploadedUrl, isUploading, disablePicker, onUploadF
 export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Step2Props) {
   const contextId = uploadContextId || `car:${car.id}`;
   const [uploadingSlots, setUploadingSlots] = useState<Set<DocType>>(new Set());
+  const [localPreviews, setLocalPreviews] = useState<Partial<Record<DocType, string>>>({});
+  const localPreviewRef = useRef<Partial<Record<DocType, string>>>({});
   const [showCamera, setShowCamera] = useState<DocType | null>(null);
   const [prefilled, setPrefilled] = useState(false);
   const resumeLockRef = useRef(false);
@@ -266,6 +282,10 @@ export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Ste
   const runUpload = useCallback(async (file: File, type: DocType) => {
     if (uploadingSlots.has(type)) return;
 
+    const localPreview = URL.createObjectURL(file);
+    localPreviewRef.current[type] = localPreview;
+    setLocalPreviews((prev) => ({ ...prev, [type]: localPreview }));
+
     markUploading(type, true);
     try {
       await stashPendingFile(contextId, type, file);
@@ -275,6 +295,16 @@ export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Ste
     } catch (error) {
       toast.error(`Failed to upload: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
+      const preview = localPreviewRef.current[type];
+      if (preview) {
+        URL.revokeObjectURL(preview);
+        delete localPreviewRef.current[type];
+      }
+      setLocalPreviews((prev) => {
+        const next = { ...prev };
+        delete next[type];
+        return next;
+      });
       markUploading(type, false);
     }
   }, [applyUploadedUrl, contextId, markUploading, uploadingSlots]);
@@ -424,7 +454,7 @@ export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Ste
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">Face Photo / Passport Photo</label>
             <div className="max-w-xs mx-auto">
-              <DocumentSlot type="facePhoto" uploadedUrl={formData.facePhotoUrl} isUploading={uploadingSlots.has('facePhoto')} disablePicker={uploadingSlots.has('facePhoto')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="facePhoto" uploadedUrl={formData.facePhotoUrl} previewUrl={localPreviews.facePhoto} isUploading={uploadingSlots.has('facePhoto')} disablePicker={uploadingSlots.has('facePhoto')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
 
@@ -432,8 +462,8 @@ export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Ste
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">Driver's License</label>
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <DocumentSlot type="licenseFront" uploadedUrl={formData.licenseFrontUrl} isUploading={uploadingSlots.has('licenseFront')} disablePicker={uploadingSlots.has('licenseFront')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
-              <DocumentSlot type="licenseBack" uploadedUrl={formData.licenseBackUrl} isUploading={uploadingSlots.has('licenseBack')} disablePicker={uploadingSlots.has('licenseBack')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="licenseFront" uploadedUrl={formData.licenseFrontUrl} previewUrl={localPreviews.licenseFront} isUploading={uploadingSlots.has('licenseFront')} disablePicker={uploadingSlots.has('licenseFront')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="licenseBack" uploadedUrl={formData.licenseBackUrl} previewUrl={localPreviews.licenseBack} isUploading={uploadingSlots.has('licenseBack')} disablePicker={uploadingSlots.has('licenseBack')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
 
@@ -441,8 +471,8 @@ export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Ste
           <div>
             <label className="text-[10px] font-black uppercase tracking-[0.2em] text-primary mb-3 block">National ID / Passport</label>
             <div className="grid grid-cols-2 gap-3 md:gap-4">
-              <DocumentSlot type="idFront" uploadedUrl={formData.idFrontUrl} isUploading={uploadingSlots.has('idFront')} disablePicker={uploadingSlots.has('idFront')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
-              <DocumentSlot type="idBack" uploadedUrl={formData.idBackUrl} isUploading={uploadingSlots.has('idBack')} disablePicker={uploadingSlots.has('idBack')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="idFront" uploadedUrl={formData.idFrontUrl} previewUrl={localPreviews.idFront} isUploading={uploadingSlots.has('idFront')} disablePicker={uploadingSlots.has('idFront')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
+              <DocumentSlot type="idBack" uploadedUrl={formData.idBackUrl} previewUrl={localPreviews.idBack} isUploading={uploadingSlots.has('idBack')} disablePicker={uploadingSlots.has('idBack')} onUploadFile={uploadFile} onOpenCamera={setShowCamera} onClear={clearDocument} />
             </div>
           </div>
         </div>

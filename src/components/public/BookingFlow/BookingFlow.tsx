@@ -20,6 +20,8 @@ interface BookingFlowProps {
 }
 
 import { calculateRentalDays } from '../../../utils/rentalDays';
+import { enhancedContractService } from '../../../services/enhancedContractService';
+import { prefetchContractAssets } from '../../../utils/contractTemplateCache';
 
 const calculateDays = (startDate?: string, endDate?: string) =>
   calculateRentalDays(startDate, endDate);
@@ -89,6 +91,19 @@ export function BookingFlow({ car: carProp, vehicleModel, reservationToken, vehi
       isCancelled = true;
     };
   }, [reservationToken, saveSession]);
+
+  useEffect(() => {
+    if (step < 2) return;
+    let active = true;
+    (async () => {
+      const master = await enhancedContractService.getMasterContract();
+      if (!active || !master) return;
+      await prefetchContractAssets(master);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [step]);
 
   const nextStep = (data: any) => {
     const newBookingData = { ...bookingData, ...data };
