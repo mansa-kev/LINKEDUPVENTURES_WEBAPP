@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../contexts/AuthContext';
 import { Inbox, Send, Plus, Clock, MessageSquare, User, Shield, AlertCircle, CheckCircle2, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { getMessageThreadKey } from '../../utils/messagingThread';
 
 export function MyInbox() {
   const { user } = useAuth();
@@ -19,6 +20,7 @@ export function MyInbox() {
   const [selectedConversation, setSelectedConversation] = useState<any[] | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
 
   // Support Form State
   const [supportSubject, setSupportSubject] = useState('');
@@ -70,7 +72,7 @@ export function MyInbox() {
         
         const validMsgs = msgs || [];
         const groups = validMsgs.reduce((acc: any, msg: any) => {
-          const key = msg.booking_id || msg.subject || 'general';
+          const key = getMessageThreadKey(msg);
           if (!acc[key]) acc[key] = [];
           acc[key].push(msg);
           return acc;
@@ -86,11 +88,18 @@ export function MyInbox() {
 
         if (selectedConversation && sortedGroups.length > 0) {
            const updatedThread = sortedGroups.find((g: any) => 
-             (g[0].booking_id === selectedConversation[0].booking_id) && 
-             (g[0].subject === selectedConversation[0].subject)
+             getMessageThreadKey(g[0]) === getMessageThreadKey(selectedConversation[0])
            );
            if (updatedThread) setSelectedConversation(updatedThread);
         }
+
+        const admins = await supabase
+          .from('user_profiles')
+          .select('id')
+          .eq('role', 'admin')
+          .limit(1)
+          .maybeSingle();
+        setAdminUserId(admins.data?.id || null);
       }
     } catch (err) {
       console.error("Error fetching inbox data:", err);
@@ -103,14 +112,22 @@ export function MyInbox() {
     e.preventDefault();
     if (!newMessage.trim() || !selectedConversation) return;
 
-    const lastMsg = selectedConversation[0]; // most recent message in thread
-    const receiverId = lastMsg.sender_id === currentUser.id ? lastMsg.receiver_id : lastMsg.sender_id;
+    const threadRoot = selectedConversation[0];
+    const counterparty = selectedConversation.find((m: any) => m.sender_id !== currentUser.id || m.receiver_id === currentUser.id);
+    const receiverId = counterparty
+      ? (counterparty.sender_id === currentUser.id ? counterparty.receiver_id : counterparty.sender_id)
+      : adminUserId;
+
+    if (!receiverId) {
+      toast.error('Could not resolve recipient for this thread.');
+      return;
+    }
 
     const msg = {
       sender_id: currentUser.id,
       receiver_id: receiverId,
-      booking_id: lastMsg.booking_id,
-      subject: lastMsg.subject,
+      booking_id: threadRoot.booking_id,
+      subject: threadRoot.subject,
       content: newMessage,
       status: 'new'
     };
@@ -120,6 +137,7 @@ export function MyInbox() {
       setNewMessage('');
       fetchData(); // Refresh to show new message
     } catch (err) {
+      toast.error('Failed to send message.');
       console.error("Error sending message:", err);
     }
   };
@@ -130,12 +148,17 @@ export function MyInbox() {
 
     const msg = {
       sender_id: currentUser.id,
-      receiver_id: null, // Routes to Admin
+      receiver_id: adminUserId, // explicit admin routing
       subject: `SUPPORT: ${supportSubject}`,
       content: supportMessage,
       status: 'new',
       urgency: 'medium'
     };
+
+    if (!msg.receiver_id) {
+      toast.error('Support team is currently unavailable. Please try again shortly.');
+      return;
+    }
 
     try {
       await clientService.sendMessage(msg);

@@ -53,7 +53,7 @@ export async function computeBookingFinancials(
   return { commissionRate, commissionSource, platformCommission, ownerPayoutAmount };
 }
 
-export function validateBookingTotalAmount(
+import { calculateRentalDays } from '../../../utils/rentalDays';
   total: number,
   dailyRate: number,
   start: Date,

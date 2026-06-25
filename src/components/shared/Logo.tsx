@@ -8,8 +8,12 @@ interface LogoProps {
   fallbackToDefault?: boolean;
 }
 
+import {
+  LOGO_STORAGE_KEY,
+  LEGACY_LOGO_STORAGE_KEY,
+} from '../../utils/catalogImageCache';
+
 const DEFAULT_LOGO = '/favicon.svg';
-const STORAGE_KEY = 'linkedup_logo_url';
 
 async function fetchSiteLogoUrl(): Promise<string | null> {
   try {
@@ -26,28 +30,26 @@ async function fetchSiteLogoUrl(): Promise<string | null> {
 
 function syncFavicon(url: string) {
   const href = url || DEFAULT_LOGO;
-  let link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-  if (!link) {
-    link = document.createElement('link');
-    link.rel = 'icon';
-    document.head.appendChild(link);
-  }
-  if (link.href !== href && !link.href.endsWith(href)) {
-    link.href = href;
+  const busted = href.includes('?') ? href : `${href}?v=${Date.now()}`;
+  for (const rel of ['icon', 'apple-touch-icon']) {
+    let link = document.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+    if (!link) {
+      link = document.createElement('link');
+      link.rel = rel;
+      document.head.appendChild(link);
+    }
+    link.href = busted;
   }
 }
 
 // Function to clear logo cache (call this after logo update)
 export function clearLogoCache() {
-  localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LOGO_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_LOGO_STORAGE_KEY);
 }
 
 export function Logo({ size = 'md', showText = true, className, fallbackToDefault = true }: LogoProps) {
-  const [logoUrl, setLogoUrl] = useState<string | null>(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) syncFavicon(stored);
-    return stored || null;
-  });
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [imgFailed, setImgFailed] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -60,14 +62,27 @@ export function Logo({ size = 'md', showText = true, className, fallbackToDefaul
         if (cancelled) return;
 
         if (remoteUrl) {
+          const cached = localStorage.getItem(LOGO_STORAGE_KEY);
+          if (cached && cached !== remoteUrl) {
+            localStorage.removeItem(LEGACY_LOGO_STORAGE_KEY);
+          }
           setLogoUrl(remoteUrl);
           setImgFailed(false);
-          localStorage.setItem(STORAGE_KEY, remoteUrl);
+          localStorage.setItem(LOGO_STORAGE_KEY, remoteUrl);
           syncFavicon(remoteUrl);
+        } else {
+          const cached = localStorage.getItem(LOGO_STORAGE_KEY);
+          if (cached) {
+            setLogoUrl(cached);
+            syncFavicon(cached);
+          }
         }
-        // If API returns nothing, keep existing cache — never wipe on empty/error
       } catch (err) {
         console.error('Error fetching logo:', err);
+        const cached = localStorage.getItem(LOGO_STORAGE_KEY);
+        if (cached && !cancelled) {
+          setLogoUrl(cached);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -108,6 +123,7 @@ export function Logo({ size = 'md', showText = true, className, fallbackToDefaul
             fetchPriority="high"
             onError={() => {
               if (logoUrl && displayUrl === logoUrl) {
+                localStorage.removeItem(LOGO_STORAGE_KEY);
                 setImgFailed(true);
                 syncFavicon(DEFAULT_LOGO);
               }

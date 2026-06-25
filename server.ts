@@ -110,7 +110,7 @@ async function startServer() {
   app.post(
     '/api/booking-documents/upload',
     express.json({ limit: '14mb' }),
-    createBookingDocumentUploadHandler(supabase)
+    createBookingDocumentUploadHandler(supabase, Boolean(supabaseServiceRoleKey))
   );
 
   app.post(
@@ -764,7 +764,7 @@ async function startServer() {
         clientId = authData.user?.id || null;
       }
 
-      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
       const { data: feeSetting } = await supabase
         .from('settings')
         .select('value')

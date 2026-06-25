@@ -18,6 +18,7 @@ import {
   Smile,
   Loader2
 } from 'lucide-react';
+import { getMessageThreadKey, normalizeSubject } from '../../utils/messagingThread';
 
 // --- Types ---
 
@@ -33,6 +34,8 @@ interface Message {
   status: 'new' | 'open' | 'resolved';
   urgency: 'low' | 'medium' | 'high';
   unread: boolean;
+  receiver_id?: string | null;
+  created_at?: string;
 }
 
 // --- Components ---
@@ -84,7 +87,9 @@ export function AdminInbox() {
         date: new Date(m.created_at).toLocaleDateString(),
         status: m.status as any,
         urgency: m.urgency as any,
-        unread: m.status === 'new'
+        unread: m.status === 'new',
+        receiver_id: m.receiver_id,
+        created_at: m.created_at,
       }));
       setMessages(formattedMessages);
       if (formattedMessages.length > 0 && !selectedId) {
@@ -115,6 +120,16 @@ export function AdminInbox() {
     fetchMessages();
   }, []);
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('admin-messages')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchMessages())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const handleSendMessage = async () => {
     if (!replyText.trim() || !selectedId) return;
     const selectedMessage = messages.find(m => m.id === selectedId);
@@ -124,14 +139,21 @@ export function AdminInbox() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
+      const recipientId = selectedMessage.sender_id === user.id
+        ? selectedMessage.receiver_id
+        : selectedMessage.sender_id;
+
+      if (!recipientId) throw new Error('Recipient not found for this thread');
+
       await adminService.sendMessage({
         sender_id: user.id,
-        receiver_id: selectedMessage.sender_id,
-        subject: `Re: ${selectedMessage.subject}`,
+        receiver_id: recipientId,
+        subject: normalizeSubject(selectedMessage.subject),
         content: replyText,
-        status: 'unread'
+        status: 'new'
       });
       setReplyText('');
+      await fetchMessages();
       alert('Reply sent!');
     } catch (error) {
       alert('Failed to send reply');
@@ -145,6 +167,18 @@ export function AdminInbox() {
   });
 
   const selectedMessage = messages.find(m => m.id === selectedId);
+  const threadMap = filteredMessagesByThread(filteredMessages);
+  const threadMessages = selectedMessage ? (threadMap[getMessageThreadKey(selectedMessage)] || [selectedMessage]) : [];
+
+  function filteredMessagesByThread(items: Message[]) {
+    return items.reduce((acc: Record<string, Message[]>, message) => {
+      const key = getMessageThreadKey(message as any);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(message);
+      acc[key].sort((a, b) => new Date(a.created_at || '').getTime() - new Date(b.created_at || '').getTime());
+      return acc;
+    }, {});
+  }
 
   if (loading && messages.length === 0) {
     return (
@@ -198,11 +232,11 @@ export function AdminInbox() {
               <p className="text-xs text-muted-foreground line-clamp-1">{msg.preview}</p>
               <div className="flex gap-2 mt-2">
                 <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border ${
-                  msg.priority === 'high' ? 'bg-error/10 text-error border-error/20' : 
-                  msg.priority === 'medium' ? 'bg-warning/10 text-warning border-warning/20' : 
+                  msg.urgency === 'high' ? 'bg-error/10 text-error border-error/20' : 
+                  msg.urgency === 'medium' ? 'bg-warning/10 text-warning border-warning/20' : 
                   'bg-success/10 text-success border-success/20'
                 }`}>
-                  {msg.priority}
+                  {msg.urgency}
                 </span>
                 <span className="px-1.5 py-0.5 rounded bg-muted text-muted-foreground text-[8px] font-bold uppercase tracking-wider border border-border">
                   {msg.status}
@@ -245,20 +279,22 @@ export function AdminInbox() {
                 </div>
               </div>
 
-              {/* Incoming Message */}
-              <div className="flex gap-4 max-w-2xl">
-                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center">
-                  <User size={16} />
-                </div>
-                <div className="space-y-2">
-                  <div className="bg-card p-4 rounded-2xl rounded-tl-none border border-border shadow-sm">
-                    <p className="text-sm text-foreground leading-relaxed">
-                      {selectedMessage.content}
-                    </p>
+              {threadMessages.map((msg) => (
+                <div key={msg.id} className="flex gap-4 max-w-2xl">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex-shrink-0 flex items-center justify-center">
+                    <User size={16} />
                   </div>
-                  <span className="text-[10px] text-muted-foreground font-medium ml-1">{selectedMessage.time}</span>
+                  <div className="space-y-2">
+                    <div className="bg-card p-4 rounded-2xl rounded-tl-none border border-border shadow-sm">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                        {msg.sender}
+                      </p>
+                      <p className="text-sm text-foreground leading-relaxed">{msg.content}</p>
+                    </div>
+                    <span className="text-[10px] text-muted-foreground font-medium ml-1">{msg.time}</span>
+                  </div>
                 </div>
-              </div>
+              ))}
             </div>
 
             {/* Input Area */}

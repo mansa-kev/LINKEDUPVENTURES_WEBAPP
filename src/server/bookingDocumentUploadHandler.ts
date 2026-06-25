@@ -12,7 +12,7 @@ const ALLOWED_DOC_TYPES = new Set([
 ]);
 
 function sanitizeId(value: string): string {
-  return value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
+  return value.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 96);
 }
 
 function extensionForMime(mime: string): string {
@@ -22,9 +22,28 @@ function extensionForMime(mime: string): string {
   return 'jpg';
 }
 
-export function createBookingDocumentUploadHandler(supabase: SupabaseClient) {
+function hasServiceRoleKey(): boolean {
+  return Boolean(
+    process.env.SB_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.VITE_SUPABASE_SERVICE_ROLE_KEY
+  );
+}
+
+export function createBookingDocumentUploadHandler(
+  supabase: SupabaseClient,
+  requireServiceRole = true
+) {
   return async (req: Request, res: Response) => {
     try {
+      if (requireServiceRole && !hasServiceRoleKey()) {
+        return res.status(500).json({
+          success: false,
+          error:
+            'Server misconfiguration: SUPABASE_SERVICE_ROLE_KEY is required for booking document uploads. Run scripts/fix_booking_document_upload_storage.sql if the bucket policy is missing.',
+        });
+      }
+
       const { carId, docType, contentType, dataBase64, uploadId } = req.body || {};
 
       if (!carId || !docType || !dataBase64) {
@@ -58,10 +77,13 @@ export function createBookingDocumentUploadHandler(supabase: SupabaseClient) {
 
       const { error: uploadError } = await supabase.storage
         .from('public_assets')
-        .upload(filePath, buffer, { contentType: mime, upsert: false });
+        .upload(filePath, buffer, { contentType: mime, upsert: true });
 
       if (uploadError) {
-        return res.status(500).json({ success: false, error: uploadError.message });
+        return res.status(500).json({
+          success: false,
+          error: `${uploadError.message}. Ensure the public_assets bucket exists and run scripts/fix_booking_document_upload_storage.sql on production.`,
+        });
       }
 
       const proxyUrl = `/api/assets/public_assets/${filePath}`;

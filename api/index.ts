@@ -121,7 +121,7 @@ const app = express();
   app.post(
     '/api/booking-documents/upload',
     express.json({ limit: '14mb' }),
-    createBookingDocumentUploadHandler(supabase)
+    createBookingDocumentUploadHandler(supabase, Boolean(supabaseServiceRoleKey))
   );
 
   app.post(
@@ -761,7 +761,7 @@ const app = express();
         clientId = authData.user?.id || null;
       }
 
-      const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
       let reservationFee = req.body.reservationFee != null ? Number(req.body.reservationFee) : null;
       if (reservationFee == null || Number.isNaN(reservationFee)) {
         const { data: feeSetting } = await supabase

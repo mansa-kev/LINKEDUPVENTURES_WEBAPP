@@ -27,6 +27,7 @@ import { Car } from '../../../types';
 import { supabase } from '../../../lib/supabase';
 import { sendTemplatedEmail } from '../../../services/emailProvider';
 import { InternationalPhoneInput } from '../../ui/InternationalPhoneInput';
+import { calculateRentalDays } from '../../../utils/rentalDays';
 
 interface ReservationFlowProps {
   car: Car;
@@ -97,12 +98,7 @@ export function ReservationFlow({ car, onClose, vehicleModelId }: ReservationFlo
     }
   }, [formData.contactPhone, phone]);
 
-  const calculateDays = () => {
-    if (!formData.startDate || !formData.endDate) return 0;
-    const start = new Date(formData.startDate);
-    const end = new Date(formData.endDate);
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-  };
+  const calculateDays = () => calculateRentalDays(formData.startDate, formData.endDate);
 
   const calculateTotal = () => {
     const days = calculateDays();

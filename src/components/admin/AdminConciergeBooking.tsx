@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
+import { calculateRentalDays } from '../../utils/rentalDays';
 
 type Step = 'vehicle' | 'client' | 'documents' | 'signature' | 'payment' | 'success';
 
@@ -68,6 +69,9 @@ export function AdminConciergeBooking() {
     phone: '',
     email: '',
     idNumber: '',
+    licenseNumber: '',
+    poBox: '',
+    address: '',
     documentsVerifiedPhysically: true,
     signatureUrl: '',
     facePhotoUrl: '',
@@ -148,11 +152,7 @@ export function AdminConciergeBooking() {
   };
 
   const getBookingDays = () => {
-    if (!bookingData.startDate || !bookingData.endDate) return 0;
-    const start = new Date(bookingData.startDate);
-    const end = new Date(bookingData.endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) return 0;
-    return Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24));
+    return calculateRentalDays(bookingData.startDate, bookingData.endDate);
   };
 
   const handleCheckAvailability = async () => {
@@ -174,7 +174,7 @@ export function AdminConciergeBooking() {
       // Lightweight check: if model exists, proceed. Allocation + final availability enforcement happens in /api/bookings.
       const selectedModel = vehicleModels.find((m) => m.id === bookingData.vehicleModelId);
       if (selectedModel) {
-        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24));
+        const days = calculateRentalDays(bookingData.startDate, bookingData.endDate);
         updateData({ totalAmount: days * Number(selectedModel.base_daily_rate || 0) });
         toast.success('Model selected. Proceeding to client details.');
         setCurrentStep('client');
@@ -187,7 +187,7 @@ export function AdminConciergeBooking() {
   };
 
   const handleClientSubmit = () => {
-    if (!bookingData.fullName || !bookingData.phone || !bookingData.idNumber) {
+    if (!bookingData.fullName || !bookingData.phone || !bookingData.idNumber || !bookingData.licenseNumber || !bookingData.address) {
       toast.error('Please fill in all required client fields');
       return;
     }
@@ -237,6 +237,9 @@ export function AdminConciergeBooking() {
         phone: bookingData.phone,
         email: bookingData.email,
         idNumber: bookingData.idNumber,
+        licenseNumber: bookingData.licenseNumber,
+        poBox: bookingData.poBox,
+        address: bookingData.address,
         signatureUrl: bookingData.signatureUrl,
         documentsVerifiedPhysically: bookingData.documentsVerifiedPhysically,
         paymentMethod: bookingData.paymentMethod,
@@ -268,6 +271,9 @@ export function AdminConciergeBooking() {
                 email: bookingData.email,
                 phone: bookingData.phone,
                 idNumber: bookingData.idNumber,
+                licenseNumber: bookingData.licenseNumber,
+                poBox: bookingData.poBox,
+                address: bookingData.address,
                 startDate: bookingData.startDate,
                 endDate: bookingData.endDate,
                 totalAmount: bookingData.totalAmount,
@@ -496,8 +502,20 @@ export function AdminConciergeBooking() {
                   <input type="text" placeholder="12345678" value={bookingData.idNumber} onChange={e => updateData({ idNumber: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:border-primary transition-colors" />
                 </div>
                 <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">Driver's License Number *</label>
+                  <input type="text" placeholder="DL1234567" value={bookingData.licenseNumber} onChange={e => updateData({ licenseNumber: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:border-primary transition-colors" />
+                </div>
+                <div>
                   <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">Email Address (Optional)</label>
                   <input type="email" placeholder="john@example.com" value={bookingData.email} onChange={e => updateData({ email: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:border-primary transition-colors" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">P.O. Box (Optional)</label>
+                  <input type="text" placeholder="00100 Nairobi" value={bookingData.poBox} onChange={e => updateData({ poBox: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:border-primary transition-colors" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1 block">Physical Address *</label>
+                  <input type="text" placeholder="Westlands, Nairobi" value={bookingData.address} onChange={e => updateData({ address: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-sm focus:border-primary transition-colors" />
                 </div>
               </div>
             </div>

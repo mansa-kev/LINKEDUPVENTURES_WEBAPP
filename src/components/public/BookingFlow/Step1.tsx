@@ -5,6 +5,7 @@ import { Calendar, MapPin, ArrowRight, Clock, ShieldCheck, Users, Star, Loader2 
 import { motion } from 'motion/react';
 import { supabase } from '../../../lib/supabase';
 import { promotionService, Promotion } from '../../../services/promotionService';
+import { calculateRentalDays } from '../../../utils/rentalDays';
 
 interface Step1Props {
   car: Car;
@@ -42,10 +43,7 @@ export function Step1({ car, onNext, initialData }: Step1Props) {
 
   useEffect(() => {
     if (startDate && endDate) {
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const diffTime = Math.abs(end.getTime() - start.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1;
+      const diffDays = calculateRentalDays(startDate, endDate);
       setDays(diffDays);
       const originalTotal = diffDays * car.daily_rate;
       setTotal(originalTotal);

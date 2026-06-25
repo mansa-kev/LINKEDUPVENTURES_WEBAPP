@@ -390,10 +390,10 @@ export function AdminReservations() {
             />
           </div>
           <button
-            onClick={() => navigate('/admin/concierge-booking')}
+            onClick={() => navigate('/admin/reservation-concierge')}
             className="w-full sm:w-auto px-4 py-2.5 bg-primary text-primary-foreground rounded-xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-primary/90 transition-colors shadow-sm whitespace-nowrap"
           >
-            <PenTool size={16} /> New Assisted Booking
+            <PenTool size={16} /> Reservation Concierge
           </button>
         </div>
       </div>

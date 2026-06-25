@@ -108,10 +108,26 @@ export function createInspectionUploadHandler(supabase: SupabaseClient, requireS
 
       const { error: uploadError } = await supabase.storage
         .from('booking_inspections')
-        .upload(filePath, buffer, { contentType: mime, upsert: false });
+        .upload(filePath, buffer, { contentType: mime, upsert: true });
 
       if (uploadError) {
-        return res.status(500).json({ success: false, error: uploadError.message });
+        const fallbackPath = `booking-inspections/${filePath}`;
+        const { error: fallbackError } = await supabase.storage
+          .from('public_assets')
+          .upload(fallbackPath, buffer, { contentType: mime, upsert: true });
+
+        if (fallbackError) {
+          return res.status(500).json({
+            success: false,
+            error: `${uploadError.message}. Fallback upload failed: ${fallbackError.message}. Run scripts/fix_booking_inspections_storage.sql on production.`,
+          });
+        }
+
+        return res.json({
+          success: true,
+          publicUrl: `/api/assets/public_assets/${fallbackPath}`,
+          filePath: fallbackPath,
+        });
       }
 
       const { data: urlData } = supabase.storage

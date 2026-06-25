@@ -19,12 +19,10 @@ interface BookingFlowProps {
   uploadContextId?: string;
 }
 
-const calculateDays = (startDate?: string, endDate?: string) => {
-  if (!startDate || !endDate) return 0;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  return Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-};
+import { calculateRentalDays } from '../../../utils/rentalDays';
+
+const calculateDays = (startDate?: string, endDate?: string) =>
+  calculateRentalDays(startDate, endDate);
 
 export function BookingFlow({ car: carProp, vehicleModel, reservationToken, vehicleModelId, uploadContextId }: BookingFlowProps) {
   const car = useMemo(

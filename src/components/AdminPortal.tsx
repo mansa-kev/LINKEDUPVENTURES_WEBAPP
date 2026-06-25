@@ -68,6 +68,7 @@ const importAdminLogout = () => import('./admin/AdminLogout');
 const importAdminOutsourcedCars = () => import('./admin/AdminOutsourcedCars');
 const importAdminPromotions = () => import('./admin/AdminPromotions');
 const importAdminReservations = () => import('./admin/AdminReservations');
+const importAdminReservationConcierge = () => import('./admin/AdminReservationConcierge');
 const importAdminBlog = () => import('./admin/AdminBlog');
 const importAdminConciergeBooking = () => import('./admin/AdminConciergeBooking');
 
@@ -98,6 +99,7 @@ const AdminLogout = React.lazy(() => importAdminLogout().then(m => ({ default: m
 const AdminOutsourcedCars = React.lazy(() => importAdminOutsourcedCars().then(m => ({ default: m.AdminOutsourcedCars })));
 const AdminPromotions = React.lazy(() => importAdminPromotions().then(m => ({ default: m.AdminPromotions })));
 const AdminReservations = React.lazy(() => importAdminReservations().then(m => ({ default: m.AdminReservations })));
+const AdminReservationConcierge = React.lazy(() => importAdminReservationConcierge().then(m => ({ default: m.AdminReservationConcierge })));
 const AdminBlog = React.lazy(() => importAdminBlog().then(m => ({ default: m.AdminBlog })));
 const AdminConciergeBooking = React.lazy(() => importAdminConciergeBooking().then(m => ({ default: m.AdminConciergeBooking })));
 
@@ -107,6 +109,7 @@ const ADMIN_MODULE_PRELOADERS: Record<string, () => Promise<unknown>> = {
   'bookings-detail': importAdminBookingCommandCenter,
   'concierge-booking': importAdminConciergeBooking,
   reservations: importAdminReservations,
+  'reservation-concierge': importAdminReservationConcierge,
   cars: importAdminCars,
   'vehicle-models': importAdminVehicleModels,
   outsourced: importAdminOutsourcedCars,
@@ -395,6 +398,7 @@ export function AdminPortal() {
                 <Route path="bookings/:id" element={<AdminBookingCommandCenter />} />
                 <Route path="concierge-booking" element={<AdminConciergeBooking />} />
                 <Route path="reservations" element={<AdminReservations />} />
+                <Route path="reservation-concierge" element={<AdminReservationConcierge />} />
                 <Route path="vehicle-models" element={<AdminVehicleModels />} />
                 <Route path="cars" element={<AdminCars />} />
                 <Route path="outsourced" element={<AdminOutsourcedCars />} />

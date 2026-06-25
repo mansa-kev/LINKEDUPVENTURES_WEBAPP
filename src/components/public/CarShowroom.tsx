@@ -12,6 +12,7 @@ import {
 import { useInView } from 'react-intersection-observer';
 import { fleetService } from '../../services/fleetService';
 import { VehicleModelGroup } from '../../utils/vehicleModelGrouping';
+import { resolveModelCardImageUrl, rememberFailedModelImage } from '../../utils/catalogImageCache';
 import { SearchControls } from './SearchControls';
 import { FilterPanel } from './FilterPanel';
 import { PromoBadge } from './PromoBadge';
@@ -193,36 +194,18 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                           {/* Card Image Container */}
                           <div className="relative h-44 md:h-48 overflow-hidden">
                             <img
-                              src={(() => {
-                                const isValid = (url?: string | null) =>
-                                  !!url && !url.startsWith('blob:') && (url.startsWith('http') || url.startsWith('/'));
-
-                                // Read cache — discard any stale blob: URLs
-                                const cached = localStorage.getItem(`model_image_${model.id}`);
-                                if (cached && isValid(cached)) return cached;
-                                if (cached && !isValid(cached)) localStorage.removeItem(`model_image_${model.id}`);
-
-                                // Use first valid URL from model data
-                                const candidates = [
-                                  model.primary_image_url,
-                                  ...(Array.isArray(model.gallery_urls) ? model.gallery_urls : []),
-                                ].filter(isValid) as string[];
-
-                                const url = candidates[0] ?? `https://picsum.photos/seed/${model.id}/800/500`;
-
-                                // Only cache real http URLs, never blob:
-                                if (isValid(url)) localStorage.setItem(`model_image_${model.id}`, url);
-
-                                return url;
-                              })()}
+                              src={resolveModelCardImageUrl(
+                                model.id,
+                                model.primary_image_url,
+                                Array.isArray(model.gallery_urls) ? model.gallery_urls : []
+                              )}
                               alt={`${model.make} ${model.model}`}
                               className="w-full h-44 md:h-48 object-cover group-hover:scale-110 transition-transform duration-700"
                               loading={i < 8 ? "eager" : "lazy"}
                               referrerPolicy="no-referrer"
                               onError={(e) => {
-                                const fallbackUrl = `https://picsum.photos/seed/showroom-${model.id}/800/500`;
-                                e.currentTarget.src = fallbackUrl;
-                                localStorage.setItem(`model_image_${model.id}`, fallbackUrl);
+                                rememberFailedModelImage(model.id);
+                                e.currentTarget.src = '/placeholder-car.svg';
                               }}
                             />
                             <CarStatusBadges status={'available'} />
