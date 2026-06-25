@@ -458,7 +458,7 @@ export function Step2({ car, onNext, onPrev, initialData, uploadContextId }: Ste
             type="submit"
             className="flex-1 py-3.5 sm:py-4 bg-primary rounded-[14px] sm:rounded-[20px] text-black font-black uppercase tracking-[0.15em] text-[11px] sm:text-sm flex items-center justify-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-primary/20 group"
           >
-            Review Booking
+            Continue to Sign contract
             <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </button>
         </div>

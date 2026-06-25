@@ -127,7 +127,7 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
     const cleanPhone = phone.replace(/[\s\-+]/g, '');
 
     if (cleanPhone.length < 9) {
-      toast.error('Enter a valid phone number for STK Push');
+      toast.error('Enter a valid phone number for payment prompt');
       return;
     }
 
@@ -153,17 +153,17 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
       // realtime subscription + status poll will confirm once the webhook lands.
       setPhase('waiting');
       if (result?.__timedOut) {
-        setLastMessage('STK Push is taking longer than usual. If you received the prompt on your phone, enter your PIN — we are still listening for confirmation.');
-        toast.message('Still sending STK… check your phone.');
+        setLastMessage('Payment prompt is taking longer than usual. If you received the prompt on your phone, enter your PIN — we are still listening for confirmation.');
+        toast.message('Still sending payment prompt... check your phone.');
       } else if (!result?.success && !result?.paymentRequestId) {
         // Hard failure from the server
         setPhase('failed');
-        setLastMessage(result?.error || result?.statusDescription || 'STK Push could not be sent. Please try again.');
-        toast.error(result?.error || 'STK Push failed. Please try again.');
+        setLastMessage(result?.error || result?.statusDescription || 'Payment prompt could not be sent. Please try again.');
+        toast.error(result?.error || 'Payment prompt failed. Please try again.');
         return;
       } else {
-        setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
-        toast.success('STK Push sent. Check your phone.');
+        setLastMessage(result.statusDescription || 'Payment prompt sent. Check your phone and enter your PIN.');
+        toast.success('Payment prompt sent. Check your phone.');
       }
 
       const pollResult = await paymentService.pollUntilPaid(
@@ -181,14 +181,14 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
         setLastMessage('Payment was not completed. You can retry without creating a new booking.');
       } else {
         setPhase('timeout');
-        setLastMessage('Payment is still pending or timed out. You can retry STK Push for the same booking.');
+        setLastMessage('Payment is still pending or timed out. You can retry the payment prompt for the same booking.');
       }
     } catch (error: any) {
       console.error('Payment error:', error);
       // If the booking was already created, don't drop into "failed" — keep listening
       if (id) {
         setPhase('waiting');
-        setLastMessage('Network hiccup while sending STK. If the prompt appeared on your phone, enter your PIN — we will confirm automatically.');
+        setLastMessage('Network hiccup while sending the payment prompt. If the prompt appeared on your phone, enter your PIN — we will confirm automatically.');
       } else {
         setPhase('failed');
         setLastMessage(error.message || 'Payment could not be started. Please try again.');
@@ -252,7 +252,7 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
     <div className="space-y-4 sm:space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="space-y-1">
         <h3 className="text-xl sm:text-2xl md:text-3xl font-serif font-black italic text-foreground">Complete Payment</h3>
-        <p className="text-muted-foreground text-xs sm:text-sm">Pay securely using NCBA STK Push. No manual transaction code is required.</p>
+        <p className="text-muted-foreground text-xs sm:text-sm">Pay securely via M-Pesa prompt. No manual transaction code is required.</p>
       </div>
 
       {bookingData.contractSigned && (
@@ -269,7 +269,7 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
           </div>
           <div className="flex-1 flex justify-between items-center">
             <div>
-              <p className="text-xs sm:text-sm font-black uppercase tracking-widest text-primary">NCBA STK Push</p>
+              <p className="text-xs sm:text-sm font-black uppercase tracking-widest text-primary">M-Pesa Prompt</p>
               <p className="text-[10px] sm:text-xs text-muted-foreground">You will receive a payment prompt on your phone.</p>
             </div>
             <button
@@ -325,7 +325,7 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
             
             <div className="pt-2 border-t border-primary/10">
               <p className="text-[9px] sm:text-[10px] text-muted-foreground leading-relaxed">
-                <strong className="text-foreground/70">How it works:</strong> Tap the button below, approve the NCBA STK Push prompt on your phone, then return here. No manual transaction code is required.
+                <strong className="text-foreground/70">How it works:</strong> Tap the button below, approve the payment prompt on your phone, then return here. No manual transaction code is required.
               </p>
             </div>
           </>
@@ -371,7 +371,7 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-foreground">
                   {phase === 'creating_booking' && 'Creating Booking'}
-                  {phase === 'sending_stk' && 'Sending STK Push'}
+                  {phase === 'sending_stk' && 'Sending payment prompt'}
                   {phase === 'waiting' && 'Waiting for payment'}
                   {phase === 'paid' && 'Payment confirmed'}
                   {phase === 'manual_pending' && 'Waiting for Verification'}
@@ -409,14 +409,14 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
 
       <div className="p-2.5 sm:p-3 bg-primary/5 rounded-[12px] sm:rounded-[16px] flex gap-2 items-center border border-primary/10">
         <ShieldCheck className="text-primary shrink-0" size={12} />
-        <p className="text-[8px] sm:text-[9px] text-primary/80 font-bold uppercase tracking-widest">Secure NCBA payment with booking retry support</p>
+        <p className="text-[8px] sm:text-[9px] text-primary/80 font-bold uppercase tracking-widest">Secure payment with booking retry support</p>
       </div>
 
       {(phase === 'failed' || phase === 'timeout') && bookingId && (
         <div className="p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-[14px] flex gap-2 items-start">
           <Clock className="text-yellow-500 shrink-0 mt-0.5" size={14} />
           <p className="text-[10px] text-yellow-500/90 font-bold uppercase tracking-widest">
-            Your booking is still held as pending payment verification. Retry STK Push to complete payment.
+            Your booking is still held as pending payment verification. Retry the payment prompt to complete payment.
           </p>
         </div>
       )}
@@ -438,13 +438,13 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
           {phase === 'creating_booking' ? (
             <><Loader2 className="animate-spin" size={16} /> Creating Booking...</>
           ) : phase === 'sending_stk' ? (
-            <><Loader2 className="animate-spin" size={16} /> Sending STK...</>
+            <><Loader2 className="animate-spin" size={16} /> Sending payment prompt...</>
           ) : phase === 'waiting' ? (
             <><Loader2 className="animate-spin" size={16} /> Waiting for PIN...</>
           ) : phase === 'failed' || phase === 'timeout' ? (
-            <>Retry STK Push <RefreshCw size={16} /></>
+            <>Retry payment prompt <RefreshCw size={16} /></>
           ) : (
-            <>Send NCBA STK Push <CheckCircle2 size={16} /></>
+            <>Pay via M-Pesa <CheckCircle2 size={16} /></>
           )}
         </button>
       </div>

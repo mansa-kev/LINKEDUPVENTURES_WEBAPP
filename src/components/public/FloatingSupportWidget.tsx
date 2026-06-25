@@ -4,6 +4,7 @@ import { MessageCircle, X, Send, Loader2, Phone } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
 import { toast } from 'sonner';
+import { submitSupportRequest } from '../../services/supportRequestService';
 
 interface FloatingSupportWidgetProps {
   context?: string;
@@ -57,37 +58,21 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
 
     setLoading(true);
     try {
-      const subject =
-        mode === 'callback'
-          ? `Callback Request: ${context}`
-          : `Support Request: ${context}`;
+      await submitSupportRequest({
+        mode,
+        name: formData.name,
+        phone: formData.phone,
+        message: formData.message,
+        context,
+        source: 'floating_widget',
+      });
 
-      const { error } = await supabase
-        .from('contact_messages')
-        .insert([{
-          name: formData.name,
-          phone: formData.phone,
-          email: 'support-widget@linkedup.com',
-          subject,
-          message: formData.message,
-        }]);
-
-      if (error) throw error;
-
-      if (mode === 'callback') {
-        setIsOpen(false);
-        toast.success('Callback request received. Our team will call you shortly.');
-        setFormData((prev) => ({ ...prev, message: '' }));
-        return;
-      }
-
-      const waNumber = '254714764162';
-      const waText = `Hello LinkedUp Cars!%0A%0AMy name is ${formData.name}.%0AI need help regarding: *${context}*.%0A%0A${formData.message}`;
-      const waUrl = `https://wa.me/${waNumber}?text=${waText}`;
-      
-      window.open(waUrl, '_blank');
       setIsOpen(false);
-      toast.success('Redirecting to WhatsApp...');
+      toast.success(
+        mode === 'callback'
+          ? 'Callback request sent. Redirecting to WhatsApp...'
+          : 'Redirecting to WhatsApp...'
+      );
       
       // Reset form message
       setFormData(prev => ({ ...prev, message: '' }));

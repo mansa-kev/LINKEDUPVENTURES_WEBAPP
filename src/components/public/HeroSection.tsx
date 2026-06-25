@@ -1,9 +1,12 @@
 // @ts-nocheck
 import React, { useState, useEffect } from 'react';
-import { Search, MapPin, Calendar, Car, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Search, MapPin, Calendar, Car, ChevronRight, ChevronLeft, Phone, X, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { useNavigate } from 'react-router-dom';
+import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
+import { submitSupportRequest } from '../../services/supportRequestService';
+import { toast } from 'sonner';
 
 interface HeroContent {
   id: string;
@@ -33,6 +36,13 @@ export function HeroSection() {
   const [searchLocation, setSearchLocation] = useState('');
   const [pickupDate, setPickupDate] = useState('');
   const [returnDate, setReturnDate] = useState('');
+  const [callbackOpen, setCallbackOpen] = useState(false);
+  const [callbackSubmitting, setCallbackSubmitting] = useState(false);
+  const [callbackForm, setCallbackForm] = useState({
+    name: '',
+    phone: '',
+    message: '',
+  });
 
   useEffect(() => {
     fetchHeroContent();
@@ -102,6 +112,34 @@ export function HeroSection() {
 
   const handleCategoryClick = (category: string) => {
     navigate(`/cars?category=${category.toLowerCase()}`);
+  };
+
+  const handleCallbackSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!callbackForm.name || !callbackForm.phone || !callbackForm.message) {
+      toast.error('Please fill all callback fields');
+      return;
+    }
+
+    setCallbackSubmitting(true);
+    try {
+      await submitSupportRequest({
+        mode: 'callback',
+        name: callbackForm.name,
+        phone: callbackForm.phone,
+        message: callbackForm.message,
+        context: 'Homepage Hero CTA',
+        source: 'hero_callback_button',
+      });
+      toast.success('Callback request sent. Redirecting to WhatsApp...');
+      setCallbackOpen(false);
+      setCallbackForm((prev) => ({ ...prev, message: '' }));
+    } catch (error) {
+      console.error('Failed to submit callback request:', error);
+      toast.error('Could not send callback request. Please try again.');
+    } finally {
+      setCallbackSubmitting(false);
+    }
   };
 
   return (
@@ -176,7 +214,7 @@ export function HeroSection() {
             <button
               onClick={() => setActiveTab('find')}
               className={`flex-1 py-3 md:py-4 rounded-[18px] md:rounded-[30px] text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'find' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-foreground/60 hover:text-foreground hover:bg-accent'
+                activeTab === 'find' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-white hover:text-white hover:bg-accent'
               }`}
             >
               Find Your Car
@@ -184,7 +222,7 @@ export function HeroSection() {
             <button
               onClick={() => setActiveTab('browse')}
               className={`flex-1 py-3 md:py-4 rounded-[18px] md:rounded-[30px] text-[10px] md:text-xs font-black uppercase tracking-widest transition-all ${
-                activeTab === 'browse' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-foreground/60 hover:text-foreground hover:bg-accent'
+                activeTab === 'browse' ? 'bg-primary text-primary-foreground shadow-lg' : 'text-white hover:text-white hover:bg-accent'
               }`}
             >
               Browse by Category
@@ -204,7 +242,7 @@ export function HeroSection() {
                 >
                   {/* Location */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white flex items-center gap-2">
                       <MapPin size={12} className="text-primary" />
                       Pickup Location
                     </label>
@@ -219,7 +257,7 @@ export function HeroSection() {
 
                   {/* Dates */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white flex items-center gap-2">
                       <Calendar size={12} className="text-primary" />
                       Pickup & Return
                     </label>
@@ -243,7 +281,7 @@ export function HeroSection() {
 
                   {/* Vehicle Preference */}
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-foreground/40 flex items-center gap-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-white flex items-center gap-2">
                       <Car size={12} className="text-primary" />
                       Vehicle Preference
                     </label>
@@ -294,6 +332,19 @@ export function HeroSection() {
             </div>
           </div>
         </motion.div>
+
+        <motion.button
+          type="button"
+          onClick={() => setCallbackOpen(true)}
+          animate={{ y: [0, -5, 0] }}
+          transition={{ duration: 1.9, repeat: Infinity }}
+          className="mt-4 px-8 py-3 rounded-full text-black font-black uppercase tracking-[0.16em] text-[11px] shadow-xl"
+          style={{
+            background: 'linear-gradient(90deg, #d4af37 0%, #ff8c00 100%)',
+          }}
+        >
+          Request a callback
+        </motion.button>
       </div>
 
       {/* Carousel Controls - repositioned for mobile */}
@@ -321,6 +372,64 @@ export function HeroSection() {
         <div className="w-px h-12 bg-gradient-to-b from-primary to-transparent" />
         <span className="text-[8px] font-black uppercase tracking-[0.3em] text-foreground/40">Scroll</span>
       </motion.div>
+
+      <AnimatePresence>
+        {callbackOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] bg-black/70 flex items-center justify-center px-4"
+          >
+            <motion.form
+              initial={{ opacity: 0, y: 14, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 14, scale: 0.98 }}
+              onSubmit={handleCallbackSubmit}
+              className="w-full max-w-md rounded-3xl border border-white/10 bg-card p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-black uppercase tracking-widest text-white">Request a callback</h3>
+                <button
+                  type="button"
+                  onClick={() => setCallbackOpen(false)}
+                  className="p-1 rounded-full hover:bg-white/10 text-white/70"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <input
+                type="text"
+                value={callbackForm.name}
+                onChange={(e) => setCallbackForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Your Name"
+                className="w-full bg-background border border-white/10 rounded-xl px-4 py-3 text-sm text-white"
+                required
+              />
+              <InternationalPhoneInput
+                value={callbackForm.phone}
+                onChange={(val) => setCallbackForm((prev) => ({ ...prev, phone: val }))}
+              />
+              <textarea
+                rows={3}
+                value={callbackForm.message}
+                onChange={(e) => setCallbackForm((prev) => ({ ...prev, message: e.target.value }))}
+                placeholder="Preferred callback time / notes"
+                className="w-full bg-background border border-white/10 rounded-xl px-4 py-3 text-sm text-white resize-none"
+                required
+              />
+              <button
+                type="submit"
+                disabled={callbackSubmitting}
+                className="w-full py-3 rounded-xl bg-primary text-black font-black uppercase tracking-wider text-xs flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {callbackSubmitting ? <Loader2 size={14} className="animate-spin" /> : <Phone size={14} />}
+                Send callback request
+              </button>
+            </motion.form>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </section>
   );
 }

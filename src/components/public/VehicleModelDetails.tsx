@@ -3,10 +3,10 @@ import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { Helmet } from 'react-helmet-async';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowRight, CheckCircle, Clock, Fuel, Settings, Star, Users, X } from 'lucide-react';
+import { ArrowRight, CheckCircle, Clock, Fuel, Settings, Star, Users, X, Share2, Copy, Check } from 'lucide-react';
 import { fleetService } from '../../services/fleetService';
 import { VehicleModel } from '../../types';
-import { VehicleModelGroup, getVehicleModelIdsForGroup } from '../../utils/vehicleModelGrouping';
+import { VehicleModelGroup } from '../../utils/vehicleModelGrouping';
 import { BookingFlow } from './BookingFlow/BookingFlow';
 import { ReservationFlow } from './BookingFlow/ReservationFlow';
 import { LogoLoader } from '../shared/LogoLoader';
@@ -24,8 +24,8 @@ export function VehicleModelDetails() {
   const [activeImage, setActiveImage] = useState(0);
   const [showBooking, setShowBooking] = useState(false);
   const [showReservation, setShowReservation] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [reviews, setReviews] = useState<any[]>([]);
-  const [fleetUnits, setFleetUnits] = useState<any[]>([]);
   const [relatedModels, setRelatedModels] = useState<VehicleModelGroup[]>([]);
 
   useEffect(() => {
@@ -63,31 +63,37 @@ export function VehicleModelDetails() {
   useEffect(() => {
     async function fetchFleetAndRelated() {
       if (!modelFamily) {
-        setFleetUnits([]);
         setRelatedModels([]);
         return;
       }
 
-      const variantIds = getVehicleModelIdsForGroup(modelFamily);
-      const [units, related] = await Promise.all([
-        fleetService.getPublicUnitsForModelIds(variantIds),
-        modelFamily.category
-          ? fleetService.getRelatedVehicleModelGroups(modelFamily.category, modelFamily.groupKey)
-          : Promise.resolve([]),
-      ]);
-      setFleetUnits(units || []);
+      const related = await (modelFamily.category
+        ? fleetService.getRelatedVehicleModelGroups(modelFamily.category, modelFamily.groupKey)
+        : Promise.resolve([]));
       setRelatedModels(related || []);
     }
     fetchFleetAndRelated();
   }, [modelFamily]);
 
   useEffect(() => {
-    if (searchParams.get('booking') === 'true' && selectedVariant) {
-      setShowBooking(true);
-    }
-    if (searchParams.get('reservation') === 'true' && selectedVariant && !reservationToken) {
+    if (!selectedVariant) return;
+    const reservationQuery = searchParams.get('reservation') === 'true';
+    const bookingQuery = searchParams.get('booking') === 'true';
+
+    if (reservationQuery && !reservationToken) {
       setShowReservation(true);
+      setShowBooking(false);
+      return;
     }
+
+    if (bookingQuery) {
+      setShowBooking(true);
+      setShowReservation(false);
+      return;
+    }
+
+    setShowBooking(false);
+    setShowReservation(false);
   }, [searchParams, selectedVariant, reservationToken]);
 
   const toggleBooking = () => {
@@ -145,6 +151,32 @@ export function VehicleModelDetails() {
   const desc = `Hire the ${model.display_name || `${model.make} ${model.model}`} in Nairobi from KES ${Number(model.base_daily_rate || 0).toLocaleString()}/day. ${model.seats || ''} seats, ${model.transmission || ''}.`;
   const image = model.primary_image_url || (images[0] as string);
   const carLike = vehicleModelToCarLike(model);
+  const shareUrl = `${window.location.origin}/models/${model.id}?booking=true`;
+  const shareText = `Book the ${modelFamily.displayName} from KES ${Number(model.base_daily_rate || 0).toLocaleString()}/day.`;
+  const waShareUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`;
+
+  const handleCopyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 1800);
+    } catch {
+      setCopiedLink(false);
+    }
+  };
+
+  const handleNativeShare = async () => {
+    if (!navigator.share) return;
+    try {
+      await navigator.share({
+        title: `${modelFamily.displayName} | LinkedUp Cars`,
+        text: shareText,
+        url: shareUrl,
+      });
+    } catch {
+      // user cancelled share
+    }
+  };
 
   return (
     <>
@@ -246,11 +278,6 @@ export function VehicleModelDetails() {
                       ))}
                     </div>
                   )}
-                  {modelFamily.unitCount > 0 && (
-                    <p className="text-xs text-muted-foreground mb-4">
-                      {modelFamily.unitCount} physical unit{modelFamily.unitCount === 1 ? '' : 's'} in fleet
-                    </p>
-                  )}
                   <p className="text-sm sm:text-base md:text-lg text-muted-foreground mb-4 sm:mb-8 leading-relaxed">
                     {model.description || ' '}
                   </p>
@@ -290,6 +317,35 @@ export function VehicleModelDetails() {
                   </div>
                 </div>
 
+                <div className="mb-5 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCopyLink}
+                    className="text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-full border border-white/15 text-white/80 hover:text-white hover:border-primary/40 transition-colors flex items-center gap-2"
+                  >
+                    {copiedLink ? <Check size={12} /> : <Copy size={12} />}
+                    {copiedLink ? 'Link copied' : 'Copy link'}
+                  </button>
+                  <a
+                    href={waShareUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-full border border-white/15 text-white/80 hover:text-white hover:border-primary/40 transition-colors flex items-center gap-2"
+                  >
+                    <Share2 size={12} />
+                    WhatsApp
+                  </a>
+                  {typeof navigator !== 'undefined' && navigator.share && (
+                    <button
+                      type="button"
+                      onClick={handleNativeShare}
+                      className="text-[10px] font-bold uppercase tracking-widest px-3 py-2 rounded-full border border-white/15 text-white/80 hover:text-white hover:border-primary/40 transition-colors"
+                    >
+                      Share
+                    </button>
+                  )}
+                </div>
+
                 <div className="flex gap-3 flex-wrap">
                   <motion.button
                     whileHover={{ scale: 1.02 }}
@@ -310,58 +366,56 @@ export function VehicleModelDetails() {
                     </motion.button>
                   )}
                 </div>
+
+                <AnimatePresence>
+                  {showBooking && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      className="mt-6 md:mt-8 relative"
+                    >
+                      <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-orange-500/10 to-primary/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
+                      <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-primary/20">
+                        <button
+                          onClick={toggleBooking}
+                          className="absolute top-3 right-3 md:top-6 md:right-6 p-2 hover:bg-white/10 rounded-full transition-all z-10"
+                        >
+                          <X size={24} className="text-white" />
+                        </button>
+                        <BookingFlow
+                          vehicleModel={model}
+                          uploadContextId={`model:${model.id}`}
+                          reservationToken={reservationToken}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <AnimatePresence>
+                  {showReservation && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 20 }}
+                      className="mt-6 md:mt-8 relative"
+                    >
+                      <div className="absolute -inset-1 bg-gradient-to-r from-warning/20 via-orange-500/10 to-warning/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
+                      <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-warning/20">
+                        <button
+                          onClick={toggleReservation}
+                          className="absolute top-3 right-3 md:top-6 md:right-6 p-2 hover:bg-white/10 rounded-full transition-all z-10"
+                        >
+                          <X size={24} className="text-white" />
+                        </button>
+                        <ReservationFlow car={carLike} vehicleModelId={model.id} onClose={() => setShowReservation(false)} />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </motion.div>
             </div>
-
-            {fleetUnits.length > 0 && (
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                className="mt-12 md:mt-20"
-              >
-                <h2 className="text-2xl md:text-3xl font-serif font-black italic text-white mb-2">
-                  Available Fleet Units
-                </h2>
-                <p className="text-sm text-muted-foreground mb-6">
-                  Physical vehicles in our fleet for this model. A specific unit is assigned prior to handover.
-                </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {fleetUnits.map((unit) => {
-                    const image =
-                      unit.primary_image_url ||
-                      (Array.isArray(unit.photos) ? unit.photos[0] : null) ||
-                      model.primary_image_url;
-                    return (
-                      <div
-                        key={unit.id}
-                        className="p-4 bg-card/50 backdrop-blur-xl rounded-2xl border border-white/10 flex gap-4"
-                      >
-                        {image && (
-                          <img
-                            src={image}
-                            alt=""
-                            className="w-20 h-16 rounded-xl object-cover border border-white/10 shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                        )}
-                        <div className="min-w-0">
-                          <p className="text-sm font-bold text-white">
-                            {unit.year || '—'} · {unit.color || 'N/A'}
-                          </p>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            {unit.transmission || '—'} · {unit.fuel_type || '—'}
-                          </p>
-                          {Number(unit.seats || 0) > 0 && (
-                            <p className="text-xs text-muted-foreground mt-0.5">{unit.seats} seats</p>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </motion.div>
-            )}
 
             {relatedModels.length > 0 && (
               <motion.div
@@ -484,53 +538,6 @@ export function VehicleModelDetails() {
               </motion.div>
             )}
 
-            <AnimatePresence>
-              {showBooking && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="mt-6 md:mt-12 relative"
-                >
-                  <div className="absolute -inset-1 bg-gradient-to-r from-primary/20 via-orange-500/10 to-primary/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
-                  <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-primary/20">
-                    <button
-                      onClick={toggleBooking}
-                      className="absolute top-3 right-3 md:top-6 md:right-6 p-2 hover:bg-white/10 rounded-full transition-all z-10"
-                    >
-                      <X size={24} className="text-white" />
-                    </button>
-                    <BookingFlow
-                      vehicleModel={model}
-                      uploadContextId={`model:${model.id}`}
-                      reservationToken={reservationToken}
-                    />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-              {showReservation && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  className="mt-6 md:mt-12 relative"
-                >
-                  <div className="absolute -inset-1 bg-gradient-to-r from-warning/20 via-orange-500/10 to-warning/20 rounded-[16px] sm:rounded-[32px] md:rounded-[48px] blur-2xl" />
-                  <div className="relative p-2 sm:p-5 md:p-10 bg-card/50 backdrop-blur-xl rounded-[16px] sm:rounded-[32px] md:rounded-[48px] border border-warning/20">
-                    <button
-                      onClick={toggleReservation}
-                      className="absolute top-3 right-3 md:top-6 md:right-6 p-2 hover:bg-white/10 rounded-full transition-all z-10"
-                    >
-                      <X size={24} className="text-white" />
-                    </button>
-                    <ReservationFlow car={carLike} vehicleModelId={model.id} onClose={() => setShowReservation(false)} />
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
         </div>
       </div>

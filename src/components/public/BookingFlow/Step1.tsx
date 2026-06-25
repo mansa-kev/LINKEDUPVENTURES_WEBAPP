@@ -347,7 +347,7 @@ export function Step1({ car, onNext, initialData }: Step1Props) {
         disabled={!startDate || !endDate || days <= 0 || !pickupLocation || (needsChauffeur && drivers.length > 0 && !selectedDriver)}
         className="w-full py-3.5 sm:py-5 md:py-6 bg-primary rounded-[14px] sm:rounded-[24px] text-black font-black uppercase tracking-[0.15em] text-[11px] sm:text-sm flex items-center justify-center gap-3 hover:scale-[1.02] active:scale-[0.98] transition-all shadow-xl shadow-primary/20 disabled:opacity-50 disabled:hover:scale-100 group"
       >
-        Continue to Details
+        Continue to fill your personal details
         <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
       </button>
     </form>

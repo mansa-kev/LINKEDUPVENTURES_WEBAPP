@@ -75,22 +75,49 @@ export function AdminInbox() {
   const fetchMessages = async () => {
     setLoading(true);
     try {
-      const data = await adminService.getMessages();
-      const formattedMessages: Message[] = (data || []).map((m: any) => ({
-        id: m.id,
-        sender: m.sender?.full_name || 'Anonymous',
-        sender_id: m.sender_id,
-        subject: m.subject || 'No Subject',
-        preview: m.content.substring(0, 50) + '...',
-        content: m.content,
-        time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        date: new Date(m.created_at).toLocaleDateString(),
-        status: m.status as any,
-        urgency: m.urgency as any,
-        unread: m.status === 'new',
-        receiver_id: m.receiver_id,
-        created_at: m.created_at,
-      }));
+      const [messagesData, contactData] = await Promise.all([
+        adminService.getMessages(),
+        supabase
+          .from('contact_messages')
+          .select('id, name, phone, subject, message, created_at')
+          .order('created_at', { ascending: false })
+          .limit(200)
+          .then((r) => r.data || []),
+      ]);
+
+      const formattedMessages: Message[] = [
+        ...(messagesData || []).map((m: any) => ({
+          id: m.id,
+          sender: m.sender?.full_name || 'Anonymous',
+          sender_id: m.sender_id,
+          subject: m.subject || 'No Subject',
+          preview: m.content.substring(0, 50) + '...',
+          content: m.content,
+          time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          date: new Date(m.created_at).toLocaleDateString(),
+          status: m.status as any,
+          urgency: m.urgency as any,
+          unread: m.status === 'new',
+          receiver_id: m.receiver_id,
+          created_at: m.created_at,
+        })),
+        ...(contactData || []).map((m: any) => ({
+          id: `contact:${m.id}`,
+          sender: m.name || m.phone || 'Website Visitor',
+          sender_id: '',
+          subject: m.subject || 'Website Contact',
+          preview: String(m.message || '').substring(0, 50) + '...',
+          content: `${m.message || ''}${m.phone ? `\n\nPhone: ${m.phone}` : ''}`,
+          time: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          date: new Date(m.created_at).toLocaleDateString(),
+          status: 'new',
+          urgency: (String(m.subject || '').toLowerCase().includes('callback') ? 'high' : 'medium') as any,
+          unread: true,
+          receiver_id: null,
+          created_at: m.created_at,
+        })),
+      ].sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime());
+
       setMessages(formattedMessages);
       if (formattedMessages.length > 0 && !selectedId) {
         setSelectedId(formattedMessages[0].id);
@@ -124,6 +151,7 @@ export function AdminInbox() {
     const channel = supabase
       .channel('admin-messages')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => fetchMessages())
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'contact_messages' }, () => fetchMessages())
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
@@ -134,6 +162,10 @@ export function AdminInbox() {
     if (!replyText.trim() || !selectedId) return;
     const selectedMessage = messages.find(m => m.id === selectedId);
     if (!selectedMessage) return;
+    if (!selectedMessage.sender_id || selectedMessage.id.startsWith('contact:')) {
+      alert('Direct reply for website contact requests is handled through phone/WhatsApp.');
+      return;
+    }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -316,6 +348,7 @@ export function AdminInbox() {
                 </div>
                 <button 
                   onClick={handleSendMessage}
+                  disabled={!selectedMessage.sender_id || selectedMessage.id.startsWith('contact:')}
                   className="p-3 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 transition-transform"
                 >
                   <Send size={20} />

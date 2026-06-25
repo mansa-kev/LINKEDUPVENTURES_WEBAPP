@@ -264,7 +264,7 @@ export function Step3({ car, bookingData, onNext, onPrev, vehicleModelId }: Step
               </>
             ) : (
               <>
-                <span>Accept & Continue</span>
+                <span>Continue to pay</span>
                 <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
               </>
             )}

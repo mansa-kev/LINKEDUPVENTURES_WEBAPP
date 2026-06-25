@@ -224,11 +224,6 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                             <div className="font-black text-orange-500 text-base md:text-lg mb-2">
                               KES {Number(group.base_daily_rate || 0).toLocaleString()}
                               <span className="text-xs text-muted-foreground font-normal">/day</span>
-                              {group.unitCount > 1 && (
-                                <span className="block text-[10px] text-muted-foreground font-semibold mt-1">
-                                  {group.unitCount} units available
-                                </span>
-                              )}
                             </div>
 
                             {/* Specs Row */}
