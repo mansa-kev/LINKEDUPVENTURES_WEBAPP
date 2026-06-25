@@ -21,7 +21,19 @@ export const bookingService = {
       });
 
       const rawResponse = await response.text();
-      const result = rawResponse ? JSON.parse(rawResponse) : null;
+      let result: any = null;
+      try {
+        result = rawResponse ? JSON.parse(rawResponse) : null;
+      } catch {
+        const snippet = rawResponse?.slice(0, 180).trim() || 'Empty server response';
+        throw new Error(
+          response.ok
+            ? `Invalid server response while creating booking: ${snippet}`
+            : snippet.startsWith('{')
+              ? snippet
+              : `Booking request failed (${response.status}): ${snippet}`
+        );
+      }
 
       if (!response.ok || result?.error || !result?.booking) {
         throw new Error(result?.error || rawResponse || 'Failed to create booking');

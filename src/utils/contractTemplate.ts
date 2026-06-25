@@ -1,3 +1,5 @@
+import { toProxiedAssetUrl } from './assetUrl';
+
 export type ContractBookingData = Record<string, any>;
 export type ContractCar = Record<string, any>;
 
@@ -220,7 +222,8 @@ export async function fetchCompanySettings(): Promise<Record<string, string>> {
   const data = await response.json();
   const settings: Record<string, string> = {};
   (data.settings || []).forEach((item: any) => {
-    settings[item.key] = item.logo_url || item.value || '';
+    const raw = item.logo_url || item.value || '';
+    settings[item.key] = toProxiedAssetUrl(raw) || raw;
   });
   return settings;
 }
@@ -236,9 +239,13 @@ export function applyTemplateReplacements(
   const resolvedCar = contractVehicleToCarShape(car, vehicleModelId);
   const clientName = getClientNameFromBooking(bookingData);
   const clientSignature = signatureData || bookingData?.signatureData || bookingData?.signatureUrl || '';
-  const companySig = settings.company_signature_url || BLANK_SIGNATURE;
+  const companySig = toProxiedAssetUrl(settings.company_signature_url) || settings.company_signature_url || BLANK_SIGNATURE;
   const contractLogo =
-    settings.contract_logo || settings.site_logo || settings.logo_url || companySig;
+    toProxiedAssetUrl(settings.contract_logo || settings.site_logo || settings.logo_url) ||
+    settings.contract_logo ||
+    settings.site_logo ||
+    settings.logo_url ||
+    companySig;
   const clientSigImg = `<img data-client-signature="1" src="${clientSignature || BLANK_SIGNATURE}" alt="Client Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
   const companySigImg = `<img src="${companySig}" alt="Company Signature" style="max-height: 80px; display:block; margin:0 auto 10px auto;" />`;
   const agreementDate = formatAgreementDateParts(

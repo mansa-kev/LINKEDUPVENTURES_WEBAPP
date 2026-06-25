@@ -15,6 +15,7 @@ import {
   stashPendingFile,
   uploadBookingDocument,
 } from '../../../services/bookingDocumentUploadService';
+import { listPendingUploadsForCar } from '../../../utils/pendingUploadStore';
 import { resolveDocumentPreviewUrl } from '../../../utils/documentPreviewUrl';
 
 interface Step2Props {
@@ -75,7 +76,7 @@ function DocumentSlot({ type, uploadedUrl, previewUrl, isUploading, disablePicke
   };
 
   const isPdf = uploadedUrl && /\.pdf(\?|$)/i.test(uploadedUrl);
-  const displaySrc = previewUrl || resolveDocumentPreviewUrl(uploadedUrl, true);
+  const displaySrc = previewUrl || resolveDocumentPreviewUrl(uploadedUrl);
 
   return (
     <div className="space-y-2">

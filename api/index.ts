@@ -31,6 +31,7 @@ import { applyProfileSyncFromBooking } from "../src/utils/bookingProfileSync.js"
 import { CALENDAR_BLOCKING_STATUSES_DB } from "../src/constants/bookingStatuses.js";
 import { isModelAvailableForDates } from "../src/server/modelUnitAvailability.js";
 import { fetchPublicAppSettings } from "../src/server/publicAppSettings.js";
+import { storageDownloadToBuffer } from "../src/server/storageDownloadBuffer.js";
 
 // In local dev we read .env.local; on Vercel env vars are injected directly
 // and this call is a no-op (the file won't exist), which is fine.
@@ -226,7 +227,8 @@ const app = express();
   // ─── GENERIC ASSET PROXY (Hides Supabase URL + bucket/path) ───────────────────────────
   app.get('/api/assets/:bucket/*', async (req, res) => {
     const bucket = String(req.params.bucket || '');
-    const filePath = String((req.params as any)[0] || '');
+    const rawPath = String((req.params as any)[0] || '');
+    const filePath = rawPath.split('?')[0];
 
     if (!bucket || !filePath) {
       return res.status(400).json({ success: false, error: 'Bucket and filePath are required.' });
@@ -238,8 +240,10 @@ const app = express();
         return res.status(404).json({ success: false, error: error?.message || 'Asset not found' });
       }
 
-      const arrayBuffer = await (data as any).arrayBuffer?.();
-      const buffer = arrayBuffer ? Buffer.from(arrayBuffer) : Buffer.from(await (data as any).text?.() || '');
+      const buffer = await storageDownloadToBuffer(data);
+      if (!buffer.length) {
+        return res.status(404).json({ success: false, error: 'Asset file is empty.' });
+      }
 
       const contentType =
         (data as any).type ||
@@ -878,7 +882,7 @@ const app = express();
     }
   });
 
-  app.post('/api/bookings', async (req, res) => {
+  app.post('/api/bookings', express.json({ limit: '2mb' }), async (req, res) => {
     try {
       if (!supabaseServiceRoleKey) {
         return res.status(500).json({
@@ -962,6 +966,7 @@ const app = express();
       }
 
       let resolvedCarId: string | null = rawCarId || null;
+      let modelOnlyBooking = false;
 
       if (!resolvedCarId && vehicleModelId) {
         const { data: candidateCars, error: candidateCarsError } = await supabase
@@ -977,93 +982,117 @@ const app = express();
         }
 
         const candidateIds = (candidateCars || []).map((c: any) => c.id);
-        if (!candidateIds.length) {
-          return res.status(409).json({ success: false, error: 'No available units exist for this model.' });
-        }
 
-        const { data: blockingBookings, error: blockingBookingsError } = await supabase
-          .from('bookings')
-          .select('car_id, start_date, end_date')
-          .in('car_id', candidateIds)
-          .in('status', [...CALENDAR_BLOCKING_STATUSES_DB]);
+        if (candidateIds.length) {
+          const { data: blockingBookings, error: blockingBookingsError } = await supabase
+            .from('bookings')
+            .select('car_id, start_date, end_date')
+            .in('car_id', candidateIds)
+            .in('status', [...CALENDAR_BLOCKING_STATUSES_DB]);
 
-        if (blockingBookingsError) {
-          return res.status(500).json({ success: false, error: blockingBookingsError.message || 'Failed to check unit availability.' });
-        }
-
-        let reservationQuery = supabase
-          .from('car_reservations')
-          .select('id, car_id, vehicle_model_id, start_date, end_date, status')
-          .in('status', ['reserved', 'confirmed', 'pending_payment']);
-
-        if (sourceReservationId) {
-          reservationQuery = reservationQuery.neq('id', sourceReservationId);
-        }
-
-        const { data: blockingReservations, error: blockingReservationsError } = await reservationQuery;
-        if (blockingReservationsError) {
-          return res.status(500).json({ success: false, error: blockingReservationsError.message || 'Failed to check reservation availability.' });
-        }
-
-        const hasOverlap = (existingStart: string, existingEnd: string) => {
-          const requestedStart = new Date(startDate);
-          const requestedEnd = new Date(endDate);
-          const currentStart = new Date(existingStart);
-          const currentEnd = new Date(existingEnd);
-          return (
-            (requestedStart >= currentStart && requestedStart <= currentEnd) ||
-            (requestedEnd >= currentStart && requestedEnd <= currentEnd) ||
-            (requestedStart <= currentStart && requestedEnd >= currentEnd)
-          );
-        };
-
-        const blocked = new Set<string>();
-        for (const booking of blockingBookings || []) {
-          if (hasOverlap(booking.start_date, booking.end_date)) {
-            blocked.add(booking.car_id);
+          if (blockingBookingsError) {
+            return res.status(500).json({ success: false, error: blockingBookingsError.message || 'Failed to check unit availability.' });
           }
-        }
 
-        let modelOnlyHolds = 0;
-        for (const reservation of blockingReservations || []) {
-          if (!hasOverlap(reservation.start_date, reservation.end_date)) continue;
-          if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
-            blocked.add(reservation.car_id);
-          } else if (!reservation.car_id && reservation.vehicle_model_id === vehicleModelId) {
-            modelOnlyHolds += 1;
+          let reservationQuery = supabase
+            .from('car_reservations')
+            .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+            .in('status', ['reserved', 'confirmed', 'pending_payment']);
+
+          if (sourceReservationId) {
+            reservationQuery = reservationQuery.neq('id', sourceReservationId);
           }
+
+          const { data: blockingReservations, error: blockingReservationsError } = await reservationQuery;
+          if (blockingReservationsError) {
+            return res.status(500).json({ success: false, error: blockingReservationsError.message || 'Failed to check reservation availability.' });
+          }
+
+          const hasOverlap = (existingStart: string, existingEnd: string) => {
+            const requestedStart = new Date(startDate);
+            const requestedEnd = new Date(endDate);
+            const currentStart = new Date(existingStart);
+            const currentEnd = new Date(existingEnd);
+            return (
+              (requestedStart >= currentStart && requestedStart <= currentEnd) ||
+              (requestedEnd >= currentStart && requestedEnd <= currentEnd) ||
+              (requestedStart <= currentStart && requestedEnd >= currentEnd)
+            );
+          };
+
+          const blocked = new Set<string>();
+          for (const booking of blockingBookings || []) {
+            if (hasOverlap(booking.start_date, booking.end_date)) {
+              blocked.add(booking.car_id);
+            }
+          }
+
+          let modelOnlyHolds = 0;
+          for (const reservation of blockingReservations || []) {
+            if (!hasOverlap(reservation.start_date, reservation.end_date)) continue;
+            if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
+              blocked.add(reservation.car_id);
+            } else if (!reservation.car_id && reservation.vehicle_model_id === vehicleModelId) {
+              modelOnlyHolds += 1;
+            }
+          }
+
+          const freeUnits = candidateIds.filter((id: string) => !blocked.has(id));
+          const selected = freeUnits.length > modelOnlyHolds ? freeUnits[0] : null;
+
+          if (selected) {
+            resolvedCarId = selected;
+          } else {
+            modelOnlyBooking = true;
+          }
+        } else {
+          modelOnlyBooking = true;
         }
-
-        const freeUnits = candidateIds.filter((id: string) => !blocked.has(id));
-        const selected = freeUnits.length > modelOnlyHolds ? freeUnits[0] : null;
-
-        if (!selected) {
-          return res.status(409).json({ success: false, error: 'Selected dates are not available for this model.' });
-        }
-
-        resolvedCarId = selected;
       }
 
-      if (!resolvedCarId) {
+      if (!resolvedCarId && !modelOnlyBooking) {
         return res.status(400).json({ success: false, error: 'Missing required booking fields.' });
       }
 
-      const available = await checkBookingAvailability(resolvedCarId, startDate, endDate, sourceReservationId || undefined);
-      if (!available) {
-        return res.status(409).json({ success: false, error: 'Selected dates are not available. The car is either booked or reserved for these dates.' });
+      if (resolvedCarId) {
+        const available = await checkBookingAvailability(resolvedCarId, startDate, endDate, sourceReservationId || undefined);
+        if (!available) {
+          return res.status(409).json({ success: false, error: 'Selected dates are not available. The car is either booked or reserved for these dates.' });
+        }
       }
 
-      const { data: carRow, error: carRowError } = await supabase
-        .from('cars')
-        .select('id, fleet_owner_id, daily_rate, is_outsourced, outsource_commission_rate, outsource_owner_name, outsource_owner_email, outsource_owner_phone')
-        .eq('id', resolvedCarId)
-        .single();
+      let carRow: any = null;
+      let fleetOwnerId: string | null = sourceReservation?.fleet_owner_id || null;
+      let rateForValidation = 0;
 
-      if (carRowError || !carRow) {
-        return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
+      if (resolvedCarId) {
+        const { data: carData, error: carRowError } = await supabase
+          .from('cars')
+          .select('id, fleet_owner_id, daily_rate, is_outsourced, outsource_commission_rate, outsource_owner_name, outsource_owner_email, outsource_owner_phone')
+          .eq('id', resolvedCarId)
+          .single();
+
+        if (carRowError || !carData) {
+          return res.status(404).json({ success: false, error: 'Could not find the selected car. Please try again.' });
+        }
+
+        carRow = carData;
+        fleetOwnerId = fleetOwnerId || carRow.fleet_owner_id || null;
+        rateForValidation = Number(carRow.daily_rate || 0);
+      } else {
+        const { data: modelRow } = await supabase
+          .from('vehicle_models')
+          .select('base_daily_rate')
+          .eq('id', vehicleModelId)
+          .maybeSingle();
+        rateForValidation = Number(modelRow?.base_daily_rate || 0);
+        carRow = {
+          id: null,
+          fleet_owner_id: null,
+          daily_rate: rateForValidation,
+          is_outsourced: false,
+        };
       }
-
-      let fleetOwnerId = sourceReservation?.fleet_owner_id || carRow.fleet_owner_id || null;
 
       if (!fleetOwnerId) {
         const { data: adminUser } = await supabase
@@ -1080,7 +1109,6 @@ const app = express();
       }
 
       const total = Number(totalAmount);
-      let rateForValidation = Number(carRow.daily_rate || 0);
       if (vehicleModelId) {
         const { data: modelRow } = await supabase
           .from('vehicle_models')
@@ -1126,6 +1154,7 @@ const app = express();
         broker_commission_amount: brokerId ? Number(brokerCommissionAmount) || 0 : 0,
         metadata: {
           broker_info: buildBrokerMetadata(brokerId, brokerRate, brokerCommissionAmount),
+          model_only_booking: modelOnlyBooking,
           reservation_context: sourceReservationId ? {
             reservation_id: sourceReservationId,
             continuation_token: reservationContinuationToken || null,

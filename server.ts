@@ -23,6 +23,7 @@ import { applyProfileSyncFromBooking, linkBookingAndSyncProfile } from "./src/ut
 import { CALENDAR_BLOCKING_STATUSES_DB } from "./src/constants/bookingStatuses.js";
 import { isModelAvailableForDates } from "./src/server/modelUnitAvailability.js";
 import { fetchPublicAppSettings } from "./src/server/publicAppSettings.js";
+import { storageDownloadToBuffer } from "./src/server/storageDownloadBuffer.js";
 
 dotenv.config({ path: '.env.local' });
 
@@ -217,7 +218,8 @@ async function startServer() {
   // Example: /api/assets/public_assets/e_contracts/signed-contract-<id>.pdf
   app.get('/api/assets/:bucket/*', async (req, res) => {
     const bucket = String(req.params.bucket || '');
-    const filePath = String((req.params as any)[0] || '');
+    const rawPath = String((req.params as any)[0] || '');
+    const filePath = rawPath.split('?')[0];
 
     if (!bucket || !filePath) {
       return res.status(400).json({ success: false, error: 'Bucket and filePath are required.' });
@@ -229,8 +231,10 @@ async function startServer() {
         return res.status(404).json({ success: false, error: error?.message || 'Asset not found' });
       }
 
-      const arrayBuffer = await (data as any).arrayBuffer?.();
-      const buffer = arrayBuffer ? Buffer.from(arrayBuffer) : Buffer.from(await (data as any).text?.() || '');
+      const buffer = await storageDownloadToBuffer(data);
+      if (!buffer.length) {
+        return res.status(404).json({ success: false, error: 'Asset file is empty.' });
+      }
 
       const contentType =
         (data as any).type ||

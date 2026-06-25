@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { calculateRentalDays } from '../utils/rentalDays';
 
 export type CommissionSource = 'outsource' | 'fleet_owner' | 'default';
 
@@ -53,7 +54,7 @@ export async function computeBookingFinancials(
   return { commissionRate, commissionSource, platformCommission, ownerPayoutAmount };
 }
 
-import { calculateRentalDays } from '../../../utils/rentalDays';
+export function validateBookingTotalAmount(
   total: number,
   dailyRate: number,
   start: Date,
@@ -63,8 +64,7 @@ import { calculateRentalDays } from '../../../utils/rentalDays';
     return { ok: false, error: 'Invalid total amount.' };
   }
 
-  const msPerDay = 1000 * 60 * 60 * 24;
-  const days = Math.max(1, Math.ceil((end.getTime() - start.getTime()) / msPerDay));
+  const days = calculateRentalDays(start, end);
   const expected = dailyRate * days;
   const minAllowed = Math.floor(expected * 0.5);
   const maxAllowed = Math.ceil(expected * 1.2);
