@@ -70,6 +70,12 @@ export function AdminBookingCommandCenter() {
   const [docRejectionReason, setDocRejectionReason] = useState('');
   const [showDocRejection, setShowDocRejection] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Admin STK Push
+  const [showAdminStkPush, setShowAdminStkPush] = useState(false);
+  const [adminStkPhone, setAdminStkPhone] = useState('');
+  const [adminStkSending, setAdminStkSending] = useState(false);
+  const [adminStkResult, setAdminStkResult] = useState<{ success: boolean; message: string } | null>(null);
   const [drivers, setDrivers] = useState<any[]>([]);
   const [isAssigningDriver, setIsAssigningDriver] = useState(false);
   const [fleetUnits, setFleetUnits] = useState<any[]>([]);
@@ -580,6 +586,37 @@ export function AdminBookingCommandCenter() {
       toast.error(e.message || 'Failed to sync NCBA payment');
     } finally {
       setIsSyncingPayment(false);
+    }
+  };
+
+  const handleAdminStkPush = async () => {
+    const cleanPhone = adminStkPhone.replace(/[\s\-+]/g, '');
+    if (cleanPhone.length < 9) {
+      toast.error('Enter a valid phone number');
+      return;
+    }
+    setAdminStkSending(true);
+    setAdminStkResult(null);
+    try {
+      const response = await fetch('/api/ncba/stk-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: cleanPhone, bookingId: booking.id }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        setAdminStkResult({ success: true, message: data.statusDescription || 'M-Pesa prompt sent to client. They should enter their PIN now.' });
+        toast.success('M-Pesa prompt sent to client phone');
+        fetchBooking(true);
+      } else {
+        setAdminStkResult({ success: false, message: data.error || 'Failed to send M-Pesa prompt' });
+        toast.error(data.error || 'Failed to send M-Pesa prompt');
+      }
+    } catch (err: any) {
+      setAdminStkResult({ success: false, message: err.message || 'Network error' });
+      toast.error(err.message || 'Failed to send M-Pesa prompt');
+    } finally {
+      setAdminStkSending(false);
     }
   };
 
@@ -1317,6 +1354,67 @@ export function AdminBookingCommandCenter() {
                       Payment must be confirmed by NCBA STK Push. Sync with NCBA first, then force-verify only if needed.
                     </p>
                   </div>
+
+                  {/* Admin-triggered STK Push */}
+                  <div className="bg-card border border-border rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary">Send M-Pesa Prompt to Client</p>
+                      <button
+                        onClick={() => {
+                          setShowAdminStkPush(!showAdminStkPush);
+                          if (!adminStkPhone && clientPhone !== 'N/A') {
+                            setAdminStkPhone(clientPhone);
+                          }
+                        }}
+                        className="text-[10px] font-bold text-primary underline"
+                      >
+                        {showAdminStkPush ? 'Hide' : 'Expand'}
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-relaxed">
+                      If the client's session expired or they closed the browser, you can send the M-Pesa payment prompt directly to their phone from here.
+                    </p>
+                    {showAdminStkPush && (
+                      <div className="space-y-3 pt-2 border-t border-border">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Client Phone</label>
+                          <input
+                            type="tel"
+                            value={adminStkPhone}
+                            onChange={(e) => setAdminStkPhone(e.target.value)}
+                            placeholder="e.g. 0712345678 or 254712345678"
+                            className="w-full px-3 py-2.5 bg-background border border-border rounded-lg text-sm font-mono focus:ring-2 focus:ring-primary/20 outline-none"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+                          <CreditCard size={12} />
+                          <span>Amount: <strong className="text-foreground">KES {totalCost.toLocaleString()}</strong> (from booking total)</span>
+                        </div>
+                        <button
+                          onClick={handleAdminStkPush}
+                          disabled={adminStkSending || !adminStkPhone.replace(/[\s\-+]/g, '').length}
+                          className="w-full py-2.5 bg-green-600 text-white rounded-lg text-xs font-black hover:bg-green-700 flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
+                        >
+                          {adminStkSending ? (
+                            <><Loader2 size={14} className="animate-spin" /> Sending prompt...</>
+                          ) : (
+                            <><Send size={14} /> Send M-Pesa Prompt Now</>
+                          )}
+                        </button>
+                        {adminStkResult && (
+                          <div className={`p-3 rounded-lg text-xs font-bold flex items-start gap-2 ${
+                            adminStkResult.success
+                              ? 'bg-green-500/10 text-green-600 border border-green-500/20'
+                              : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                          }`}>
+                            {adminStkResult.success ? <CheckCircle2 size={14} className="shrink-0 mt-0.5" /> : <XCircle size={14} className="shrink-0 mt-0.5" />}
+                            <span>{adminStkResult.message}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     onClick={handleSyncNcbaPayment}
                     disabled={isSyncingPayment || !transactionCode}
