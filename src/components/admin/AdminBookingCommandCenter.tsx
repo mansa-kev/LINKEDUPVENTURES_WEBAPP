@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { toast } from 'sonner';
+import { resolveAssetUrl } from '../../utils/assetUrl';
 import { 
   ChevronLeft, Loader2, CreditCard, FileText, CheckCircle2, 
   XCircle, Car, MapPin, Flag, AlertTriangle, ShieldCheck, 
@@ -508,7 +509,8 @@ export function AdminBookingCommandCenter() {
     meta.documentsVerifiedPhysically === true;
   
   const eContract = booking.e_contracts?.[0];
-  const contractUrl = eContract?.pdf_url || meta.contract_url;
+  const rawContractUrl = eContract?.pdf_url || meta.contract_url;
+  const contractUrl = resolveAssetUrl(rawContractUrl);
   const signatureData = docs.signatureUrl || meta.signature || meta.signature_url;
 
   const bookingRef  = booking.id.slice(0, 8).toUpperCase();
@@ -1553,10 +1555,17 @@ export function AdminBookingCommandCenter() {
                         </button>
                       </div>
                       <div className="rounded-xl border border-border overflow-hidden bg-white">
+                        <div className="md:hidden p-8 text-center bg-muted/10 flex flex-col items-center justify-center space-y-3">
+                          <FileText size={32} className="text-muted-foreground/60" />
+                          <p className="text-sm font-bold text-foreground">PDF preview not supported</p>
+                          <p className="text-xs text-muted-foreground max-w-[250px]">
+                            Your mobile browser does not support inline PDF viewing. Use the buttons above to open or download the contract.
+                          </p>
+                        </div>
                         <iframe
                           title="Signed rental contract"
                           src={contractUrl}
-                          className="w-full bg-white"
+                          className="w-full bg-white hidden md:block"
                           style={{ height: '520px', border: 'none' }}
                         />
                       </div>

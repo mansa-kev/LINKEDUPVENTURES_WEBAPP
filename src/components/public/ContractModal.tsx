@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Printer, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { resolveAssetUrl } from '../../utils/assetUrl';
 import { contractService } from '../../services/contractService';
 
 interface ContractModalProps {
@@ -31,7 +32,8 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const pdfUrl = contract?.pdf_url || contract?.contract_url || '';
+  const rawPdfUrl = contract?.pdf_url || contract?.contract_url || '';
+  const pdfUrl = resolveAssetUrl(rawPdfUrl);
 
   // Derive all booking details
   const guestInfo = booking?.metadata?.guest_info;
@@ -235,12 +237,38 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
               </div>
             </div>
           ) : (
-            <iframe
-              src={`${pdfUrl}#toolbar=1&navpanes=0`}
-              className="w-full border-0"
-              style={{ height: '100%', minHeight: '300px', display: 'block' }}
-              title="Rental Agreement"
-            />
+            <div className="h-full flex flex-col">
+              <div className="md:hidden flex flex-col items-center justify-center h-full gap-4 py-20 text-center px-8">
+                <FileText className="text-muted-foreground/50" size={48} />
+                <div>
+                  <p className="font-bold text-foreground mb-1">PDF Preview Not Supported</p>
+                  <p className="text-sm text-muted-foreground">Your device does not support inline PDF viewing.</p>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-xl text-sm font-bold"
+                  >
+                    <ExternalLink size={16} /> Open
+                  </a>
+                  <a
+                    href={pdfUrl}
+                    download
+                    className="flex items-center gap-2 px-4 py-2 bg-muted/40 text-foreground rounded-xl text-sm font-bold"
+                  >
+                    <Download size={16} /> Download
+                  </a>
+                </div>
+              </div>
+              <iframe
+                src={`${pdfUrl}#toolbar=1&navpanes=0`}
+                className="w-full border-0 hidden md:block"
+                style={{ height: '100%', minHeight: '300px' }}
+                title="Rental Agreement"
+              />
+            </div>
           )}
         </div>
 

@@ -1,25 +1,32 @@
 export function toProxiedAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
 
-  // Already proxied
-  if (url.startsWith('/api/assets/')) return url;
-  if (url.startsWith('/api/images/')) return url;
+  // Since proxying on Vercel had issues, we now resolve them directly
+  return url;
+}
 
-  // Supabase public storage URL → /api/assets/<bucket>/<path>
-  // Example:
-  // https://xxxx.supabase.co/storage/v1/object/public/public_assets/e_contracts/foo.pdf
-  const marker = '/storage/v1/object/public/';
-  const idx = url.indexOf(marker);
-  if (idx === -1) return url;
+export function resolveAssetUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
 
-  const after = url.slice(idx + marker.length); // "<bucket>/<path...>"
-  const firstSlash = after.indexOf('/');
-  if (firstSlash === -1) return url;
+  if (url.startsWith('/api/assets/')) {
+    // /api/assets/<bucket>/<path>
+    const parts = url.split('/').filter(Boolean);
+    // parts: ['api', 'assets', '<bucket>', '<path...']
+    if (parts.length >= 4) {
+      const bucket = parts[2];
+      const path = parts.slice(3).join('/');
+      return `https://edroffvtzrowpsooszqh.supabase.co/storage/v1/object/public/${bucket}/${path}`;
+    }
+  }
 
-  const bucket = after.slice(0, firstSlash);
-  const path = after.slice(firstSlash + 1);
-  if (!bucket || !path) return url;
+  if (url.startsWith('/api/images/')) {
+    const parts = url.split('/').filter(Boolean);
+    if (parts.length >= 3) {
+      const path = parts.slice(2).join('/');
+      return `https://edroffvtzrowpsooszqh.supabase.co/storage/v1/object/public/public_assets/${path}`;
+    }
+  }
 
-  return `/api/assets/${bucket}/${path}`;
+  return url;
 }
 
