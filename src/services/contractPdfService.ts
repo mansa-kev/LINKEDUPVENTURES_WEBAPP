@@ -66,6 +66,9 @@ export async function generateContractPdfBase64(
     throw new Error('No active HTML contract template found. Upload one in Admin → Contract Manager.');
   }
 
+  // Detect mobile to reduce canvas scale and prevent OOM crashes
+  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
+
   const wrapper = document.createElement('div');
   wrapper.innerHTML = wrapContractHtmlForPdf(filledHtml);
   wrapper.style.padding = '20px';
@@ -73,12 +76,24 @@ export async function generateContractPdfBase64(
   wrapper.style.color = '#111';
   wrapper.style.background = '#fff';
   wrapper.style.width = '794px';
+  // Position off-screen so the user never sees a white flash / blank page
+  wrapper.style.position = 'absolute';
+  wrapper.style.left = '-9999px';
+  wrapper.style.top = '-9999px';
 
   document.body.appendChild(wrapper);
 
   try {
     const html2pdf = (await import('html2pdf.js')).default;
-    return await html2pdf().from(wrapper).set(PDF_OPTIONS).outputPdf('datauristring');
+    const pdfOptions = {
+      ...PDF_OPTIONS,
+      html2canvas: {
+        ...PDF_OPTIONS.html2canvas,
+        // Scale 1 on mobile to avoid out-of-memory crashes
+        scale: isMobile ? 1 : 2,
+      },
+    };
+    return await html2pdf().from(wrapper).set(pdfOptions).outputPdf('datauristring');
   } finally {
     document.body.removeChild(wrapper);
   }

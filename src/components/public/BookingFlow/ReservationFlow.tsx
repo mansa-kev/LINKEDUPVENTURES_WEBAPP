@@ -192,22 +192,26 @@ export function ReservationFlow({ car, onClose, vehicleModelId }: ReservationFlo
         setPaymentRequestId(result.paymentRequestId);
       }
 
-      setPhase('waiting');
       if (result?.__timedOut) {
-        setLastMessage('STK Push is taking longer than usual. If you received the prompt on your phone, enter your PIN — we are still listening for confirmation.');
+        // STK request timed out — we don't have a paymentRequestId to poll.
+        setPhase('timeout');
+        setLastMessage('Payment prompt is taking longer than usual. If you received the prompt on your phone, enter your PIN — this page will update automatically. Otherwise, tap Retry.');
         toast.message('Still sending STK… check your phone.');
+        return;
       } else if (!result?.success && !result?.paymentRequestId) {
         setPhase('failed');
         setLastMessage(result?.error || result?.statusDescription || 'STK Push could not be sent. Please try again.');
         toast.error(result?.error || 'Reservation payment could not be started.');
         return;
-      } else {
-        setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
-        toast.success('Reservation STK Push sent. Check your phone.');
       }
 
+      // STK was accepted — move into "waiting" and start polling
+      setPhase('waiting');
+      setLastMessage(result.statusDescription || 'STK Push sent. Check your phone and enter your PIN.');
+      toast.success('Reservation STK Push sent. Check your phone.');
+
       const pollResult = await reservationPaymentService.pollUntilPaid(
-        result?.paymentRequestId || '',
+        result.paymentRequestId || '',
         id,
         3000,
         180000,

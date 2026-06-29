@@ -148,26 +148,28 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
         setPaymentRequestId(result.paymentRequestId);
       }
 
-      // Whether or not the initiation response came back cleanly, the STK may already
-      // have reached the user's phone. Move into "waiting" and keep polling — the
-      // realtime subscription + status poll will confirm once the webhook lands.
-      setPhase('waiting');
       if (result?.__timedOut) {
-        setLastMessage('Payment prompt is taking longer than usual. If you received the prompt on your phone, enter your PIN — we are still listening for confirmation.');
+        // STK request timed out — we don't have a paymentRequestId to poll.
+        // The realtime subscription will still catch any late webhook.
+        setPhase('timeout');
+        setLastMessage('Payment prompt is taking longer than usual. If you received the prompt on your phone, enter your PIN — this page will update automatically. Otherwise, tap Retry.');
         toast.message('Still sending payment prompt... check your phone.');
+        return;
       } else if (!result?.success && !result?.paymentRequestId) {
         // Hard failure from the server
         setPhase('failed');
         setLastMessage(result?.error || result?.statusDescription || 'Payment prompt could not be sent. Please try again.');
         toast.error(result?.error || 'Payment prompt failed. Please try again.');
         return;
-      } else {
-        setLastMessage(result.statusDescription || 'Payment prompt sent. Check your phone and enter your PIN.');
-        toast.success('Payment prompt sent. Check your phone.');
       }
 
+      // STK was accepted — move into "waiting" and start polling
+      setPhase('waiting');
+      setLastMessage(result.statusDescription || 'Payment prompt sent. Check your phone and enter your PIN.');
+      toast.success('Payment prompt sent. Check your phone.');
+
       const pollResult = await paymentService.pollUntilPaid(
-        result?.paymentRequestId || '',
+        result.paymentRequestId || '',
         id,
         statusToken || undefined,
         3000,
