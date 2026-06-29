@@ -670,7 +670,7 @@ export const adminService = {
               .gte('end_date', options.startDate),
             supabase
               .from('car_reservations')
-              .select('id, car_id, start_date, end_date, status')
+              .select('id, car_id, start_date, end_date, status, expires_at')
               .in('status', ['reserved', 'confirmed', 'pending_payment'])
               .lte('start_date', options.endDate)
               .gte('end_date', options.startDate),
@@ -679,7 +679,12 @@ export const adminService = {
         if (bookingError) return handleSupabaseErrorWrapper(bookingError, 'getModelFleetStatus');
         if (reservationError) return handleSupabaseErrorWrapper(reservationError, 'getModelFleetStatus');
         bookings = bookingRows || [];
-        reservations = reservationRows || [];
+        reservations = (reservationRows || []).filter((r: any) => {
+          if (r.status === 'pending_payment' && r.expires_at && new Date(r.expires_at) < new Date()) {
+            return false;
+          }
+          return true;
+        });
       }
 
       return buildModelFleetStatus(units || [], {

@@ -778,7 +778,7 @@ const app = express();
           linked_booking_id: null,
           booking_flow_started_at: null,
           booking_flow_initiated_by: null,
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+          expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         })
         .select()
         .single();
@@ -964,7 +964,7 @@ const app = express();
 
           let reservationQuery = supabase
             .from('car_reservations')
-            .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+            .select('id, car_id, vehicle_model_id, start_date, end_date, status, expires_at')
             .in('status', ['reserved', 'confirmed', 'pending_payment']);
 
           if (sourceReservationId) {
@@ -997,6 +997,9 @@ const app = express();
 
           let modelOnlyHolds = 0;
           for (const reservation of blockingReservations || []) {
+            if (reservation.status === 'pending_payment' && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
+              continue; // ignore expired pending_payment reservations
+            }
             if (!hasOverlap(reservation.start_date, reservation.end_date)) continue;
             if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
               blocked.add(reservation.car_id);

@@ -55,7 +55,7 @@ export async function isModelAvailableForDates(
 
   let reservationQuery = supabase
     .from('car_reservations')
-    .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+    .select('id, car_id, vehicle_model_id, start_date, end_date, status, expires_at')
     .in('status', ['reserved', 'confirmed', 'pending_payment']);
 
   if (options.ignoreReservationId) {
@@ -74,6 +74,9 @@ export async function isModelAvailableForDates(
 
   let modelOnlyHolds = 0;
   for (const reservation of blockingReservations || []) {
+    if (reservation.status === 'pending_payment' && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
+      continue;
+    }
     if (!datesOverlap(startDate, endDate, reservation.start_date, reservation.end_date)) continue;
     if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
       blocked.add(reservation.car_id);
@@ -120,7 +123,7 @@ export async function getAvailableCarIdForModelDates(
 
   let reservationQuery = supabase
     .from('car_reservations')
-    .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+    .select('id, car_id, vehicle_model_id, start_date, end_date, status, expires_at')
     .in('status', ['reserved', 'confirmed', 'pending_payment']);
 
   if (options.ignoreReservationId) {
@@ -138,6 +141,9 @@ export async function getAvailableCarIdForModelDates(
 
   let modelOnlyHolds = 0;
   for (const reservation of blockingReservations || []) {
+    if (reservation.status === 'pending_payment' && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
+      continue;
+    }
     if (!datesOverlap(startDate, endDate, reservation.start_date, reservation.end_date)) continue;
     if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
       blocked.add(reservation.car_id);

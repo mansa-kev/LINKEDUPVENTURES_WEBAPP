@@ -12,10 +12,17 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    contractService.getMasterContract().then(c => {
-      setContract(c);
-    }).finally(() => setLoading(false));
-  }, []);
+    // If the booking already has a signed contract URL, use that.
+    // Otherwise fallback to master contract for preview purposes.
+    if (booking?.metadata?.contract_url) {
+      setContract({ pdf_url: booking.metadata.contract_url });
+      setLoading(false);
+    } else {
+      contractService.getMasterContract().then(c => {
+        setContract(c);
+      }).finally(() => setLoading(false));
+    }
+  }, [booking]);
 
   // Close on Escape key
   useEffect(() => {
@@ -38,6 +45,12 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
   const bookingRef = booking?.id ? booking.id.slice(0, 8).toUpperCase() : 'N/A';
 
   const handleSaveAsPDF = () => {
+    if (booking?.metadata?.contract_url) {
+      // Just open the PDF URL directly if it exists, so the user can download/print it natively.
+      window.open(booking.metadata.contract_url, '_blank');
+      return;
+    }
+
     const html = `<!DOCTYPE html>
 <html lang="en">
 <head>

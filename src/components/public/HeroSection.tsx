@@ -201,14 +201,26 @@ export function HeroSection() {
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-center mb-6 md:mb-12"
+          className="text-center mb-6 md:mb-12 -mt-10 md:-mt-20"
         >
           <h1 className="text-3xl sm:text-5xl md:text-8xl font-serif font-black tracking-tighter text-foreground italic mb-4 md:mb-6 drop-shadow-2xl">
             {heroContent[currentIndex]?.overlay_text || 'Experience Luxury'}
           </h1>
-          <p className="text-base md:text-2xl text-foreground/80 font-medium max-w-2xl mx-auto drop-shadow-lg px-4">
+          <p className="text-base md:text-2xl text-foreground/80 font-medium max-w-2xl mx-auto drop-shadow-lg px-4 mb-8">
             {heroContent[currentIndex]?.overlay_text ? '' : 'Curated fleet of world-class vehicles for your next journey.'}
           </p>
+          <motion.button
+            type="button"
+            onClick={() => setCallbackOpen(true)}
+            animate={{ y: [0, -5, 0] }}
+            transition={{ duration: 1.9, repeat: Infinity }}
+            className="px-8 py-3 rounded-full text-black font-black uppercase tracking-[0.16em] text-[11px] shadow-xl"
+            style={{
+              background: 'linear-gradient(90deg, #d4af37 0%, #ff8c00 100%)',
+            }}
+          >
+            Request a callback
+          </motion.button>
         </motion.div>
 
         {/* Search Widget */}
@@ -346,18 +358,6 @@ export function HeroSection() {
           </div>
         </motion.div>
 
-        <motion.button
-          type="button"
-          onClick={() => setCallbackOpen(true)}
-          animate={{ y: [0, -5, 0] }}
-          transition={{ duration: 1.9, repeat: Infinity }}
-          className="mt-4 px-8 py-3 rounded-full text-black font-black uppercase tracking-[0.16em] text-[11px] shadow-xl"
-          style={{
-            background: 'linear-gradient(90deg, #d4af37 0%, #ff8c00 100%)',
-          }}
-        >
-          Request a callback
-        </motion.button>
       </div>
 
       {/* Carousel Controls - repositioned for mobile */}
