@@ -1,4 +1,4 @@
-import { toProxiedAssetUrl } from './assetUrl';
+import { toProxiedAssetUrl } from './assetUrl.js';
 
 /** Normalize stored upload URLs and append cache-busting for fresh proxy reads. */
 export function resolveDocumentPreviewUrl(

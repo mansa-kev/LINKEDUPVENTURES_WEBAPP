@@ -1,4 +1,4 @@
-import { toProxiedAssetUrl } from './assetUrl';
+import { toProxiedAssetUrl } from './assetUrl.js';
 
 export type ContractBookingData = Record<string, any>;
 export type ContractCar = Record<string, any>;

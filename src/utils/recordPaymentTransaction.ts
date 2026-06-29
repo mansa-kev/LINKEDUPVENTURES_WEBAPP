@@ -1,5 +1,5 @@
-import { supabase } from '../lib/supabase';
-import { logger } from './logger';
+import { supabase } from '../lib/supabase.js';
+import { logger } from './logger.js';
 
 /** Idempotent payment_in row for admin financials / transaction history. */
 export async function recordPaymentTransaction(

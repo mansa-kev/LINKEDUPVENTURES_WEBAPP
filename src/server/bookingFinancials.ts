@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { calculateRentalDays } from '../utils/rentalDays';
+import { calculateRentalDays } from '../utils/rentalDays.js';
 
 export type CommissionSource = 'outsource' | 'fleet_owner' | 'default';
 

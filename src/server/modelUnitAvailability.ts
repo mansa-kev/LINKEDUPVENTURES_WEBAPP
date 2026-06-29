@@ -1,4 +1,5 @@
-import { CALENDAR_BLOCKING_STATUSES_DB } from '../constants/bookingStatuses';
+import { CALENDAR_BLOCKING_STATUSES_DB } from '../constants/bookingStatuses.js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 export function datesOverlap(
   startDate: string,
@@ -17,9 +18,7 @@ export function datesOverlap(
   );
 }
 
-type SupabaseClient = {
-  from: (table: string) => any;
-};
+
 
 export async function isModelAvailableForDates(
   supabase: SupabaseClient,

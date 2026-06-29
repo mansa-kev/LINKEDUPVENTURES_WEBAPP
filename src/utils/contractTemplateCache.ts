@@ -5,7 +5,7 @@ import {
   isHtmlContract,
   type ContractBookingData,
   type ContractCar,
-} from './contractTemplate';
+} from './contractTemplate.js';
 
 const templateHtmlCache = new Map<string, string>();
 let settingsCache: Record<string, string> | null = null;
