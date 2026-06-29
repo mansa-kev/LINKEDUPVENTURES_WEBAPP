@@ -191,6 +191,7 @@ async function startServer() {
     }
 
     try {
+      const { getSupabaseUrl } = await import('./src/server/supabaseServer.js');
       const imageUrl = `${getSupabaseUrl()}/storage/v1/object/public/public_assets/${filename}`;
       res.redirect(302, imageUrl);
     } catch (error) {
@@ -212,6 +213,7 @@ async function startServer() {
     }
 
     try {
+      const { getSupabaseUrl } = await import('./src/server/supabaseServer.js');
       const redirectUrl = `${getSupabaseUrl()}/storage/v1/object/public/${bucket}/${filePath}`;
       res.redirect(302, redirectUrl);
     } catch (err: any) {

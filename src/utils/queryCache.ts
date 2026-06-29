@@ -44,13 +44,13 @@ export function invalidateCache(key: string) {
 }
 
 export function invalidateCachePrefix(prefix: string) {
-  for (const key of cache.keys()) {
+  for (const key of Array.from(cache.keys())) {
     if (key.startsWith(prefix)) {
       cache.delete(key);
     }
   }
 
-  for (const key of inflight.keys()) {
+  for (const key of Array.from(inflight.keys())) {
     if (key.startsWith(prefix)) {
       inflight.delete(key);
     }

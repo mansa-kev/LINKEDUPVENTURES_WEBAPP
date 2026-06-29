@@ -325,7 +325,7 @@ export function AdminVehicleModels() {
     setLoadingUnits(true);
     try {
       const units = await adminService.getCarsByVehicleModelIds(getVehicleModelIdsForGroup(group));
-      setFleetUnits(units || []);
+      setFleetUnits((units as any) || []);
     } catch (error) {
       console.error('Failed to load fleet units:', error);
       setFleetUnits([]);
