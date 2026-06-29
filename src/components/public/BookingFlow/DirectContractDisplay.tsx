@@ -70,17 +70,26 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
   const clientNameForScript = JSON.stringify(getClientName() || '');
   const overrideStyles = `
     <style>
-      html, body { max-width: none !important; width: 100% !important; min-width: 0 !important; margin: 0 !important; padding: 24px !important; box-sizing: border-box !important; background: #ffffff !important; }
-      body { display: block !important; }
-      * { box-sizing: border-box; max-width: 100% !important; }
+      html, body { max-width: none !important; width: 100% !important; min-width: 0 !important; margin: 0 !important; padding: 16px !important; box-sizing: border-box !important; background: #ffffff !important; -webkit-text-size-adjust: 100% !important; }
+      body { display: block !important; overflow-x: hidden !important; }
+      * { box-sizing: border-box; max-width: 100% !important; word-wrap: break-word !important; overflow-wrap: break-word !important; }
       img { max-width: 100% !important; height: auto !important; }
-      table { width: 100% !important; max-width: 100% !important; }
-      .container, .page, .a4, .sheet, .document, .agreement, .contract, .wrapper, .content { max-width: none !important; width: 100% !important; min-width: 0 !important; margin-left: 0 !important; margin-right: 0 !important; box-shadow: none !important; }
+      table { width: 100% !important; max-width: 100% !important; table-layout: fixed !important; }
+      td, th { word-wrap: break-word !important; overflow-wrap: break-word !important; }
+      .container, .page, .a4, .sheet, .document, .agreement, .contract, .wrapper, .content { max-width: none !important; width: 100% !important; min-width: 0 !important; margin-left: 0 !important; margin-right: 0 !important; box-shadow: none !important; padding-left: 0 !important; padding-right: 0 !important; }
       .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: flex-start !important; gap: 24px !important; width: 100% !important; }
       .signature-box { flex: 1 1 0 !important; width: auto !important; min-width: 0 !important; }
+      @media (max-width: 600px) {
+        html, body { padding: 10px !important; font-size: 14px !important; }
+        .signatures { flex-direction: column !important; gap: 16px !important; }
+        .signature-box { width: 100% !important; }
+        h1, h2, h3 { font-size: 1.1em !important; }
+        table { font-size: 12px !important; }
+      }
     </style>
   `;
   const repositionScript = `
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <script>
       (function(){
         function reposition(){
@@ -96,18 +105,29 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         }
         function postHeight(){
           try {
-            var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight);
+            var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, document.documentElement.offsetHeight, document.body.offsetHeight);
             parent.postMessage({ __linkedupContractHeight: true, height: h }, '*');
           } catch(e){}
         }
-        function init(){ reposition(); postHeight(); }
+        function fixImages(){
+          var imgs = document.querySelectorAll('img');
+          imgs.forEach(function(img) {
+            if (img.complete && img.naturalWidth === 0 && img.src && !img.dataset.retried) {
+              img.dataset.retried = '1';
+              var src = img.src;
+              img.src = '';
+              img.src = src;
+            }
+          });
+        }
+        function init(){ reposition(); fixImages(); postHeight(); }
         if (document.readyState === 'complete' || document.readyState === 'interactive') {
-          setTimeout(init, 0);
+          setTimeout(init, 50);
         } else {
           document.addEventListener('DOMContentLoaded', init);
         }
-        window.addEventListener('load', function(){ reposition(); postHeight(); setTimeout(postHeight, 200); setTimeout(postHeight, 600); });
-        try { new ResizeObserver(postHeight).observe(document.documentElement); } catch(e){}
+        window.addEventListener('load', function(){ reposition(); fixImages(); postHeight(); setTimeout(postHeight, 300); setTimeout(postHeight, 800); setTimeout(postHeight, 1500); });
+        try { new ResizeObserver(function(){ postHeight(); }).observe(document.documentElement); } catch(e){}
       })();
     </script>
   `;
@@ -177,7 +197,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
                 ref={iframeRef}
                 title="Rental Contract"
                 srcDoc={srcDoc}
-                sandbox="allow-scripts"
+                sandbox="allow-scripts allow-same-origin"
                 className="w-full bg-white block"
                 style={{ height: `${iframeHeight}px`, border: 'none', minHeight: 500 }}
               />

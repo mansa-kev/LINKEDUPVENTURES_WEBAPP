@@ -21,7 +21,7 @@ import { createDeleteReservationHandler } from "./src/server/deleteReservationHa
 import { processBookingPayoutSettlements } from "./src/server/bookingPayoutSettlements.js";
 import { applyProfileSyncFromBooking, linkBookingAndSyncProfile } from "./src/utils/bookingProfileSync.js";
 import { CALENDAR_BLOCKING_STATUSES_DB } from "./src/constants/bookingStatuses.js";
-import { isModelAvailableForDates } from "./src/server/modelUnitAvailability.js";
+import { isModelAvailableForDates, getAvailableCarIdForModelDates } from "./src/server/modelUnitAvailability.js";
 import { fetchPublicAppSettings } from "./src/server/publicAppSettings.js";
 import { storageDownloadToBuffer } from "./src/server/storageDownloadBuffer.js";
 
@@ -730,18 +730,19 @@ async function startServer() {
 
         dailyRate = Number(model.base_daily_rate || 0);
 
-        const modelAvailable = await isModelAvailableForDates(
+        const assignedCarId = await getAvailableCarIdForModelDates(
           supabase,
           vehicleModelId,
           startDate,
           endDate
         );
-        if (!modelAvailable) {
+        if (!assignedCarId) {
           return res.status(409).json({
             success: false,
             error: 'Selected dates are not available for this model.',
           });
         }
+        resolvedCarId = assignedCarId;
       }
 
       if (!fleetOwnerId) {
@@ -1341,7 +1342,7 @@ async function startServer() {
       }
 
       if (!paymentRequest.provider_transaction_id) {
-        return res.status(400).json({ success: false, error: 'Payment request has no NCBA TransactionID' });
+        return res.json({ success: true, paid: false, failed: false, pending: true, status: 'PENDING', description: 'Waiting for NCBA to assign a transaction ID' });
       }
 
       if (paymentRequest.status === 'success') {
@@ -1691,7 +1692,7 @@ async function startServer() {
       }
 
       if (!paymentRequest.provider_transaction_id) {
-        return res.status(400).json({ success: false, error: 'Payment request has no NCBA TransactionID' });
+        return res.json({ success: true, paid: false, failed: false, pending: true, status: 'PENDING', description: 'Waiting for NCBA to assign a transaction ID' });
       }
 
       if (paymentRequest.status === 'success') {

@@ -86,3 +86,70 @@ export async function isModelAvailableForDates(
   const freeUnits = candidateIds.filter((id: string) => !blocked.has(id));
   return freeUnits.length > modelOnlyHolds;
 }
+
+export async function getAvailableCarIdForModelDates(
+  supabase: SupabaseClient,
+  vehicleModelId: string,
+  startDate: string,
+  endDate: string,
+  options: { ignoreReservationId?: string; ignoreBookingId?: string } = {}
+): Promise<string | null> {
+  const { data: candidateCars, error: candidateCarsError } = await supabase
+    .from('cars')
+    .select('id')
+    .eq('status', 'available')
+    .eq('vehicle_model_id', vehicleModelId)
+    .order('created_at', { ascending: true })
+    .limit(200);
+
+  if (candidateCarsError) return null;
+
+  const candidateIds = (candidateCars || []).map((car: { id: string }) => car.id);
+  if (!candidateIds.length) return null;
+
+  let bookingQuery = supabase
+    .from('bookings')
+    .select('id, car_id, start_date, end_date')
+    .in('car_id', candidateIds)
+    .in('status', [...CALENDAR_BLOCKING_STATUSES_DB]);
+
+  if (options.ignoreBookingId) {
+    bookingQuery = bookingQuery.neq('id', options.ignoreBookingId);
+  }
+
+  const { data: blockingBookings } = await bookingQuery;
+
+  let reservationQuery = supabase
+    .from('car_reservations')
+    .select('id, car_id, vehicle_model_id, start_date, end_date, status')
+    .in('status', ['reserved', 'confirmed', 'pending_payment']);
+
+  if (options.ignoreReservationId) {
+    reservationQuery = reservationQuery.neq('id', options.ignoreReservationId);
+  }
+
+  const { data: blockingReservations } = await reservationQuery;
+
+  const blocked = new Set<string>();
+  for (const booking of blockingBookings || []) {
+    if (datesOverlap(startDate, endDate, booking.start_date, booking.end_date)) {
+      blocked.add(booking.car_id);
+    }
+  }
+
+  let modelOnlyHolds = 0;
+  for (const reservation of blockingReservations || []) {
+    if (!datesOverlap(startDate, endDate, reservation.start_date, reservation.end_date)) continue;
+    if (reservation.car_id && candidateIds.includes(reservation.car_id)) {
+      blocked.add(reservation.car_id);
+    } else if (!reservation.car_id && reservation.vehicle_model_id === vehicleModelId) {
+      modelOnlyHolds += 1;
+    }
+  }
+
+  const freeUnits = candidateIds.filter((id: string) => !blocked.has(id));
+  if (freeUnits.length > modelOnlyHolds) {
+    return freeUnits[modelOnlyHolds];
+  }
+  return null;
+}

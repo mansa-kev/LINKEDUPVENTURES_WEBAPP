@@ -167,6 +167,7 @@ export const ncbaService = {
         Authorization: `Basic ${auth}`,
         Accept: 'application/json',
       },
+      signal: AbortSignal.timeout(10000),
     });
 
     const data = await readJsonSafe(response);
@@ -208,6 +209,7 @@ export const ncbaService = {
           Accept: 'application/json',
         },
         body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10000),
       });
 
       const data = await readJsonSafe(response);
@@ -241,6 +243,7 @@ export const ncbaService = {
           Accept: 'application/json',
         },
         body: JSON.stringify({ TransactionID: transactionId }),
+        signal: AbortSignal.timeout(10000),
       });
 
       const data = await readJsonSafe(response);

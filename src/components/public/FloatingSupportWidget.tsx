@@ -28,8 +28,8 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name, phone')
+          .from('user_profiles')
+          .select('full_name, phone_number')
           .eq('id', session.user.id)
           .single();
           
@@ -37,7 +37,7 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
           setFormData(prev => ({
             ...prev,
             name: profile.full_name || '',
-            phone: profile.phone || ''
+            phone: profile.phone_number || ''
           }));
         }
       }

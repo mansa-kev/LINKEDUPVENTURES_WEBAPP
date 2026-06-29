@@ -3,12 +3,15 @@
  * Logs only in development mode to prevent exposing sensitive information in production
  */
 
-const viteEnv = typeof import.meta !== 'undefined' ? import.meta.env : undefined;
-const nodeEnv =
-  typeof process !== 'undefined' && process.env
-    ? process.env.NODE_ENV
-    : undefined;
-const isDev = Boolean(viteEnv?.DEV || nodeEnv !== 'production');
+const getIsDev = () => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env.NODE_ENV) {
+      return process.env.NODE_ENV !== 'production';
+    }
+  } catch (e) {}
+  return process.env.NODE_ENV !== 'production'; 
+};
+const isDev = getIsDev();
 
 export const logger = {
   log: (...args: any[]) => {
