@@ -545,7 +545,6 @@ export const adminService = {
       .update({
         car_id: carId,
         vehicle_model_id: booking.vehicle_model_id || car.vehicle_model_id || null,
-        updated_at: new Date().toISOString(),
       })
       .eq('id', bookingId)
       .select();
