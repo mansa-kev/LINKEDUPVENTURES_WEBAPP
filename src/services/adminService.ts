@@ -666,7 +666,7 @@ export const adminService = {
             supabase
               .from('bookings')
               .select('id, car_id, start_date, end_date, status')
-              .in('status', ['confirmed', 'on_trip', 'pending_payment_verification', 'pending', 'in_progress'])
+              .in('status', ['confirmed', 'on_trip', 'pending_payment_verification', 'pending'])
               .lte('start_date', options.endDate)
               .gte('end_date', options.startDate),
             supabase

@@ -191,22 +191,8 @@ async function startServer() {
     }
 
     try {
-      const imageUrl = `${supabaseUrl}/storage/v1/object/public/public_assets/${filename}`;
-
-      const response = await fetch(imageUrl);
-
-      if (!response.ok) {
-        return res.status(response.status).send('Image not found');
-      }
-
-      const buffer = await response.arrayBuffer();
-      const contentType = response.headers.get('content-type');
-
-      res.set('Content-Type', contentType || 'image/jpeg');
-      res.set('Cache-Control', 'public, max-age=86400, s-maxage=86400'); // Cache for 24 hours
-      res.set('CDN-Cache-Control', 'public, max-age=86400');
-
-      res.send(Buffer.from(buffer));
+      const imageUrl = `${getSupabaseUrl()}/storage/v1/object/public/public_assets/${filename}`;
+      res.redirect(302, imageUrl);
     } catch (error) {
       console.error('Image proxy error:', error);
       res.status(500).send('Failed to fetch image');
@@ -226,27 +212,8 @@ async function startServer() {
     }
 
     try {
-      const { data, error } = await supabase.storage.from(bucket).download(filePath);
-      if (error || !data) {
-        return res.status(404).json({ success: false, error: error?.message || 'Asset not found' });
-      }
-
-      const buffer = await storageDownloadToBuffer(data);
-      if (!buffer.length) {
-        return res.status(404).json({ success: false, error: 'Asset file is empty.' });
-      }
-
-      const contentType =
-        (data as any).type ||
-        (filePath.toLowerCase().endsWith('.pdf')
-          ? 'application/pdf'
-          : filePath.match(/\.(jpe?g|png|webp|gif)$/i)
-            ? `image/${filePath.split('.').pop()?.toLowerCase().replace('jpg', 'jpeg')}`
-            : 'application/octet-stream');
-
-      res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=86400');
-      return res.send(buffer);
+      const redirectUrl = `${getSupabaseUrl()}/storage/v1/object/public/${bucket}/${filePath}`;
+      res.redirect(302, redirectUrl);
     } catch (err: any) {
       console.error('[asset-proxy]', err);
       return res.status(500).json({ success: false, error: err?.message || 'Failed to fetch asset' });
