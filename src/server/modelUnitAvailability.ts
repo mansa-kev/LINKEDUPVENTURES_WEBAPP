@@ -74,7 +74,7 @@ export async function isModelAvailableForDates(
 
   let modelOnlyHolds = 0;
   for (const reservation of blockingReservations || []) {
-    if (reservation.status === 'pending_payment' && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
+    if (['reserved', 'pending_payment'].includes(reservation.status) && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
       continue;
     }
     if (!datesOverlap(startDate, endDate, reservation.start_date, reservation.end_date)) continue;
@@ -141,7 +141,7 @@ export async function getAvailableCarIdForModelDates(
 
   let modelOnlyHolds = 0;
   for (const reservation of blockingReservations || []) {
-    if (reservation.status === 'pending_payment' && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
+    if (['reserved', 'pending_payment'].includes(reservation.status) && reservation.expires_at && new Date(reservation.expires_at) < new Date()) {
       continue;
     }
     if (!datesOverlap(startDate, endDate, reservation.start_date, reservation.end_date)) continue;

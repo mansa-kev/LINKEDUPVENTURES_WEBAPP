@@ -12,7 +12,8 @@ import {
 import { logger } from '../../utils/logger';
 import { adminService } from '../../services/adminService';
 import { enhancedContractService } from '../../services/enhancedContractService';
-import { buildBookingSummaryForContract, generateAndSaveContract, regenerateAndSaveContract } from '../../services/contractPdfService';
+import { buildBookingSummaryForContract, generateAndSaveContract, regenerateAndSaveContract, type ContractBookingData, type ContractCar } from '../../services/contractPdfService';
+import { PdfViewer } from './PdfViewer';
 import { sendAdminEmail } from '../../services/adminEmailService';
 import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
@@ -1562,10 +1563,9 @@ export function AdminBookingCommandCenter() {
                             Your mobile browser does not support inline PDF viewing. Use the buttons above to open or download the contract.
                           </p>
                         </div>
-                        <iframe
-                          title="Signed rental contract"
-                          src={contractUrl}
-                          className="w-full bg-white hidden md:block"
+                        <PdfViewer
+                          url={contractUrl}
+                          className="w-full hidden md:block"
                           style={{ height: '520px', border: 'none' }}
                         />
                       </div>

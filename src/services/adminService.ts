@@ -704,7 +704,7 @@ export const adminService = {
 
     const { data, error } = await supabase
       .from('vehicle_models')
-      .update({ booking_mode: bookingMode, updated_at: new Date().toISOString() })
+      .update({ booking_mode: bookingMode })
       .in('id', modelIds)
       .select('id, booking_mode');
 
@@ -2458,6 +2458,17 @@ export const adminService = {
       logger.error('Delete booking failed:', error);
       return handleSupabaseErrorWrapper(error, 'deleteBooking');
     }
+  },
+
+  deleteReservation: async (reservationId: string) => {
+    const { data, error } = await supabase
+      .from('car_reservations')
+      .delete()
+      .eq('id', reservationId);
+    if (error) return handleSupabaseErrorWrapper(error, 'deleteReservation');
+    invalidateCachePrefix('admin:reservations:');
+    invalidateFleetInventoryCaches();
+    return data;
   },
 
   getBrokers: async () => {

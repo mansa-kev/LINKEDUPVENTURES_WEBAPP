@@ -442,6 +442,18 @@ export function MyBookings() {
                       </button>
                     )}
 
+                    {booking.is_reservation && booking.status === 'pending_payment' && (
+                      <button
+                        onClick={() => {
+                          const url = `/models/${booking.vehicle_model_id}?booking=true&reservationToken=${booking.booking_completion_token || booking.id}`;
+                          window.location.href = url;
+                        }}
+                        className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                      >
+                        Complete Payment
+                      </button>
+                    )}
+
                     {booking.status === 'confirmed' && (
                       cancelConfirmId === booking.id ? (
                         <div className="flex items-center gap-2">

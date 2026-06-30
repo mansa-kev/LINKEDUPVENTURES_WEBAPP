@@ -76,10 +76,13 @@ export async function generateContractPdfBase64(
   wrapper.style.color = '#111';
   wrapper.style.background = '#fff';
   wrapper.style.width = '794px';
-  // Position off-screen so the user never sees a white flash / blank page
-  wrapper.style.position = 'absolute';
-  wrapper.style.left = '-9999px';
-  wrapper.style.top = '-9999px';
+  // Position hidden in viewport so html2canvas captures it correctly without user seeing it
+  wrapper.style.position = 'fixed';
+  wrapper.style.top = '0';
+  wrapper.style.left = '0';
+  wrapper.style.zIndex = '-9999';
+  wrapper.style.opacity = '0';
+  wrapper.style.pointerEvents = 'none';
 
   document.body.appendChild(wrapper);
 

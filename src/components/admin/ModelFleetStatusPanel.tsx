@@ -16,6 +16,7 @@ interface ModelFleetStatusPanelProps {
   onSelectUnit?: (unitId: string) => void;
   selectedUnitId?: string | null;
   highlightBuckets?: FleetUnitBucket[];
+  onUnreserve?: (reservationId: string) => void;
 }
 
 const SUMMARY_BUCKETS: FleetUnitBucket[] = [
@@ -34,6 +35,7 @@ export const ModelFleetStatusPanel: React.FC<ModelFleetStatusPanelProps> = ({
   onSelectUnit,
   selectedUnitId,
   highlightBuckets = ['available'],
+  onUnreserve,
 }) => {
   if (loading) {
     return (
@@ -112,11 +114,25 @@ export const ModelFleetStatusPanel: React.FC<ModelFleetStatusPanelProps> = ({
                     </p>
                   </div>
                 </div>
-                <span
-                  className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${FLEET_BUCKET_COLORS[unit.bucket]}`}
-                >
-                  {FLEET_BUCKET_LABELS[unit.bucket]}
-                </span>
+                <div className="flex items-center gap-2">
+                  {onUnreserve && unit.blockedReason === 'reservation' && unit.blockedBy && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onUnreserve(unit.blockedBy!);
+                      }}
+                      className="px-2 py-1 text-[10px] font-bold text-red-500 bg-red-500/10 hover:bg-red-500/20 rounded-md transition-colors"
+                    >
+                      Unreserve
+                    </button>
+                  )}
+                  <span
+                    className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-bold uppercase border ${FLEET_BUCKET_COLORS[unit.bucket]}`}
+                  >
+                    {FLEET_BUCKET_LABELS[unit.bucket]}
+                  </span>
+                </div>
               </button>
             );
           })}

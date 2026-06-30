@@ -238,13 +238,34 @@ export const clientService = {
 
   getAllBookings: async (clientId: string) => {
     return getOrSetCache(`client:bookings:${clientId}`, CLIENT_CACHE_TTL_MS, async () => {
-      const { data, error } = await supabase
+      const { data: bookingsData, error: bookingsError } = await supabase
         .from('bookings')
         .select(BOOKING_WITH_VEHICLE_SELECT)
         .eq('client_id', clientId)
         .order('start_date', { ascending: false });
-      if (error) return handleSupabaseError(error, 'getAllBookings');
-      return data;
+
+      if (bookingsError) return handleSupabaseError(bookingsError, 'getAllBookings');
+
+      const { data: reservationsData, error: reservationsError } = await supabase
+        .from('car_reservations')
+        .select(BOOKING_WITH_VEHICLE_SELECT)
+        .eq('client_id', clientId)
+        .in('status', ['reserved', 'pending_payment']);
+
+      if (reservationsError) return handleSupabaseError(reservationsError, 'getAllReservations');
+
+      const mappedReservations = (reservationsData || []).map(res => ({
+        ...res,
+        is_reservation: true,
+        // Ensure status reflects what client should see
+        status: res.status === 'reserved' ? 'pending_payment' : res.status
+      }));
+
+      const combined = [...(bookingsData || []), ...mappedReservations];
+      // Sort by start_date descending
+      combined.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime());
+
+      return combined;
     });
   },
 

@@ -371,6 +371,18 @@ export function AdminVehicleModels() {
     }
   };
 
+  const handleUnreserve = async (reservationId: string) => {
+    if (!selectedGroup) return;
+    if (!window.confirm('Are you sure you want to cancel this reservation? This will instantly free up the held unit.')) return;
+    try {
+      await adminService.deleteReservation(reservationId);
+      toast.success('Reservation cancelled successfully');
+      loadFleetStatus(selectedGroup, fleetStatusStart, fleetStatusEnd);
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to cancel reservation');
+    }
+  };
+
   const openGroupDetail = async (group: VehicleModelGroup, tab: DetailTab = 'units') => {
     setSelectedGroup(group);
     setDetailTab(tab);
@@ -750,6 +762,7 @@ export function AdminVehicleModels() {
                           ? `(${fleetStatusStart} → ${fleetStatusEnd})`
                           : undefined
                       }
+                      onUnreserve={handleUnreserve}
                     />
                   </div>
 
