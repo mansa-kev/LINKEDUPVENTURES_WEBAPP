@@ -21,6 +21,7 @@ import {
   X,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { generateVehicleSlug } from '../../utils/urlUtils';
 
 type VehicleModelRow = VehicleModel & {
   cars?: Array<{ id: string }>;
@@ -1035,7 +1036,7 @@ export function AdminVehicleModels() {
 
             <div className="p-4 border-t border-border bg-muted/10 flex flex-col sm:flex-row gap-2">
               <a
-                href={`/models/${selectedGroup.representativeId}`}
+                href={`/vehicles/${generateVehicleSlug(selectedGroup.representative)}`}
                 target="_blank"
                 rel="noreferrer"
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-card border border-border rounded-xl text-xs font-bold hover:bg-muted transition-colors"

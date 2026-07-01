@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { generateVehicleSlug } from '../utils/urlUtils';
 
 function generateContinuationToken(): string {
   const first = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now()}`;
@@ -59,7 +60,7 @@ export function createPrepareContinuationHandler(supabase: SupabaseClient) {
       const continuationTarget = reservation.car_id
         ? `/cars/${reservation.car_id}`
         : reservation.vehicle_model_id
-          ? `/models/${reservation.vehicle_model_id}`
+          ? `/vehicles/${generateVehicleSlug({id: reservation.vehicle_model_id, friendly_id: reservation.vehicle_model?.friendly_id, family_slug: reservation.vehicle_model?.family_slug})}`
           : null;
 
       if (!continuationTarget) {

@@ -1,3 +1,4 @@
+import { generateVehicleSlug } from '../utils/urlUtils';
 /** True when a booking was created from a paid reservation continuation. */
 export function bookingFromReservation(booking: {
   source_reservation_id?: string | null;
@@ -30,7 +31,7 @@ export function getBookingRebookPath(booking: {
   vehicle_model?: { id?: string } | null;
 }): string {
   const modelId = booking.vehicle_model_id || booking.vehicle_model?.id;
-  if (modelId) return `/models/${modelId}`;
+  if (modelId) return `/vehicles/${generateVehicleSlug({id: modelId})}`;
   if (booking.car_id) return `/cars/${booking.car_id}`;
   return '/cars';
 }

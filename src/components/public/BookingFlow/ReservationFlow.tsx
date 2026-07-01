@@ -28,6 +28,7 @@ import { supabase } from '../../../lib/supabase';
 import { sendTemplatedEmail } from '../../../services/emailProvider';
 import { InternationalPhoneInput } from '../../ui/InternationalPhoneInput';
 import { calculateRentalDays } from '../../../utils/rentalDays';
+import { generateVehicleSlug } from '../../../utils/urlUtils';
 
 interface ReservationFlowProps {
   car: Car;
@@ -38,7 +39,7 @@ interface ReservationFlowProps {
 export function ReservationFlow({ car, onClose, vehicleModelId }: ReservationFlowProps) {
   const navigate = useNavigate();
   const displayName = `${car.make} ${car.model}`;
-  const continuationPath = vehicleModelId ? `/models/${vehicleModelId}` : `/cars/${car.id}`;
+  const continuationPath = vehicleModelId ? `/vehicles/${generateVehicleSlug({id: vehicleModelId})}` : `/cars/${car.id}`;
   const [step, setStep] = useState(1);
   const [reservationFee, setReservationFee] = useState(500);
   const [phone, setPhone] = useState('');

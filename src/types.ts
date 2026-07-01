@@ -1,4 +1,5 @@
 export interface VehicleModel {
+  friendly_id?: number;
   id: string;
   slug?: string;
   family_slug?: string;

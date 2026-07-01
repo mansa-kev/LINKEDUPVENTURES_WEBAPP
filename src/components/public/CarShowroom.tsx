@@ -17,6 +17,7 @@ import { SearchControls } from './SearchControls';
 import { FilterPanel } from './FilterPanel';
 import { PromoBadge } from './PromoBadge';
 import { CarStatusBadges } from './CarStatusBadges';
+import { generateVehicleSlug } from '../../utils/urlUtils';
 
 interface Filters {
   category: string;
@@ -189,7 +190,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                       transition={{ delay: i * 0.05 }}
                       className="group cursor-pointer"
                     >
-                      <Link to={`/models/${group.representativeId}`}>
+                      <Link to={`/vehicles/${generateVehicleSlug(group.representative)}`}>
                         <div className="bg-card dark:bg-card rounded-2xl overflow-hidden shadow-md group cursor-pointer">
                           {/* Card Image Container */}
                           <div className="relative h-44 md:h-48 overflow-hidden">
@@ -255,7 +256,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    window.location.href = `/models/${group.representativeId}?booking=true`;
+                                    window.location.href = `/vehicles/${generateVehicleSlug(group.representative)}?booking=true`;
                                   }}
                                   className="bg-orange-500 hover:bg-orange-600 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap"
                                 >
@@ -267,7 +268,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                                   onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    window.location.href = `/models/${group.representativeId}?reservation=true`;
+                                    window.location.href = `/vehicles/${generateVehicleSlug(group.representative)}?reservation=true`;
                                   }}
                                   className="bg-white/10 hover:bg-white/15 text-white text-[10px] md:text-xs font-black uppercase tracking-wider px-2 md:px-3 py-1 md:py-1.5 rounded-full transition-all cursor-pointer whitespace-nowrap border border-white/15"
                                 >
@@ -280,7 +281,7 @@ export function CarShowroom({ isHome = false, showSearchControls = true }: CarSh
                                 </span>
                               )}
                               <Link 
-                                to={`/models/${group.representativeId}`}
+                                to={`/vehicles/${generateVehicleSlug(group.representative)}`}
                                 className="flex items-center gap-1 md:gap-2 text-[10px] md:text-xs font-bold text-gray-400 hover:text-white hover:underline underline-offset-2 whitespace-nowrap transition-colors"
                               >
                                 VIEW DETAILS

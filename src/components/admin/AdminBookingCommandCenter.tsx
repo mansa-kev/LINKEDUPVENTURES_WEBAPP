@@ -21,6 +21,7 @@ import { AdminBookingLifecycle } from './AdminBookingLifecycle';
 import { ModelFleetStatusPanel } from './ModelFleetStatusPanel';
 import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 import type { ModelFleetStatusSummary } from '../../utils/modelFleetStatus';
+import { generateVehicleSlug } from '../../utils/urlUtils';
 type ModalType = 'pickup' | 'return' | 'extend' | 'flag' | null;
 type CommunicateMode = 'approval' | 'payment_rejected' | 'docs_rejected';
 
@@ -1206,7 +1207,7 @@ export function AdminBookingCommandCenter() {
 
                       {booking.vehicle_model_id && (
                         <a
-                          href={`/models/${booking.vehicle_model_id}`}
+                          href={`/vehicles/${generateVehicleSlug({id: booking.vehicle_model_id, friendly_id: booking.vehicle_model?.friendly_id, family_slug: booking.vehicle_model?.family_slug, make: booking.cars?.make, model: booking.cars?.model})}`}
                           target="_blank"
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline"

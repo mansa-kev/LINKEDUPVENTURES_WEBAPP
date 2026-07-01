@@ -38,6 +38,13 @@ const ClientLayout = React.lazy(() => import('./components/client/ClientLayout')
 const PublicLayout = React.lazy(() => import('./components/public/PublicLayout').then(m => ({ default: m.PublicLayout })));
 const DriverPortal = React.lazy(() => import('./components/driver/DriverPortal').then(m => ({ default: m.DriverPortal })));
 
+
+function OldModelRedirect() {
+  const { id } = useParams();
+  const location = useLocation();
+  return <Navigate to={`/vehicles/${id}${location.search}`} replace />;
+}
+
 export default function App() {
   const { subdomain } = useSubdomain();
 
@@ -65,7 +72,9 @@ export default function App() {
                           <Route path="/contact" element={<Contact />} />
                           <Route path="/cars" element={<BrowseCars />} />
                           <Route path="/cars/:id" element={<CarDetails />} />
-                          <Route path="/models/:id" element={<VehicleModelDetails />} />
+
+                          <Route path="/vehicles/:slug" element={<VehicleModelDetails />} />
+                          <Route path="/models/:id" element={<OldModelRedirect />} />
                           <Route path="/booking-confirmation/:bookingId" element={<BookingConfirmation />} />
                           <Route path="/how-it-works" element={<HowItWorks />} />
                           <Route path="/faq" element={<FAQ />} />

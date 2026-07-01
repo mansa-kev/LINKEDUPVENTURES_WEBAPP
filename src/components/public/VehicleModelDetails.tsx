@@ -14,7 +14,8 @@ import { vehicleModelToCarLike } from '../../utils/vehicleModelAdapter';
 import { DesktopFlowOverlay } from './BookingFlow/DesktopFlowOverlay';
 
 export function VehicleModelDetails() {
-  const { id } = useParams<{ id: string }>();
+  const { slug } = useParams<{ slug: string }>();
+  const id = slug; // Keep id variable for internal logic, but we'll parse it
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -31,25 +32,40 @@ export function VehicleModelDetails() {
 
   useEffect(() => {
     async function fetchModel() {
-      if (!id) return;
+      if (!slug) return;
+      
+      const { friendlyId, uuid } = parseVehicleFriendlyId(slug);
+      
       try {
-        const family = await fleetService.getVehicleModelFamilyById(id);
-        if (!family) {
-          setModelFamily(null);
-          setSelectedVariant(null);
-          return;
+        let familyGroup = null;
+        if (friendlyId) {
+          familyGroup = await fleetService.getVehicleModelFamilyByFriendlyId(friendlyId);
+        } else if (uuid) {
+          familyGroup = await fleetService.getVehicleModelFamilyById(uuid);
         }
-        setModelFamily(family);
-        const initialVariant =
-          family.variants.find((variant: VehicleModel) => variant.id === id) ||
-          family.representative;
-        setSelectedVariant(initialVariant);
+        
+        if (familyGroup) {
+          setModelFamily(familyGroup);
+          // If a specific variant is requested (via UUID fallback), set it
+          if (uuid && familyGroup.variants.some((v: any) => v.id === uuid)) {
+             const v = familyGroup.variants.find((v: any) => v.id === uuid);
+             if (v) setModel(v);
+             else setModel(familyGroup.representative);
+          } else {
+             setModel(familyGroup.representative);
+          }
+        } else {
+          setError('Vehicle model not found');
+        }
+      } catch (err: any) {
+        console.error('Error fetching model:', err);
+        setError('Failed to load vehicle model');
       } finally {
         setLoading(false);
       }
     }
     fetchModel();
-  }, [id]);
+  }, [slug]);
 
   useEffect(() => {
     async function fetchReviews() {
@@ -163,7 +179,7 @@ export function VehicleModelDetails() {
   const desc = `Hire the ${model.display_name || `${model.make} ${model.model}`} in Nairobi from KES ${Number(model.base_daily_rate || 0).toLocaleString()}/day. ${model.seats || ''} seats, ${model.transmission || ''}.`;
   const image = model.primary_image_url || (images[0] as string);
   const carLike = vehicleModelToCarLike(model);
-  const shareUrl = `${window.location.origin}/models/${model.id}?booking=true`;
+  const shareUrl = `${window.location.origin}/vehicles/${generateVehicleSlug(model)}?booking=true`;
   const shareText = `Book the ${modelFamily.displayName} from KES ${Number(model.base_daily_rate || 0).toLocaleString()}/day.`;
   const waShareUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`;
 
@@ -195,11 +211,11 @@ export function VehicleModelDetails() {
       <Helmet>
         <title>{title}</title>
         <meta name="description" content={desc} />
-        <link rel="canonical" href={`https://linkedupcarsrentals.com/models/${model.id}`} />
+        <link rel="canonical" href={`https://linkedupcarsrentals.com/vehicles/${generateVehicleSlug(model)}`} />
         <meta property="og:title" content={title} />
         <meta property="og:description" content={desc} />
         <meta property="og:image" content={image as string} />
-        <meta property="og:url" content={`https://linkedupcarsrentals.com/models/${model.id}`} />
+        <meta property="og:url" content={`https://linkedupcarsrentals.com/vehicles/${generateVehicleSlug(model)}`} />
         <meta property="og:type" content="product" />
         <meta name="twitter:card" content="summary_large_image" />
         <meta name="twitter:title" content={title} />
@@ -277,7 +293,7 @@ export function VehicleModelDetails() {
                           type="button"
                           onClick={() => {
                             setSelectedVariant(variant);
-                            navigate(`/models/${variant.id}${location.search}`, { replace: true });
+                            navigate(`/vehicles/${generateVehicleSlug(variant)}${location.search}`, { replace: true });
                           }}
                           className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
                             selectedVariant.id === variant.id

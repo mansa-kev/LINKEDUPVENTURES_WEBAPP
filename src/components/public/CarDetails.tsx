@@ -32,6 +32,7 @@ import { DesktopFlowOverlay } from './BookingFlow/DesktopFlowOverlay';
 import { ReservationFlow } from './BookingFlow/ReservationFlow';
 import { Logo } from '../shared/Logo';
 import { LogoLoader } from '../shared/LogoLoader';
+import { generateVehicleSlug } from '../../utils/urlUtils';
 
 export function CarDetails() {
   const { id } = useParams<{ id: string }>();
@@ -63,7 +64,7 @@ export function CarDetails() {
         setReviews(reviewsData || []);
 
         if (carData?.vehicle_model_id) {
-          navigate(`/models/${carData.vehicle_model_id}${location.search}`, { replace: true });
+          navigate(`/vehicles/${generateVehicleSlug({id: carData.vehicle_model_id})}${location.search}`, { replace: true });
           return;
         }
 

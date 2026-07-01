@@ -11,6 +11,7 @@ import { fleetService } from '../../services/fleetService';
 import { toProxiedAssetUrl } from '../../utils/assetUrl';
 import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
 import { getBookingRebookPath } from '../../utils/bookingSource';
+import { generateVehicleSlug } from '../../utils/urlUtils';
 
 type DocType = 'facePhoto' | 'licenseFront' | 'licenseBack' | 'idFront' | 'idBack';
 
@@ -445,7 +446,7 @@ export function MyBookings() {
                     {booking.is_reservation && booking.status === 'pending_payment' && (
                       <button
                         onClick={() => {
-                          const url = `/models/${booking.vehicle_model_id}?booking=true&reservationToken=${booking.booking_completion_token || booking.id}`;
+                          const url = `/vehicles/${generateVehicleSlug({id: booking.vehicle_model_id, friendly_id: booking.vehicle_model?.friendly_id, family_slug: booking.vehicle_model?.family_slug, make: booking.cars?.make, model: booking.cars?.model})}?booking=true&reservationToken=${booking.booking_completion_token || booking.id}`;
                           window.location.href = url;
                         }}
                         className="flex-1 sm:flex-none px-4 py-2 bg-primary text-primary-foreground hover:bg-primary/90 rounded-xl text-sm font-bold flex items-center justify-center gap-2"
