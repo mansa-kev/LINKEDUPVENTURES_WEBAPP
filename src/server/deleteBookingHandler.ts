@@ -74,6 +74,7 @@ export function createDeleteBookingHandler(supabase: SupabaseClient, requireServ
         'transactions',
         'payout_settlements',
         'car_reviews',
+        'booking_documents',
       ];
 
       const cleanupErrors: string[] = [];
