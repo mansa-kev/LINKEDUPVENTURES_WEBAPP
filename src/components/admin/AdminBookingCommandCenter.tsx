@@ -12,7 +12,7 @@ import {
 import { logger } from '../../utils/logger';
 import { adminService } from '../../services/adminService';
 import { enhancedContractService } from '../../services/enhancedContractService';
-import { buildBookingSummaryForContract, generateAndSaveContract, regenerateAndSaveContract, type ContractBookingData, type ContractCar } from '../../services/contractPdfService';
+import { buildBookingSummaryForContract, generateAndSaveContract, regenerateAndSaveContract } from '../../services/contractPdfService';
 import { PdfViewer } from './PdfViewer';
 import { sendAdminEmail } from '../../services/adminEmailService';
 import { recordPaymentTransaction } from '../../utils/recordPaymentTransaction';

@@ -8,7 +8,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSubdomain } from '../../contexts/SubdomainContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
-import { NotificationService } from '../../services/notificationService';
+import { notificationService } from '../../services/notificationService';
 import { analyticsService } from '../../services/analyticsService';
 import { sendTemplatedEmail } from '../../services/emailProvider';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';

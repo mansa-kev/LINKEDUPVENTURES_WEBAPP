@@ -21,7 +21,7 @@ export function createPrepareContinuationHandler(supabase: SupabaseClient) {
 
       const { data: reservation, error: resError } = await supabase
         .from('car_reservations')
-        .select('id, car_id, vehicle_model_id, client_id, status, payment_status, booking_completion_token, linked_booking_id')
+        .select('id, car_id, vehicle_model_id, client_id, status, payment_status, booking_completion_token, linked_booking_id, vehicle_model:vehicle_models(friendly_id, family_slug)')
         .eq('id', reservationId)
         .single();
 
