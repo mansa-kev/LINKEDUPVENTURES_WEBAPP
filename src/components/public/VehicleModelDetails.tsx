@@ -50,17 +50,16 @@ export function VehicleModelDetails() {
           // If a specific variant is requested (via UUID fallback), set it
           if (uuid && familyGroup.variants.some((v: any) => v.id === uuid)) {
              const v = familyGroup.variants.find((v: any) => v.id === uuid);
-             if (v) setModel(v);
-             else setModel(familyGroup.representative);
+             if (v) setSelectedVariant(v);
+             else setSelectedVariant(familyGroup.representative);
           } else {
-             setModel(familyGroup.representative);
+             setSelectedVariant(familyGroup.representative);
           }
         } else {
-          setError('Vehicle model not found');
+          console.error('Vehicle model not found');
         }
       } catch (err: any) {
         console.error('Error fetching model:', err);
-        setError('Failed to load vehicle model');
       } finally {
         setLoading(false);
       }
