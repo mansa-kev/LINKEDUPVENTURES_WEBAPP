@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase';
 
-export type AnalyticsEventType = 'page_view' | 'click' | 'booking_step' | 'error';
+export type AnalyticsEventType = 'page_view' | 'click' | 'booking_step' | 'error' | 'page_leave';
 
 export interface AnalyticsEventData {
   page_url?: string;

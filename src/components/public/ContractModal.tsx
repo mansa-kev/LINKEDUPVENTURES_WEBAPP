@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { X, Printer, FileText, Loader2, AlertCircle, ExternalLink , Download } from 'lucide-react';
 import { resolveAssetUrl } from '../../utils/assetUrl';
 import { contractService } from '../../services/contractService';
 

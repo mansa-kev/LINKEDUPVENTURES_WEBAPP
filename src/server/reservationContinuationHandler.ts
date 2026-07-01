@@ -60,7 +60,7 @@ export function createPrepareContinuationHandler(supabase: SupabaseClient) {
       const continuationTarget = reservation.car_id
         ? `/cars/${reservation.car_id}`
         : reservation.vehicle_model_id
-          ? `/vehicles/${generateVehicleSlug({id: reservation.vehicle_model_id, friendly_id: reservation.vehicle_model?.friendly_id, family_slug: reservation.vehicle_model?.family_slug})}`
+          ? `/vehicles/${generateVehicleSlug({id: reservation.vehicle_model_id, friendly_id: (reservation.vehicle_model as any)?.friendly_id, family_slug: (reservation.vehicle_model as any)?.family_slug})}`
           : null;
 
       if (!continuationTarget) {
