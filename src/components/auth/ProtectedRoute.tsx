@@ -2,7 +2,7 @@ import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth, resolveAuthRole } from '../../contexts/AuthContext';
 import { useSubdomain, Subdomain } from '../../contexts/SubdomainContext';
-import { Loader2 } from 'lucide-react';
+import { LogoLoader } from '../shared/LogoLoader';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -15,11 +15,7 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   const location = useLocation();
 
   if (loading || (user && profileLoading)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="animate-spin w-8 h-8 text-primary" />
-      </div>
-    );
+    return <LogoLoader fullScreen message="Loading your portal..." />;
   }
 
   if (!user) {
