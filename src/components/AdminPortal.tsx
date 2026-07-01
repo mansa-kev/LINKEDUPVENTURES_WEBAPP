@@ -65,6 +65,7 @@ const importAdminContractManager = () => import('./admin/AdminContractManager');
 const importAdminSystemHealth = () => import('./admin/AdminSystemHealth');
 const importAdminSettings = () => import('./admin/AdminSettings');
 const importAdminLogout = () => import('./admin/AdminLogout');
+const importAdminAnalyticsCenter = () => import('./admin/AdminAnalyticsCenter');
 const importAdminOutsourcedCars = () => import('./admin/AdminOutsourcedCars');
 const importAdminPromotions = () => import('./admin/AdminPromotions');
 const importAdminReservations = () => import('./admin/AdminReservations');
@@ -96,6 +97,7 @@ const AdminContractManager = React.lazy(() => importAdminContractManager().then(
 const AdminSystemHealth = React.lazy(() => importAdminSystemHealth().then(m => ({ default: m.AdminSystemHealth })));
 const AdminSettings = React.lazy(() => importAdminSettings().then(m => ({ default: m.AdminSettings })));
 const AdminLogout = React.lazy(() => importAdminLogout().then(m => ({ default: m.AdminLogout })));
+const AdminAnalyticsCenter = React.lazy(() => importAdminAnalyticsCenter().then(m => ({ default: m.AdminAnalyticsCenter })));
 const AdminOutsourcedCars = React.lazy(() => importAdminOutsourcedCars().then(m => ({ default: m.AdminOutsourcedCars })));
 const AdminPromotions = React.lazy(() => importAdminPromotions().then(m => ({ default: m.AdminPromotions })));
 const AdminReservations = React.lazy(() => importAdminReservations().then(m => ({ default: m.AdminReservations })));
@@ -133,6 +135,7 @@ const ADMIN_MODULE_PRELOADERS: Record<string, () => Promise<unknown>> = {
   'system-health': importAdminSystemHealth,
   settings: importAdminSettings,
   logout: importAdminLogout,
+  analytics: importAdminAnalyticsCenter,
 };
 
 type ModuleCategory = {
@@ -179,6 +182,7 @@ const MODULE_CATEGORIES: ModuleCategory[] = [
       { id: 'car-earnings', label: 'Car Earnings', icon: TrendingUp },
       { id: 'pricing', label: 'Pricing & Promotions', icon: Tag },
       { id: 'reports', label: 'Reports', icon: BarChart3 },
+      { id: 'analytics', label: 'Analytics & Traffic', icon: TrendingUp },
     ]
   },
   {
@@ -403,6 +407,7 @@ export function AdminPortal() {
                 <Route path="system-health" element={<AdminSystemHealth />} />
                 <Route path="settings" element={<AdminSettings />} />
                 <Route path="logout" element={<AdminLogout />} />
+                <Route path="analytics" element={<AdminAnalyticsCenter />} />
                 <Route path=":activeModule" element={<AdminModuleFallback />} />
               </Routes>
             </Suspense>

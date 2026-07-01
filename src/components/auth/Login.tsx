@@ -8,6 +8,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSubdomain } from '../../contexts/SubdomainContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { toast } from 'sonner';
+import { NotificationService } from '../../services/notificationService';
+import { analyticsService } from '../../services/analyticsService';
 import { sendTemplatedEmail } from '../../services/emailProvider';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 
@@ -395,7 +397,9 @@ export function Login() {
   // ---------------------------------------------------------------------------
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
+    analyticsService.trackEvent('click', 'sign_up_submit');
     setError(null);
 
     if (password !== confirmPassword) {

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Helmet } from 'react-helmet-async';
 import { Link } from 'react-router-dom';
+import { analyticsService } from '../../services/analyticsService';
+
 import { motion } from 'motion/react';
 import { supabase } from '../../lib/supabase';
 import { Clock, ArrowRight, Search, Tag } from 'lucide-react';

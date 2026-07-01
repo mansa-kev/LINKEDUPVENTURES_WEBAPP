@@ -17,6 +17,7 @@ import { SearchControls } from './SearchControls';
 import { FilterPanel } from './FilterPanel';
 import { PromoBadge } from './PromoBadge';
 import { CarStatusBadges } from './CarStatusBadges';
+import { analyticsService } from '../../services/analyticsService';
 import { generateVehicleSlug } from '../../utils/urlUtils';
 
 interface Filters {

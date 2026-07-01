@@ -5,6 +5,7 @@ import { supabase } from '../../lib/supabase';
 import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
 import { toast } from 'sonner';
 import { submitSupportRequest } from '../../services/supportRequestService';
+import { analyticsService } from '../../services/analyticsService';
 
 interface FloatingSupportWidgetProps {
   context?: string;
@@ -76,6 +77,11 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
       
       // Reset form message
       setFormData(prev => ({ ...prev, message: '' }));
+      
+      // Track analytics
+      analyticsService.trackEvent('click', mode === 'callback' ? 'request_callback' : 'whatsapp_support', {
+        metadata: { context, name: formData.name }
+      });
       
     } catch (error) {
       console.error('Error saving support message:', error);
@@ -208,6 +214,9 @@ export function FloatingSupportWidget({ context = 'General Website Inquiry' }: F
         
         <button
           onClick={() => {
+            if (!isOpen) {
+              analyticsService.trackEvent('click', 'open_support_widget', { metadata: { context } });
+            }
             setIsOpen(!isOpen);
             setShowTooltip(false);
           }}

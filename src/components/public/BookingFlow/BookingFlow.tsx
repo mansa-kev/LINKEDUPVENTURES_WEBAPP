@@ -22,6 +22,7 @@ interface BookingFlowProps {
 import { calculateRentalDays } from '../../../utils/rentalDays';
 import { enhancedContractService } from '../../../services/enhancedContractService';
 import { prefetchContractAssets } from '../../../utils/contractTemplateCache';
+import { analyticsService } from '../../../services/analyticsService';
 
 const calculateDays = (startDate?: string, endDate?: string) =>
   calculateRentalDays(startDate, endDate);
@@ -108,6 +109,20 @@ export function BookingFlow({ car: carProp, vehicleModel, reservationToken, vehi
   const nextStep = (data: any) => {
     const newBookingData = { ...bookingData, ...data };
     const newStep = step + 1;
+    
+    if (step === 1) {
+      analyticsService.trackBookingStep('completed_dates_and_location', { 
+        pickupLocation: data.pickupLocation,
+        dropoffLocation: data.dropoffLocation,
+        startDate: data.startDate,
+        endDate: data.endDate
+      });
+    } else if (step === 2) {
+      analyticsService.trackBookingStep('completed_personal_details', {});
+    } else if (step === 3) {
+      analyticsService.trackBookingStep('completed_documents', {});
+    }
+    
     setBookingData(newBookingData);
     setStep(newStep);
     saveSession(newBookingData, newStep);
