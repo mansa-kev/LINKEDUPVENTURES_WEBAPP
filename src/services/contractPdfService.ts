@@ -73,21 +73,81 @@ export async function generateContractPdfBase64(
   // It handles creating an offscreen iframe internally, completely avoiding all cropping/opacity bugs.
   const fullHtmlString = wrapContractHtmlForPdf(filledHtml);
 
-  try {
-    const html2pdf = (await import('html2pdf.js')).default;
-    const pdfOptions = {
-      ...PDF_OPTIONS,
-      html2canvas: {
-        ...PDF_OPTIONS.html2canvas,
-        // Scale 1 on mobile to avoid out-of-memory crashes
-        scale: isMobile ? 1 : 2,
-      },
-    };
-    return await html2pdf().from(fullHtmlString).set(pdfOptions).outputPdf('datauristring');
-  } catch (error) {
-    console.error('PDF Generation Error:', error);
-    throw error;
-  }
+  return new Promise((resolve, reject) => {
+    try {
+      const iframe = document.createElement('iframe');
+      // Position offscreen to avoid layout disruption
+      iframe.style.position = 'absolute';
+      iframe.style.width = '794px';
+      iframe.style.height = '0';
+      iframe.style.border = 'none';
+      iframe.style.visibility = 'hidden';
+      iframe.style.left = '-9999px';
+      iframe.style.top = '-9999px';
+      document.body.appendChild(iframe);
+
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (!doc) {
+        document.body.removeChild(iframe);
+        reject(new Error('Could not access iframe document'));
+        return;
+      }
+
+      // Write full HTML structure (including <head> tags and stylesheets)
+      doc.open();
+      doc.write(fullHtmlString);
+      doc.close();
+
+      // Poll until all template images (such as the company logo) have fully loaded
+      const checkLoaded = () => {
+        const images = doc.getElementsByTagName('img');
+        let allLoaded = true;
+        for (let i = 0; i < images.length; i++) {
+          if (!images[i].complete) {
+            allLoaded = false;
+            break;
+          }
+        }
+        if (allLoaded) {
+          import('html2pdf.js').then((module) => {
+            const html2pdf = module.default;
+            const pdfOptions = {
+              ...PDF_OPTIONS,
+              html2canvas: {
+                ...PDF_OPTIONS.html2canvas,
+                // Scale 1 on mobile to avoid out-of-memory crashes
+                scale: isMobile ? 1 : 2,
+                useCORS: true,
+                allowTaint: true,
+              },
+            };
+
+            html2pdf()
+              .from(doc.body)
+              .set(pdfOptions)
+              .outputPdf('datauristring')
+              .then((pdfBase64: string) => {
+                document.body.removeChild(iframe);
+                resolve(pdfBase64);
+              })
+              .catch((err: any) => {
+                document.body.removeChild(iframe);
+                reject(err);
+              });
+          }).catch((err) => {
+            document.body.removeChild(iframe);
+            reject(err);
+          });
+        } else {
+          setTimeout(checkLoaded, 100);
+        }
+      };
+
+      setTimeout(checkLoaded, 150);
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
 export async function generateAndSaveContract(
