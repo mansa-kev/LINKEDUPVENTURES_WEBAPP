@@ -229,6 +229,33 @@ const app = express();
     }
   });
 
+  // ─── DOCUMENT PROXY (Hides Supabase URL and forces inline display for PDFs) ───────────
+  app.get('/api/documents/proxy', async (req, res) => {
+    const targetUrl = req.query.url as string;
+    if (!targetUrl || !targetUrl.includes('supabase.co')) {
+      return res.status(400).send('Valid URL required');
+    }
+    
+    try {
+      const response = await fetch(targetUrl);
+      if (!response.ok) {
+        return res.status(response.status).send('Document not found');
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType) res.setHeader('Content-Type', contentType);
+      
+      // Force inline display so it renders in iframes without downloading
+      res.setHeader('Content-Disposition', 'inline');
+      
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error('Doc proxy error:', err);
+      res.status(500).send('Failed to load document');
+    }
+  });
+
   // ─── NCBA STK PUSH API ROUTES ─────────────────────────────────────
 
   const finalizeNcbaPayment = async (paymentRequest: any, queryResult: any) => {

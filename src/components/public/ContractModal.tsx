@@ -33,7 +33,12 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
   }, [onClose]);
 
   const rawPdfUrl = contract?.pdf_url || contract?.contract_url || '';
-  const pdfUrl = resolveAssetUrl(rawPdfUrl);
+  const resolvedUrl = resolveAssetUrl(rawPdfUrl);
+  
+  // Use our backend proxy to hide the Supabase URL and enforce inline display
+  const pdfUrl = resolvedUrl && resolvedUrl.includes('supabase.co') 
+    ? `/api/documents/proxy?url=${encodeURIComponent(resolvedUrl)}` 
+    : resolvedUrl;
 
   // Derive all booking details
   const guestInfo = booking?.metadata?.guest_info;
@@ -47,9 +52,9 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
   const bookingRef = booking?.id ? booking.id.slice(0, 8).toUpperCase() : 'N/A';
 
   const handleSaveAsPDF = () => {
-    if (booking?.metadata?.contract_url) {
-      // Just open the PDF URL directly if it exists, so the user can download/print it natively.
-      window.open(booking.metadata.contract_url, '_blank');
+    if (booking?.metadata?.contract_url && pdfUrl) {
+      // Just open the proxied PDF URL directly if it exists, so the user can download/print it natively.
+      window.open(pdfUrl, '_blank');
       return;
     }
 

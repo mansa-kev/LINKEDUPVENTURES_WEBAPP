@@ -34,7 +34,7 @@ export function AdminReviews() {
     setLoading(true);
     const { data, error } = await supabase
       .from('car_reviews')
-      .select('*, user_profiles(full_name), cars(make, model, year), vehicle_models(make, model, year, display_name)')
+      .select('*, user_profiles(full_name), cars(make, model, year), bookings(vehicle_model_id, vehicle_models(make, model, year, display_name))')
       .order('created_at', { ascending: false });
     if (!error) setReviews((data as any) || []);
     setLoading(false);
@@ -145,7 +145,17 @@ export function AdminReviews() {
         <div className="space-y-4">
           {filtered.map((review: any, idx) => {
             const firstName = (review.user_profiles?.full_name || 'Anonymous').split(' ')[0];
-            const carName = review.cars ? `${review.cars.make} ${review.cars.model} ${review.cars.year}` : review.vehicle_models ? review.vehicle_models.display_name || `${review.vehicle_models.make} ${review.vehicle_models.model} ${review.vehicle_models.year}` : 'Unknown Vehicle';
+            const getCarName = (review: any) => {
+              if (review.bookings?.vehicle_models) {
+                const vm = review.bookings.vehicle_models;
+                return vm.display_name || `${vm.make} ${vm.model}`;
+              }
+              if (review.cars) {
+                return `${review.cars.make} ${review.cars.model}`;
+              }
+              return 'Unknown Vehicle';
+            };
+            const carName = getCarName(review);
 
             return (
               <motion.div

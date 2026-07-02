@@ -303,7 +303,14 @@ export function AdminBookingCommandCenter() {
 
   const handleDownloadContract = async () => {
     if (!booking) return;
-    const url = booking.e_contracts?.[0]?.pdf_url || booking.metadata?.contract_url;
+    const rawUrl = booking.e_contracts?.[0]?.pdf_url || booking.metadata?.contract_url;
+    if (!rawUrl) return;
+    
+    const resolvedUrl = resolveAssetUrl(rawUrl);
+    const url = resolvedUrl && resolvedUrl.includes('supabase.co') 
+      ? `/api/documents/proxy?url=${encodeURIComponent(resolvedUrl)}` 
+      : resolvedUrl;
+      
     if (!url) return;
     const ref = booking.id.slice(0, 8).toUpperCase();
 
@@ -512,7 +519,10 @@ export function AdminBookingCommandCenter() {
   
   const eContract = booking.e_contracts?.[0];
   const rawContractUrl = eContract?.pdf_url || meta.contract_url;
-  const contractUrl = resolveAssetUrl(rawContractUrl);
+  const resolvedContractUrl = resolveAssetUrl(rawContractUrl);
+  const contractUrl = resolvedContractUrl && resolvedContractUrl.includes('supabase.co') 
+    ? `/api/documents/proxy?url=${encodeURIComponent(resolvedContractUrl)}` 
+    : resolvedContractUrl;
   const signatureData = docs.signatureUrl || meta.signature || meta.signature_url;
 
   const bookingRef  = booking.id.slice(0, 8).toUpperCase();
