@@ -344,18 +344,45 @@ export async function loadFilledContractHtml(
 }
 
 export function wrapContractHtmlForPdf(html: string): string {
+  // Extract all <style> blocks from the HTML string
+  const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi;
+  let styles = '';
+  let match;
+  while ((match = styleRegex.exec(html)) !== null) {
+    styles += match[1] + '\n';
+  }
+
+  // Extract content inside the <body> tag
+  const bodyRegex = /<body[^>]*>([\s\S]*?)<\/body>/i;
+  const bodyMatch = bodyRegex.exec(html);
+  const bodyContent = bodyMatch ? bodyMatch[1] : html;
+
+  // Root container styles for standard A4 width
   const overrideStyles = `
-    <style>
-      html, body { width: 794px !important; max-width: 794px !important; margin: 0 auto !important; padding: 32px !important; box-sizing: border-box !important; background: #ffffff !important; color: #111 !important; font-family: 'Times New Roman', Times, serif !important; }
-      img { max-width: 100% !important; height: auto !important; }
-      table { width: 100% !important; }
-      .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 24px !important; width: 100% !important; }
-      .signature-box { flex: 1 1 0 !important; min-width: 0 !important; }
-    </style>
+    width: 794px !important;
+    max-width: 794px !important;
+    margin: 0 auto !important;
+    padding: 32px !important;
+    box-sizing: border-box !important;
+    background: #ffffff !important;
+    color: #111 !important;
+    font-family: 'Times New Roman', Times, serif !important;
   `;
 
-  if (/<\/body>/i.test(html)) {
-    return html.replace(/<\/body>/i, `${overrideStyles}</body>`);
-  }
-  return `${html}${overrideStyles}`;
+  const allStyles = `
+    ${styles}
+    img { max-width: 100% !important; height: auto !important; }
+    table { width: 100% !important; }
+    .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 24px !important; width: 100% !important; }
+    .signature-box { flex: 1 1 0 !important; min-width: 0 !important; }
+  `;
+
+  return `
+    <div style="${overrideStyles}">
+      <style>
+        ${allStyles}
+      </style>
+      ${bodyContent}
+    </div>
+  `;
 }

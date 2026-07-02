@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { logger } from '../../utils/logger';
 import { linkBookingAndSyncProfile } from '../../utils/bookingProfileSync';
 import { getBookingVehicleDisplay } from '../../utils/bookingVehicleDisplay';
+import { toProxiedAssetUrl } from '../../utils/assetUrl';
 
 type BookingStatus = 'pending' | 'confirmed' | 'on_trip' | 'completed' | 'cancelled' | 'pending_payment_verification';
 
@@ -556,7 +557,7 @@ export function AdminBookingDetail({ booking: initialBooking, onClose, onRefresh
                   <SectionCard icon={<FileText size={13} />} title="Contract & Signature">
                     <div className="flex flex-wrap gap-4 items-start">
                       {meta.contract_url && (
-                        <a href={meta.contract_url} target="_blank" rel="noopener noreferrer"
+                        <a href={toProxiedAssetUrl(meta.contract_url) || meta.contract_url} target="_blank" rel="noopener noreferrer"
                           className="flex items-center gap-2 px-3 py-2 bg-primary/10 border border-primary/20 rounded-xl text-xs font-black text-primary hover:bg-primary/20 transition-colors">
                           <ExternalLink size={12} /> View Contract PDF
                         </a>

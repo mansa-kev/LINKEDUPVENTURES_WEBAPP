@@ -11,6 +11,7 @@ import {
   Upload, X, RefreshCw, ArrowRight,
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { toProxiedAssetUrl } from '../../utils/assetUrl';
 
 const PROFILE_PROMPT_KEY = 'glovebox_profile_prompt_dismissed';
 
@@ -402,13 +403,13 @@ export function DigitalGlovebox() {
                       <td className="py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
                           {c.contract_url && (
-                            <a href={c.contract_url} target="_blank" rel="noopener noreferrer"
+                            <a href={toProxiedAssetUrl(c.contract_url) || c.contract_url} target="_blank" rel="noopener noreferrer"
                               className="p-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors" title="View Contract">
                               <Eye size={14} />
                             </a>
                           )}
                           {(c.contract_url || c.signature_url) && (
-                            <a href={c.contract_url || c.signature_url} download
+                            <a href={toProxiedAssetUrl(c.contract_url || c.signature_url) || c.contract_url || c.signature_url} download
                               className="p-2 bg-muted hover:bg-muted/80 rounded-lg transition-colors" title="Download">
                               <Download size={14} />
                             </a>
