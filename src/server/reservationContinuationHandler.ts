@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { generateVehicleSlug } from '../utils/urlUtils';
+import { generateVehicleSlug } from '../utils/urlUtils.js';
 
 function generateContinuationToken(): string {
   const first = globalThis.crypto?.randomUUID?.().replace(/-/g, '') || `${Date.now()}`;
