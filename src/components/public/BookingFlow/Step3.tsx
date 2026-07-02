@@ -215,6 +215,7 @@ export function Step3({ car, bookingData, onNext, onPrev, vehicleModelId }: Step
               ref={sigPad}
               penColor='#D4AF37'
               onEnd={syncSignaturePreview}
+              clearOnResize={false}
               canvasProps={{
                 className: 'w-full h-full cursor-crosshair',
                 style: { width: '100%', height: '100%' }

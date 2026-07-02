@@ -106,7 +106,7 @@ export function DirectContractDisplay({ contract, bookingData, car, signatureDat
         function postHeight(){
           try {
             var h = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, document.documentElement.offsetHeight, document.body.offsetHeight);
-            parent.postMessage({ __linkedupContractHeight: true, height: h }, '*');
+            parent.postMessage({ __linkedupContractHeight: true, height: h + 100 }, '*');
           } catch(e){}
         }
         function fixImages(){
