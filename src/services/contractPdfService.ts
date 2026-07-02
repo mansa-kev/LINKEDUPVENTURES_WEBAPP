@@ -69,25 +69,13 @@ export async function generateContractPdfBase64(
   // Detect mobile to reduce canvas scale and prevent OOM crashes
   const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768;
 
-  // Create a hidden container to hold the wrapper so it doesn't flash on screen
-  const container = document.createElement('div');
-  container.style.position = 'absolute';
-  container.style.left = '-9999px';
-  container.style.top = '0';
-  container.style.width = '0';
-  container.style.height = '0';
-  container.style.overflow = 'hidden';
-
-  const wrapper = document.createElement('div');
-  wrapper.innerHTML = wrapContractHtmlForPdf(filledHtml);
-  wrapper.style.padding = '20px';
-  wrapper.style.fontFamily = 'Arial, Helvetica, sans-serif';
-  wrapper.style.color = '#111';
-  wrapper.style.background = '#fff';
-  wrapper.style.width = '794px';
-
-  container.appendChild(wrapper);
-  document.body.appendChild(container);
+  // Pass HTML string directly to html2pdf
+  // It handles creating an offscreen iframe internally, completely avoiding all cropping/opacity bugs.
+  const fullHtmlString = `
+    <div style="padding: 20px; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; width: 794px;">
+      ${wrapContractHtmlForPdf(filledHtml)}
+    </div>
+  `;
 
   try {
     const html2pdf = (await import('html2pdf.js')).default;
@@ -99,9 +87,10 @@ export async function generateContractPdfBase64(
         scale: isMobile ? 1 : 2,
       },
     };
-    return await html2pdf().from(wrapper).set(pdfOptions).outputPdf('datauristring');
-  } finally {
-    document.body.removeChild(container);
+    return await html2pdf().from(fullHtmlString).set(pdfOptions).outputPdf('datauristring');
+  } catch (error) {
+    console.error('PDF Generation Error:', error);
+    throw error;
   }
 }
 
