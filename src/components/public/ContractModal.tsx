@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, Printer, FileText, Loader2, AlertCircle, ExternalLink , Download } from 'lucide-react';
+import { X, Printer, FileText, Loader2, AlertCircle, ExternalLink, Download } from 'lucide-react';
 import { resolveAssetUrl } from '../../utils/assetUrl';
 import { contractService } from '../../services/contractService';
+import { PdfViewer } from '../admin/PdfViewer';
 
 interface ContractModalProps {
   booking: any;
@@ -32,13 +33,10 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
+  // Resolve the PDF URL — PdfViewer will fetch it as a blob and render it
+  // in an iframe, which works on all devices including mobile.
   const rawPdfUrl = contract?.pdf_url || contract?.contract_url || '';
-  const resolvedUrl = resolveAssetUrl(rawPdfUrl);
-  
-  // Use our backend proxy to hide the Supabase URL and enforce inline display
-  const pdfUrl = resolvedUrl && resolvedUrl.includes('supabase.co') 
-    ? `/api/documents/proxy?url=${encodeURIComponent(resolvedUrl)}` 
-    : resolvedUrl;
+  const pdfUrl = resolveAssetUrl(rawPdfUrl);
 
   // Derive all booking details
   const guestInfo = booking?.metadata?.guest_info;
@@ -53,8 +51,8 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
 
   const handleSaveAsPDF = () => {
     if (booking?.metadata?.contract_url && pdfUrl) {
-      // Just open the proxied PDF URL directly if it exists, so the user can download/print it natively.
-      window.open(pdfUrl, '_blank');
+      // Open the resolved PDF URL in a new tab so the user can download/print it natively.
+      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -242,38 +240,11 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
               </div>
             </div>
           ) : (
-            <div className="h-full flex flex-col">
-              <div className="md:hidden flex flex-col items-center justify-center h-full gap-4 py-20 text-center px-8">
-                <FileText className="text-muted-foreground/50" size={48} />
-                <div>
-                  <p className="font-bold text-foreground mb-1">PDF Preview Not Supported</p>
-                  <p className="text-sm text-muted-foreground">Your device does not support inline PDF viewing.</p>
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <a
-                    href={pdfUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary rounded-xl text-sm font-bold"
-                  >
-                    <ExternalLink size={16} /> Open
-                  </a>
-                  <a
-                    href={pdfUrl}
-                    download
-                    className="flex items-center gap-2 px-4 py-2 bg-muted/40 text-foreground rounded-xl text-sm font-bold"
-                  >
-                    <Download size={16} /> Download
-                  </a>
-                </div>
-              </div>
-              <iframe
-                src={`${pdfUrl}#toolbar=1&navpanes=0`}
-                className="w-full border-0 hidden md:block"
-                style={{ height: '100%', minHeight: '300px' }}
-                title="Rental Agreement"
-              />
-            </div>
+            <PdfViewer
+              url={pdfUrl!}
+              className="w-full h-full"
+              style={{ minHeight: '300px' }}
+            />
           )}
         </div>
 

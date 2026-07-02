@@ -1,8 +1,10 @@
 export function toProxiedAssetUrl(url: string | null | undefined): string | null {
   if (!url) return null;
 
-  // Since proxying on Vercel had issues, we now resolve them directly
-  return url;
+  // Fully resolve internal /api/assets/ and /api/images/ paths to
+  // direct Supabase URLs so PdfViewer's fetch() works without chasing
+  // a 302 redirect that may be blocked by Supabase's own X-Frame-Options.
+  return resolveAssetUrl(url) || url;
 }
 
 export function resolveAssetUrl(url: string | null | undefined): string | null {
