@@ -79,9 +79,8 @@ export async function generateContractPdfBase64(
   // Position hidden in viewport so html2canvas captures it correctly without user seeing it
   wrapper.style.position = 'fixed';
   wrapper.style.top = '0';
-  wrapper.style.left = '0';
+  wrapper.style.left = '-9999px';
   wrapper.style.zIndex = '-9999';
-  wrapper.style.opacity = '0';
   wrapper.style.pointerEvents = 'none';
 
   document.body.appendChild(wrapper);
