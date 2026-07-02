@@ -24,6 +24,7 @@ import {
 import { toast } from 'sonner';
 import { useDropzone } from 'react-dropzone';
 import { supabase } from '../../lib/supabase';
+import { toProxyUrl } from '../../utils/assetUrl';
 
 export function AdminContractManager() {
   const [contracts, setContracts] = useState<any[]>([]);
@@ -602,7 +603,7 @@ export function AdminContractManager() {
               </button>
             </div>
             <iframe 
-              src={previewUrl} 
+              src={toProxyUrl(previewUrl) || previewUrl} 
               className="flex-1 w-full border-none"
               title="Contract Preview"
             />

@@ -346,7 +346,7 @@ export async function loadFilledContractHtml(
 export function wrapContractHtmlForPdf(html: string): string {
   const overrideStyles = `
     <style>
-      html, body { max-width: none !important; width: 100% !important; margin: 0 !important; padding: 24px !important; box-sizing: border-box !important; background: #ffffff !important; color: #111 !important; font-family: Arial, Helvetica, sans-serif !important; }
+      html, body { width: 794px !important; max-width: 794px !important; margin: 0 auto !important; padding: 32px !important; box-sizing: border-box !important; background: #ffffff !important; color: #111 !important; font-family: Arial, Helvetica, sans-serif !important; }
       img { max-width: 100% !important; height: auto !important; }
       table { width: 100% !important; }
       .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 24px !important; width: 100% !important; }

@@ -1567,16 +1567,9 @@ export function AdminBookingCommandCenter() {
                         </button>
                       </div>
                       <div className="rounded-xl border border-border overflow-hidden bg-white">
-                        <div className="md:hidden p-8 text-center bg-muted/10 flex flex-col items-center justify-center space-y-3">
-                          <FileText size={32} className="text-muted-foreground/60" />
-                          <p className="text-sm font-bold text-foreground">PDF preview not supported</p>
-                          <p className="text-xs text-muted-foreground max-w-[250px]">
-                            Your mobile browser does not support inline PDF viewing. Use the buttons above to open or download the contract.
-                          </p>
-                        </div>
                         <PdfViewer
                           url={contractUrl}
-                          className="w-full hidden md:block"
+                          className="w-full"
                           style={{ height: '520px', border: 'none' }}
                         />
                       </div>

@@ -71,11 +71,7 @@ export async function generateContractPdfBase64(
 
   // Pass HTML string directly to html2pdf
   // It handles creating an offscreen iframe internally, completely avoiding all cropping/opacity bugs.
-  const fullHtmlString = `
-    <div style="padding: 20px; font-family: Arial, Helvetica, sans-serif; color: #111; background: #fff; width: 794px;">
-      ${wrapContractHtmlForPdf(filledHtml)}
-    </div>
-  `;
+  const fullHtmlString = wrapContractHtmlForPdf(filledHtml);
 
   try {
     const html2pdf = (await import('html2pdf.js')).default;

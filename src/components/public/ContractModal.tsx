@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Printer, FileText, Loader2, AlertCircle, ExternalLink, Download } from 'lucide-react';
-import { resolveAssetUrl } from '../../utils/assetUrl';
+import { resolveAssetUrl, toProxyUrl } from '../../utils/assetUrl';
 import { contractService } from '../../services/contractService';
 import { PdfViewer } from '../admin/PdfViewer';
 
@@ -37,6 +37,7 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
   // in an iframe, which works on all devices including mobile.
   const rawPdfUrl = contract?.pdf_url || contract?.contract_url || '';
   const pdfUrl = resolveAssetUrl(rawPdfUrl);
+  const proxiedPdfUrl = pdfUrl ? `${window.location.origin}${toProxyUrl(pdfUrl) || pdfUrl}` : '';
 
   // Derive all booking details
   const guestInfo = booking?.metadata?.guest_info;
@@ -50,9 +51,9 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
   const bookingRef = booking?.id ? booking.id.slice(0, 8).toUpperCase() : 'N/A';
 
   const handleSaveAsPDF = () => {
-    if (booking?.metadata?.contract_url && pdfUrl) {
+    if (booking?.metadata?.contract_url && proxiedPdfUrl) {
       // Open the resolved PDF URL in a new tab so the user can download/print it natively.
-      window.open(pdfUrl, '_blank', 'noopener,noreferrer');
+      window.open(proxiedPdfUrl, '_blank', 'noopener,noreferrer');
       return;
     }
 
@@ -135,9 +136,9 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
     </div>
   </div>
 
-  ${pdfUrl ? `
+  ${proxiedPdfUrl ? `
   <div class="contract-page">
-    <iframe src="${pdfUrl}" title="Rental Agreement Contract"></iframe>
+    <iframe src="${proxiedPdfUrl}" title="Rental Agreement Contract"></iframe>
   </div>` : `
   <div class="section" style="text-align:center;padding:40px 36px;color:#6b7280">
     <p style="font-size:13px">No contract template is currently active. Please contact support.</p>
