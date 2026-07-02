@@ -89,6 +89,25 @@ export function AdminAnalyticsCenter() {
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, 5);
 
+  // Hourly Traffic Heatmap
+  const hourlyTrafficMap = pageViews.reduce((acc: any, e) => {
+    const hour = new Date(e.created_at).getHours();
+    acc[hour] = (acc[hour] || 0) + 1;
+    return acc;
+  }, {});
+  const hourlyTrafficData = Array.from({ length: 24 }).map((_, i) => ({
+    hour: `${i.toString().padStart(2, '0')}:00`,
+    views: hourlyTrafficMap[i] || 0
+  }));
+
+  // Funnel tracking
+  const bookingSteps = events.filter(e => e.event_type === 'booking_step');
+  const funnelSteps = [
+    { step: 'Step 1: Dates & Location', count: bookingSteps.filter(e => e.event_name === 'completed_dates_and_location').length },
+    { step: 'Step 2: Client Details', count: bookingSteps.filter(e => e.event_name === 'completed_personal_details').length },
+    { step: 'Step 3: Signed Contract', count: bookingSteps.filter(e => e.event_name === 'completed_documents').length },
+  ];
+
   // Action Clicks
   const actionClicks = events.filter(e => e.event_type === 'click');
   const waClicks = actionClicks.filter(e => e.event_name === 'whatsapp_support').length;
@@ -142,6 +161,38 @@ export function AdminAnalyticsCenter() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Booking Funnel Chart */}
+        <div className="p-6 bg-card border border-border rounded-2xl">
+          <h3 className="text-sm font-bold uppercase tracking-widest mb-6">Booking Flow Funnel</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={funnelSteps} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" horizontal={false} />
+                <XAxis type="number" stroke="#888" fontSize={12} />
+                <YAxis dataKey="step" type="category" stroke="#888" fontSize={11} width={120} />
+                <RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1f1f1f', borderColor: '#333', borderRadius: '12px' }} />
+                <Bar dataKey="count" fill="#d4af37" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Hourly Traffic Heatmap */}
+        <div className="p-6 bg-card border border-border rounded-2xl">
+          <h3 className="text-sm font-bold uppercase tracking-widest mb-6">Hourly Traffic</h3>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={hourlyTrafficData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" vertical={false} />
+                <XAxis dataKey="hour" stroke="#888" fontSize={11} interval={3} />
+                <YAxis stroke="#888" fontSize={12} />
+                <RechartsTooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} contentStyle={{ backgroundColor: '#1f1f1f', borderColor: '#333', borderRadius: '12px' }} />
+                <Bar dataKey="views" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
         {/* Daily Traffic */}
         <div className="p-6 bg-card border border-border rounded-2xl">
           <h3 className="text-sm font-bold uppercase tracking-widest mb-6">Daily Page Views</h3>
@@ -214,6 +265,28 @@ export function AdminAnalyticsCenter() {
           ) : (
             <div className="h-32 flex items-center justify-center text-muted-foreground text-sm">Not enough IP data yet.</div>
           )}
+        </div>
+        {/* Top Cars By Clicks */}
+        <div className="p-6 bg-card border border-border rounded-2xl">
+          <h3 className="text-sm font-bold uppercase tracking-widest mb-6">Top Cars by Engagement</h3>
+          <div className="space-y-4">
+            {topCars.map((item: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl hover:bg-accent/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
+                    #{idx + 1}
+                  </div>
+                  <span className="font-medium text-sm">{item.model}</span>
+                </div>
+                <span className="text-xs font-bold px-3 py-1 bg-background rounded-full border border-border">
+                  {item.clicks} clicks
+                </span>
+              </div>
+            ))}
+            {topCars.length === 0 && (
+              <p className="text-muted-foreground text-sm text-center py-4">No vehicle clicks recorded yet.</p>
+            )}
+          </div>
         </div>
       </div>
     </div>

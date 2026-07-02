@@ -19,6 +19,7 @@ interface Review {
   created_at: string;
   user_profiles: { full_name: string } | null;
   cars: { make: string; model: string; year: number } | null;
+  vehicle_models: { make: string; model: string; year: number; display_name: string } | null;
 }
 
 type TabType = 'pending' | 'approved' | 'rejected';
@@ -33,9 +34,9 @@ export function AdminReviews() {
     setLoading(true);
     const { data, error } = await supabase
       .from('car_reviews')
-      .select('*, user_profiles(full_name), cars(make, model, year)')
+      .select('*, user_profiles(full_name), cars(make, model, year), vehicle_models(make, model, year, display_name)')
       .order('created_at', { ascending: false });
-    if (!error) setReviews((data as Review[]) || []);
+    if (!error) setReviews((data as any) || []);
     setLoading(false);
   };
 
@@ -79,7 +80,7 @@ export function AdminReviews() {
     const q = search.toLowerCase();
     if (!q) return true;
     const name = r.user_profiles?.full_name?.toLowerCase() ?? '';
-    const car = `${r.cars?.make} ${r.cars?.model}`.toLowerCase();
+    const car = r.cars ? `${r.cars.make} ${r.cars.model}`.toLowerCase() : r.vehicle_models ? `${r.vehicle_models.make} ${r.vehicle_models.model}`.toLowerCase() : '';
     return name.includes(q) || car.includes(q) || r.comment.toLowerCase().includes(q);
   });
 
@@ -142,9 +143,9 @@ export function AdminReviews() {
         </div>
       ) : (
         <div className="space-y-4">
-          {filtered.map((review, idx) => {
+          {filtered.map((review: any, idx) => {
             const firstName = (review.user_profiles?.full_name || 'Anonymous').split(' ')[0];
-            const carName = review.cars ? `${review.cars.make} ${review.cars.model} ${review.cars.year}` : 'Unknown Vehicle';
+            const carName = review.cars ? `${review.cars.make} ${review.cars.model} ${review.cars.year}` : review.vehicle_models ? review.vehicle_models.display_name || `${review.vehicle_models.make} ${review.vehicle_models.model} ${review.vehicle_models.year}` : 'Unknown Vehicle';
 
             return (
               <motion.div

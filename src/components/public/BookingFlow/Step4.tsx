@@ -12,6 +12,7 @@ import { sendTemplatedEmail } from '../../../services/emailProvider';
 import { InternationalPhoneInput } from '../../ui/InternationalPhoneInput';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
+import { analyticsService } from '../../../services/analyticsService';
 
 interface Step4Props {
   car: Car;
@@ -153,12 +154,14 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
         // The realtime subscription will still catch any late webhook.
         setPhase('timeout');
         setLastMessage('Payment prompt is taking longer than usual. If you received the prompt on your phone, enter your PIN — this page will update automatically. Otherwise, tap Retry.');
+        analyticsService.trackEvent('error', 'stk_init_timeout', { metadata: { bookingId: id } });
         toast.message('Still sending payment prompt... check your phone.');
         return;
       } else if (!result?.success && !result?.paymentRequestId) {
         // Hard failure from the server
         setPhase('failed');
         setLastMessage(result?.error || result?.statusDescription || 'Payment prompt could not be sent. Please try again.');
+        analyticsService.trackEvent('error', 'stk_init_failed', { metadata: { error: result?.error, description: result?.statusDescription, bookingId: id } });
         toast.error(result?.error || 'Payment prompt failed. Please try again.');
         return;
       }
@@ -180,9 +183,11 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
         handlePaid(id);
       } else if (pollResult === 'failed') {
         setPhase('failed');
+        analyticsService.trackEvent('error', 'stk_payment_failed', { metadata: { bookingId: id } });
         setLastMessage('Payment was not completed. You can retry without creating a new booking.');
       } else {
         setPhase('timeout');
+        analyticsService.trackEvent('error', 'stk_payment_timeout', { metadata: { bookingId: id } });
         setLastMessage('Payment is still pending or timed out. You can retry the payment prompt for the same booking.');
       }
     } catch (error: any) {
@@ -191,9 +196,11 @@ export function Step4({ car, bookingData, onPrev, onComplete, vehicleModelId, up
       if (id) {
         setPhase('waiting');
         setLastMessage('Network hiccup while sending the payment prompt. If the prompt appeared on your phone, enter your PIN — we will confirm automatically.');
+        analyticsService.trackEvent('error', 'stk_network_hiccup', { metadata: { bookingId: id, error: error.message } });
       } else {
         setPhase('failed');
         setLastMessage(error.message || 'Payment could not be started. Please try again.');
+        analyticsService.trackEvent('error', 'stk_creation_error', { metadata: { error: error.message } });
         toast.error(error.message || 'Payment could not be started. Please try again.');
       }
     }

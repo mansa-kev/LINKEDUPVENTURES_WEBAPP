@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { InternationalPhoneInput } from '../ui/InternationalPhoneInput';
 import { submitSupportRequest } from '../../services/supportRequestService';
 import { toast } from 'sonner';
+import { analyticsService } from '../../services/analyticsService';
 
 interface HeroContent {
   id: string;
@@ -143,6 +144,9 @@ export function HeroSection() {
         message: callbackForm.message,
         context: 'Homepage Hero CTA',
         source: 'hero_callback_button',
+      });
+      analyticsService.trackEvent('click', 'request_callback', {
+        source: 'hero_callback_button'
       });
       toast.success('Callback request sent. Redirecting to WhatsApp...');
       setCallbackOpen(false);
