@@ -61,6 +61,7 @@ export function createContractSaveHandler(supabase: SupabaseClient, requireServi
         contractData,
         contractPdfBase64,
         statusToken,
+        regenerate,
       } = req.body || {};
 
       if (!bookingId || !contractPdfBase64) {
@@ -112,7 +113,7 @@ export function createContractSaveHandler(supabase: SupabaseClient, requireServi
         .limit(1)
         .maybeSingle();
 
-      if (existing?.pdf_url) {
+      if (existing?.pdf_url && !regenerate) {
         return res.json({
           success: true,
           contract: existing,
@@ -142,11 +143,27 @@ export function createContractSaveHandler(supabase: SupabaseClient, requireServi
 
       const publicUrl = `/api/assets/public_assets/${filePath}`;
 
-      const { data: contractRow, error: insertError } = await supabase
-        .from('e_contracts')
-        .insert([{ booking_id: bookingId, pdf_url: publicUrl }])
-        .select()
-        .single();
+      let contractRow;
+      let insertError;
+
+      if (existing) {
+        const { data: updatedRow, error: updateError } = await supabase
+          .from('e_contracts')
+          .update({ pdf_url: publicUrl, signed_at: new Date().toISOString() })
+          .eq('id', existing.id)
+          .select()
+          .single();
+        contractRow = updatedRow;
+        insertError = updateError;
+      } else {
+        const { data: insertedRow, error: insertErr } = await supabase
+          .from('e_contracts')
+          .insert([{ booking_id: bookingId, pdf_url: publicUrl }])
+          .select()
+          .single();
+        contractRow = insertedRow;
+        insertError = insertErr;
+      }
 
       if (insertError) {
         return res.status(500).json({ success: false, error: insertError.message });

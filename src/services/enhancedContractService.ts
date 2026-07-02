@@ -73,7 +73,8 @@ export const enhancedContractService = {
     signatureData: string,
     contractData: ContractData,
     contractPdfBase64?: string | null,
-    statusToken?: string | null
+    statusToken?: string | null,
+    regenerate = false
   ): Promise<SignedContract> => {
     try {
       if (!contractPdfBase64) {
@@ -94,6 +95,7 @@ export const enhancedContractService = {
           contractData,
           contractPdfBase64,
           statusToken: statusToken || null,
+          regenerate,
         }),
       });
 

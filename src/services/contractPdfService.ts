@@ -124,7 +124,9 @@ export async function regenerateAndSaveContract(
     bookingId,
     options.signatureData,
     contractData,
-    pdfBase64
+    pdfBase64,
+    null,
+    true
   );
 }
 

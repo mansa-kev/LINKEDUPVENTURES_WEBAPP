@@ -222,6 +222,67 @@ async function startServer() {
     }
   });
 
+  // ─── DOCUMENT PROXY (Hides Supabase URL and forces inline display for PDFs) ───────────
+  app.get('/api/documents/proxy/:bucket/*', async (req, res) => {
+    const bucket = String(req.params.bucket || '');
+    const rawPath = String((req.params as any)[0] || '');
+    const filePath = rawPath.split('?')[0];
+
+    if (!bucket || !filePath) {
+      return res.status(400).send('Bucket and filePath are required.');
+    }
+
+    try {
+      const { getSupabaseUrl } = await import('./src/server/supabaseServer.js');
+      const targetUrl = `${getSupabaseUrl()}/storage/v1/object/public/${bucket}/${filePath}`;
+      const response = await fetch(targetUrl);
+      if (!response.ok) {
+        return res.status(response.status).send('Document not found');
+      }
+
+      const contentType = response.headers.get('content-type');
+      if (contentType) res.setHeader('Content-Type', contentType);
+
+      res.removeHeader('X-Frame-Options');
+      res.setHeader('Content-Disposition', 'inline');
+
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error('Doc proxy error:', err);
+      res.status(500).send('Failed to load document');
+    }
+  });
+
+  app.get('/api/documents/proxy', async (req, res) => {
+    const targetUrl = req.query.url as string;
+    if (!targetUrl || !targetUrl.includes('supabase.co')) {
+      return res.status(400).send('Valid URL required');
+    }
+    
+    try {
+      const response = await fetch(targetUrl);
+      if (!response.ok) {
+        return res.status(response.status).send('Document not found');
+      }
+      
+      const contentType = response.headers.get('content-type');
+      if (contentType) res.setHeader('Content-Type', contentType);
+      
+      // Remove the global X-Frame-Options DENY header so this can be iframed
+      res.removeHeader('X-Frame-Options');
+      
+      // Force inline display so it renders in iframes without downloading
+      res.setHeader('Content-Disposition', 'inline');
+      
+      const buffer = await response.arrayBuffer();
+      res.send(Buffer.from(buffer));
+    } catch (err: any) {
+      console.error('Doc proxy error:', err);
+      res.status(500).send('Failed to load document');
+    }
+  });
+
   // ─── NCBA STK PUSH API ROUTES ─────────────────────────────────────
 
   const finalizeNcbaPayment = async (paymentRequest: any, queryResult: any) => {
