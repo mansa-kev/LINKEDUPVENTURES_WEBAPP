@@ -183,9 +183,9 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
               <Printer size={14} />
               <span className="hidden sm:inline">Save Contract</span>
             </button>
-            {pdfUrl && (
+            {proxiedPdfUrl && (
               <a
-                href={pdfUrl}
+                href={proxiedPdfUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-1.5 px-3 py-2 bg-black/20 text-black rounded-xl text-xs font-bold hover:bg-black/30 transition-colors"
@@ -242,7 +242,7 @@ export function ContractModal({ booking, onClose }: ContractModalProps) {
             </div>
           ) : (
             <PdfViewer
-              url={pdfUrl!}
+              url={proxiedPdfUrl!}
               className="w-full h-full"
               style={{ minHeight: '300px' }}
             />

@@ -371,8 +371,10 @@ export function wrapContractHtmlForPdf(html: string): string {
 
   const allStyles = `
     ${styles}
+    * { box-sizing: border-box !important; }
+    html, body, div, p, span, table, tr, td, th, h1, h2, h3, h4, h5, h6 { max-width: 100% !important; word-wrap: break-word !important; word-break: break-word !important; }
     img { max-width: 100% !important; height: auto !important; }
-    table { width: 100% !important; }
+    table { width: 100% !important; border-collapse: collapse !important; table-layout: fixed !important; }
     .signatures { display: flex !important; flex-direction: row !important; justify-content: space-between !important; gap: 24px !important; width: 100% !important; }
     .signature-box { flex: 1 1 0 !important; min-width: 0 !important; }
   `;

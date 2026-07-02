@@ -98,6 +98,9 @@ export function AdminBookingCommandCenter() {
     outsource_owner_name: '',
     outsource_owner_phone: '',
   });
+  const [existingOutsourcedCars, setExistingOutsourcedCars] = useState<any[]>([]);
+  const [loadingOutsourced, setLoadingOutsourced] = useState(false);
+  const [showAddForm, setShowAddForm] = useState(false);
   const [conductors, setConductors] = useState<Record<string, string>>({});
 
   const fetchDrivers = async () => {
@@ -156,7 +159,7 @@ export function AdminBookingCommandCenter() {
     }
   };
 
-  const openOutsourceModal = () => {
+  const openOutsourceModal = async () => {
     const vehicle = booking?.vehicle_model;
     setOutsourceForm({
       make: vehicle?.make || booking?.cars?.make || '',
@@ -169,6 +172,21 @@ export function AdminBookingCommandCenter() {
       outsource_owner_phone: '',
     });
     setShowOutsourceModal(true);
+    setLoadingOutsourced(true);
+    try {
+      const { data, error } = await supabase
+        .from('cars')
+        .select('id, make, model, year, color, license_plate, status, daily_rate, is_outsourced, outsource_owner_name, outsource_owner_phone, vehicle_model_id')
+        .eq('is_outsourced', true)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      setExistingOutsourcedCars(data || []);
+      setShowAddForm((data || []).length === 0);
+    } catch (err) {
+      logger.error('Failed to fetch outsourced cars:', err);
+    } finally {
+      setLoadingOutsourced(false);
+    }
   };
 
   const handleSourceOutsourcedUnit = async () => {
@@ -2039,89 +2057,199 @@ export function AdminBookingCommandCenter() {
       )}
 
       {showOutsourceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden">
-            <div className="p-6 md:p-8 space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-card border border-border rounded-3xl shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 md:p-8 space-y-4 max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-xl font-black">Source outsourced vehicle</h3>
+                  <h3 className="text-xl font-black text-foreground">Source outsourced vehicle</h3>
                   <p className="text-sm text-muted-foreground mt-1">
-                    Creates an outsourced unit linked to the booked model and assigns it to this booking.
+                    Assign an already listed outsourced unit, or register a new one.
                   </p>
                 </div>
-                <button onClick={() => setShowOutsourceModal(false)} className="p-2 hover:bg-muted rounded-full">
-                  <X size={18} />
+                <button onClick={() => setShowOutsourceModal(false)} className="p-2 hover:bg-muted rounded-full transition-colors">
+                  <X size={18} className="text-muted-foreground" />
                 </button>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <input
-                  value={outsourceForm.make}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, make: e.target.value }))}
-                  placeholder="Make"
-                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-                <input
-                  value={outsourceForm.model}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, model: e.target.value }))}
-                  placeholder="Model"
-                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-                <input
-                  type="number"
-                  value={outsourceForm.year}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, year: Number(e.target.value) }))}
-                  placeholder="Year"
-                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-                <input
-                  value={outsourceForm.license_plate}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, license_plate: e.target.value }))}
-                  placeholder="License plate"
-                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm font-mono uppercase"
-                />
-                <input
-                  value={outsourceForm.color}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, color: e.target.value }))}
-                  placeholder="Color"
-                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-                <input
-                  type="number"
-                  value={outsourceForm.daily_rate}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, daily_rate: Number(e.target.value) }))}
-                  placeholder="Daily rate"
-                  className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-                <input
-                  value={outsourceForm.outsource_owner_name}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, outsource_owner_name: e.target.value }))}
-                  placeholder="Supplier / owner name"
-                  className="col-span-2 px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-                <input
-                  value={outsourceForm.outsource_owner_phone}
-                  onChange={(e) => setOutsourceForm((prev) => ({ ...prev, outsource_owner_phone: e.target.value }))}
-                  placeholder="Supplier phone (optional)"
-                  className="col-span-2 px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm"
-                />
-              </div>
+              {/* Toggle Form / List Button */}
+              {existingOutsourcedCars.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowAddForm(!showAddForm)}
+                  className="w-full py-2.5 px-4 bg-primary/10 text-primary border border-primary/20 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-primary/20 transition-all flex items-center justify-center gap-1.5"
+                >
+                  {showAddForm ? 'View listed outsourced cars' : '＋ Register new outsourced car'}
+                </button>
+              )}
 
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setShowOutsourceModal(false)}
-                  className="flex-1 py-3 bg-muted text-muted-foreground rounded-xl font-bold text-sm"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSourceOutsourcedUnit}
-                  disabled={savingOutsource}
-                  className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm flex items-center justify-center gap-2"
-                >
-                  {savingOutsource ? <Loader2 size={16} className="animate-spin" /> : 'Create & assign'}
-                </button>
-              </div>
+              {/* Loading State */}
+              {loadingOutsourced ? (
+                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                  <Loader2 className="animate-spin text-primary" size={28} />
+                  <p className="text-xs text-muted-foreground">Loading outsourced partners...</p>
+                </div>
+              ) : !showAddForm ? (
+                /* Listed Outsourced Cars Section */
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Listed Outsourced Vehicles</p>
+                  {existingOutsourcedCars.length === 0 ? (
+                    <div className="text-center py-8 bg-muted/10 border border-dashed border-border rounded-2xl">
+                      <p className="text-xs text-muted-foreground">No outsourced cars listed yet.</p>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddForm(true)}
+                        className="mt-2 text-xs font-bold text-primary hover:underline"
+                      >
+                        Register the first one now
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[40vh] overflow-y-auto pr-1">
+                      {existingOutsourcedCars.map((car) => {
+                        const isMatch = car.vehicle_model_id === booking?.vehicle_model_id;
+                        return (
+                          <div
+                            key={car.id}
+                            className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                              isMatch ? 'bg-primary/5 border-primary/20 hover:border-primary/40' : 'bg-muted/10 border-border hover:border-border-hover'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-bold text-sm text-foreground">
+                                  {car.make} {car.model} ({car.year})
+                                </span>
+                                {isMatch && (
+                                  <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-primary/20 text-primary uppercase">
+                                    Model Class Match
+                                  </span>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground">
+                                <div>Plate: <span className="font-mono text-foreground uppercase">{car.license_plate}</span></div>
+                                <div>Color: <span className="text-foreground">{car.color || 'N/A'}</span></div>
+                                <div>Supplier: <span className="text-foreground">{car.outsource_owner_name || 'N/A'}</span></div>
+                                <div>Daily Rate: <span className="text-foreground font-semibold">KES {Number(car.daily_rate).toLocaleString()}</span></div>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await handleAssignUnit(car.id);
+                                setShowOutsourceModal(false);
+                              }}
+                              disabled={isAssigningUnit}
+                              className="px-3.5 py-2 bg-primary text-black rounded-xl text-xs font-black uppercase tracking-wider hover:bg-primary/95 transition-all shadow-md shadow-primary/10 disabled:opacity-50"
+                            >
+                              Assign
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Add New Outsourced Car Form Section */
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <p className="text-[10px] font-black uppercase tracking-wider text-muted-foreground">Register & Add New Outsourced Car</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Make</label>
+                      <input
+                        value={outsourceForm.make}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, make: e.target.value }))}
+                        placeholder="e.g. Toyota"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Model</label>
+                      <input
+                        value={outsourceForm.model}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, model: e.target.value }))}
+                        placeholder="e.g. Prado VXL"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Year</label>
+                      <input
+                        type="number"
+                        value={outsourceForm.year}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, year: Number(e.target.value) }))}
+                        placeholder="e.g. 2023"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">License Plate</label>
+                      <input
+                        value={outsourceForm.license_plate}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, license_plate: e.target.value }))}
+                        placeholder="e.g. KDP 120H"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm font-mono uppercase outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Color</label>
+                      <input
+                        value={outsourceForm.color}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, color: e.target.value }))}
+                        placeholder="e.g. Gray"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Daily Rate (KES)</label>
+                      <input
+                        type="number"
+                        value={outsourceForm.daily_rate}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, daily_rate: Number(e.target.value) }))}
+                        placeholder="e.g. 15000"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Supplier / Owner Name</label>
+                      <input
+                        value={outsourceForm.outsource_owner_name}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, outsource_owner_name: e.target.value }))}
+                        placeholder="e.g. Kevin Ventures"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <label className="text-[9px] font-black uppercase tracking-widest text-muted-foreground">Supplier Phone Number</label>
+                      <input
+                        value={outsourceForm.outsource_owner_phone}
+                        onChange={(e) => setOutsourceForm((prev) => ({ ...prev, outsource_owner_phone: e.target.value }))}
+                        placeholder="e.g. 0712345678"
+                        className="px-3 py-2 bg-muted/30 border border-border rounded-xl text-sm outline-none focus:border-primary transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowOutsourceModal(false)}
+                      className="flex-1 py-3 bg-muted text-muted-foreground rounded-xl font-bold text-sm hover:bg-muted/80 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleSourceOutsourcedUnit}
+                      disabled={savingOutsource}
+                      className="flex-1 py-3 bg-primary text-primary-foreground rounded-xl font-bold text-sm flex items-center justify-center gap-2 hover:bg-primary/95 transition-all"
+                    >
+                      {savingOutsource ? <Loader2 size={16} className="animate-spin" /> : 'Create & assign'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

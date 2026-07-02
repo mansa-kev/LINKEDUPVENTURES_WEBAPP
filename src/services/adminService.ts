@@ -489,9 +489,11 @@ export const adminService = {
       return handleSupabaseErrorWrapper(carError, 'assignBookingUnit');
     }
 
-    if (booking.vehicle_model_id && car.vehicle_model_id !== booking.vehicle_model_id) {
-      throw new Error('Selected fleet unit is not linked to the booked vehicle model.');
-    }
+    // Relax validation check to allow admins to reassign units across family variants or perform manual upgrades.
+    // Booking vehicle_model_id will automatically update to match the selected car's vehicle_model_id.
+    // if (booking.vehicle_model_id && car.vehicle_model_id !== booking.vehicle_model_id) {
+    //   throw new Error('Selected fleet unit is not linked to the booked vehicle model.');
+    // }
 
     const hasOverlap = (startDate: string, endDate: string, existingStart: string, existingEnd: string) => {
       const start = new Date(startDate);
