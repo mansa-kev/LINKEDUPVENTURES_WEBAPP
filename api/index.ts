@@ -245,6 +245,9 @@ const app = express();
       const contentType = response.headers.get('content-type');
       if (contentType) res.setHeader('Content-Type', contentType);
       
+      // Remove the global X-Frame-Options DENY header so this can be iframed
+      res.removeHeader('X-Frame-Options');
+      
       // Force inline display so it renders in iframes without downloading
       res.setHeader('Content-Disposition', 'inline');
       
